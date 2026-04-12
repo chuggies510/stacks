@@ -65,6 +65,7 @@ if [[ -z "$TEMPLATE_DIR" ]]; then
   echo "ERROR: Stack template not found. Is the stacks plugin installed?"
   exit 1
 fi
+mkdir -p "$STACK_NAME"
 cp -r "$TEMPLATE_DIR/." "$STACK_NAME/"
 # Remove .gitkeep files from copied template
 find "$STACK_NAME" -name '.gitkeep' -delete
@@ -74,7 +75,7 @@ find "$STACK_NAME" -name '.gitkeep' -delete
 
 ```bash
 DISPLAY_NAME=$(echo "$STACK_NAME" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
-sed -i "s/{Stack Name}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_NAME/index.md" "$STACK_NAME/log.md"
+perl -pi -e "s/\\{Stack Name\\}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_NAME/index.md" "$STACK_NAME/log.md"
 ```
 
 ## Step 5: Guide STACK.md setup
@@ -85,8 +86,10 @@ Read `$STACK_NAME/STACK.md` and show the user the placeholder sections.
 
 Ask: "Would you like to fill in the STACK.md sections now, or do it later?"
 
-- If **now**: walk through each section conversationally. Ask about scope, source hierarchy, filing rules, and any custom topic template sections. Update STACK.md with their answers using the Edit tool.
-- If **later**: proceed to catalog update.
+- If **now**: walk through each section conversationally. Ask about scope, source hierarchy, filing rules, and any custom topic template sections. Update STACK.md with their answers using the Edit tool. After editing, extract the user's scope description from their answer and set SCOPE_DESCRIPTION to that text (a single sentence describing what the stack covers).
+- If **later**: proceed to catalog update. Set SCOPE_DESCRIPTION="" (empty, so the catalog gets the placeholder).
+
+Before running the Step 6 bash block, set `SCOPE_DESCRIPTION` to the scope text from Step 5 if the user provided it, otherwise leave it unset so the default placeholder applies.
 
 ## Step 6: Update catalog
 
