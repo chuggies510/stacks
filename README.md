@@ -12,7 +12,9 @@ Your library repo is the *content*: stacks, topic guides, source logs, and the c
 
 ```bash
 # 1. Install the plugin
-claude plugin install stacks   # or: bash scripts/install.sh
+git clone https://github.com/chuggies510/stacks ~/path/to/stacks
+cd ~/path/to/stacks
+bash scripts/install.sh
 
 # 2. Initialize your library
 bash scripts/init.sh ~/knowledge
@@ -20,10 +22,13 @@ bash scripts/init.sh ~/knowledge
 # 3. Create a new stack
 /stacks:new rust-async
 
-# 4. Ingest sources
+# 4. Drop source files into the stack
+# Add markdown, text, PDFs, etc. to {stack}/sources/incoming/
+
+# 5. Ingest sources
 /stacks:ingest
 
-# 5. Query your library
+# 6. Query your library
 /stacks:lookup how does tokio schedule tasks
 ```
 
@@ -46,6 +51,3 @@ bash scripts/init.sh ~/knowledge
 | `catalog.md` | Library root | Library-level index of all stacks |
 | `guide.md` | `topics/{name}/` | Synthesized topic guide for one topic |
 
-## Inspiration
-
-Inspired by Andrej Karpathy's LLM Wiki concept: the idea that a well-curated, human-reviewed knowledge base is more useful to an LLM than a firehose of raw text. Build the knowledge once, query it everywhere.
