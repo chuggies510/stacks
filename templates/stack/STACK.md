@@ -1,0 +1,45 @@
+# {Stack Name}
+
+## Scope
+
+*What does this stack cover? What domains, topics, or subject areas?*
+
+## Source Hierarchy
+
+How to rank conflicting sources. Higher tiers win conflicts.
+
+| Tier | Label | Description | Example |
+|------|-------|-------------|---------|
+| 1 | *Gold* | *Authoritative standards, codes* | *e.g., RFC, ISO, ASHRAE* |
+| 2 | *Standard* | *Professional references, textbooks* | *e.g., O'Reilly, vendor docs* |
+| 3 | *Practitioner* | *Blog posts, field notes, talks* | *e.g., conference slides* |
+| 4 | *General* | *General knowledge, opinions* | *e.g., forum posts* |
+
+## Topic Template
+
+Sections that every topic guide in this stack should follow.
+
+- Overview — what this is, when/why you'd use it
+- Key Concepts — core principles, configurations, trade-offs
+- *Add domain-specific sections here*
+- Common Mistakes — what goes wrong, why, how to avoid
+- Field Notes — practitioner experience, lessons learned
+- Sources — which sources contributed, with tier ratings
+
+## Filing Rules
+
+*How to decide where new knowledge goes. For example: "File by system served,
+not by engineering concept" or "File by protocol layer, not by vendor."*
+
+## Frontmatter Convention
+
+Topic guides use this YAML frontmatter:
+
+```yaml
+---
+title: Display Name
+tags: [domain-tag, topic-specific-tags]
+sources: 0
+last_ingested: YYYY-MM-DD
+---
+```
