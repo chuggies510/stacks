@@ -1,4 +1,5 @@
 ---
+name: validator
 tools: Glob, Grep, Read, Write
 model: claude-sonnet-4-5
 description: Verifies topic guide claims against source files. Reads guides and sources, checks factual accuracy, flags drift where guides no longer match sources. Writes validation-report.md.

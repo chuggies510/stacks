@@ -56,7 +56,16 @@ echo "Found $GUIDE_COUNT topic guides. Running 4-wave refine."
 
 ## Step 3: Wave 3 — Cross-reference
 
-Read `references/wave-engine.md` for the full agent dispatch prompt for the cross-referencer agent.
+```bash
+# Locate wave-engine.md in the stacks plugin
+WAVE_ENGINE=$(find ~/.claude/plugins/cache -name "wave-engine.md" -path "*/stacks/*/references/*" 2>/dev/null | sort -V | tail -1)
+if [[ -z "$WAVE_ENGINE" ]]; then
+  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
+fi
+```
+
+Read `$WAVE_ENGINE` for the full agent dispatch prompt for the cross-referencer agent.
 
 Find the cross-referencer agent:
 ```bash

@@ -43,7 +43,12 @@ git commit -m "feat: initialize knowledge library"
 
 # Update stacks config with absolute path
 mkdir -p "$CONFIG_DIR"
-jq -n --arg lib "$TARGET" '{"library": $lib}' > "$CONFIG_FILE"
+if [[ -f "$CONFIG_FILE" ]]; then
+  jq --arg lib "$TARGET" '.library = $lib' "$CONFIG_FILE" > "$CONFIG_FILE.tmp"
+  mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+else
+  jq -n --arg lib "$TARGET" '{"library": $lib}' > "$CONFIG_FILE"
+fi
 
 echo ""
 echo "Done. Library created at: $TARGET"

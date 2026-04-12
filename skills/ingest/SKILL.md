@@ -83,7 +83,16 @@ if [[ -z "$AGENTS_DIR" ]]; then
 fi
 ```
 
-Read `references/wave-engine.md` for the topic-clusterer dispatch instructions.
+```bash
+# Locate wave-engine.md in the stacks plugin
+WAVE_ENGINE=$(find ~/.claude/plugins/cache -name "wave-engine.md" -path "*/stacks/*/references/*" 2>/dev/null | sort -V | tail -1)
+if [[ -z "$WAVE_ENGINE" ]]; then
+  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
+fi
+```
+
+Read `$WAVE_ENGINE` for the topic-clusterer dispatch instructions.
 
 If `$STACK/dev/curate/plan.md` already exists, dispatch topic-clusterer in refresh mode to classify new sources into existing groups or propose new ones.
 
@@ -107,7 +116,7 @@ If the user says edit, allow them to reassign sources to different groups or cre
 
 ## Step 5: Wave 1 — Extract (parallel)
 
-Read `references/wave-engine.md` for the topic-extractor dispatch instructions.
+Read `$WAVE_ENGINE` for the topic-extractor dispatch instructions.
 
 Create the extractions directory:
 ```bash
@@ -115,6 +124,8 @@ mkdir -p "$STACK/dev/curate/extractions"
 ```
 
 For each topic group in `$STACK/dev/curate/plan.md` that has new sources, dispatch one topic-extractor agent. Dispatch all groups in parallel.
+
+Instruct each topic-extractor agent: "Name each extraction file using the same normalization as the gate below: lowercase-hyphenated group name with special characters removed. For example, 'VAV Systems (Zone Control)' → `vav-systems-zone-control.md`."
 
 Each agent:
 - Reads source files assigned to its group
@@ -126,7 +137,8 @@ After all topic-extractor agents complete, verify the gate:
 ```bash
 # Parse topic group names from plan.md
 # Groups are section headings (## lines) in plan.md
-GROUPS=$(grep '^## ' "$STACK/dev/curate/plan.md" | sed 's/^## //' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+GROUPS=$(grep '^## ' "$STACK/dev/curate/plan.md" | sed 's/^## //' | \
+  sed 's/[^a-zA-Z0-9 -]//g' | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g')
 ALL_FOUND=true
 for group in $GROUPS; do
   if [[ ! -f "$STACK/dev/curate/extractions/$group.md" ]]; then
@@ -137,11 +149,11 @@ done
 [[ "$ALL_FOUND" == true ]] || { echo "ERROR: Not all extractions completed. Check agent output."; exit 1; }
 ```
 
-Note: topic-clusterer writes group names as `## Group Name` section headings in plan.md. The gate converts these to lowercase-hyphenated filenames matching the extractor output convention.
+Note: topic-clusterer writes group names as `## Group Name` section headings in plan.md. The gate converts these to lowercase-hyphenated filenames (stripping non-alphanumeric characters) matching the extractor output convention.
 
 ## Step 6: Wave 2 — Synthesize (parallel)
 
-Read `references/wave-engine.md` for the topic-synthesizer dispatch instructions.
+Read `$WAVE_ENGINE` for the topic-synthesizer dispatch instructions.
 
 For each topic group with extractions, dispatch one topic-synthesizer agent. Dispatch all groups in parallel.
 

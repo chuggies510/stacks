@@ -15,7 +15,7 @@ Unified execution engine for Build Mode (all waves) and Refresh Mode (affected w
 | 5 | Synthesize cross-cutting | synthesizer | Single | All guides | dev/curate/glossary.md, dev/curate/invariants.md |
 | 6 | Findings | findings-analyst | Single | All guides + reports | dev/curate/findings.md |
 
-Waves 3–6 are dispatched by `/stacks:refine`. Waves 0–2 are dispatched by `/stacks:curate`.
+Waves 3–6 are dispatched by `/stacks:refine`. Waves 0–2 are dispatched by `/stacks:ingest`.
 
 **Dependency rule**: Each wave gates on the prior wave completing. If any Wave N output is refreshed, Waves N+1 through 6 re-run.
 
@@ -174,4 +174,4 @@ If an agent fails (no output file produced):
 1. Mark wave status as "failed" in dev/curate/plan.md
 2. Report which topic group / agent failed
 3. Do not proceed to next wave
-4. User can re-run `/stacks:curate` or `/stacks:refine` to retry from failed wave
+4. User can re-run `/stacks:ingest` or `/stacks:refine` to retry from failed wave

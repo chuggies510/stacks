@@ -25,15 +25,13 @@ Prefer fewer, broader groups over many narrow ones. A group needs 2+ sources to 
 1. Read the partial manifest (new/changed files only) from `index.md` (sources section)
 2. Read existing `dev/curate/plan.md` to understand current topic groups
 3. For each new source: classify into an existing topic group or propose a new one
-4. Write `dev/curate/refresh-classification.md`
+4. Merge new source classifications into the existing groups in `dev/curate/plan.md`, adding new group rows if needed
+5. Write the updated `dev/curate/plan.md` (update in-place — do not write a separate file)
 
 ## Output Format
 
-### plan.md (plan mode)
+### plan.md (both plan mode and refresh mode)
+The output is always `dev/curate/plan.md`. In refresh mode, update it in-place: merge new sources into existing group rows and add new group rows where needed.
+
 Follow the exact schema:
 - Status, Last Synthesized date, Source Inventory table, Topic Groups table, Wave Progress table
-
-### refresh-classification.md (refresh mode)
-- Assigned to Existing Groups table
-- New Topic Groups Proposed table
-- Affected Topic Groups list

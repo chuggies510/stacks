@@ -1,6 +1,6 @@
 # Refresh Procedure — Incremental Knowledge Synthesis
 
-Triggered by `/stacks:curate refresh`. Detects new/changed sources and selectively re-runs affected waves.
+Triggered by `/stacks:ingest refresh`. Detects new/changed sources and selectively re-runs affected waves.
 
 ## Step 1: Detect Changes
 
