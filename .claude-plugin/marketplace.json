@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "stacks",
+  "metadata": {
+    "description": "Karpathy-inspired knowledge base system: build, refine, and query persistent knowledge stacks"
+  },
+  "owner": {
+    "name": "chris"
+  },
+  "plugins": [
+    {
+      "name": "stacks",
+      "description": "Karpathy-inspired knowledge base system: build, refine, and query persistent knowledge stacks",
+      "version": "0.1.1",
+      "author": {
+        "name": "chris"
+      },
+      "source": "./",
+      "category": "knowledge-management"
+    }
+  ]
+}
