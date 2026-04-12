@@ -1,7 +1,7 @@
 ---
 name: synthesizer
 tools: Glob, Grep, Read, Write
-model: claude-sonnet-4-5
+model: sonnet
 description: Synthesizes cross-cutting artifacts from topic guides. Produces a unified glossary of domain terms and an invariants doc of rules that hold across topics.
 ---
 

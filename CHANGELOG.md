@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-04-12
+
+- docs: README rewrite with accurate skill list, agent table, pipeline descriptions, requirements
+- docs: CLAUDE.md rewrite with marketplace registration model, corrected plugin structure
+- fix: standardize agent model fields to shorthand (`sonnet`) across all 7 agents
+- fix: expand .gitignore with standard patterns
+
 ## 0.3.0 — 2026-04-12
 
 - feat: `/stacks:init` skill, library creation is now self-service from within Claude Code
@@ -17,8 +24,8 @@
 
 Initial release.
 
-- Four skills: `/stacks:ingest`, `/stacks:lookup`, `/stacks:refine`, `/stacks:new`
-- Five agents: topic-extractor, topic-synthesizer, topic-clusterer, cross-referencer, gap-analyzer
+- Five skills: `/stacks:init`, `/stacks:new`, `/stacks:ingest`, `/stacks:lookup`, `/stacks:refine`
+- Seven agents: topic-clusterer, topic-extractor, topic-synthesizer, cross-referencer, validator, synthesizer, findings-analyst
 - Templates for library and stack bootstrapping
 - Lifecycle scripts: install, uninstall, update, init
 - Reference docs: wave engine, refresh procedure, default topic template

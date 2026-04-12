@@ -18,7 +18,7 @@ Your LLM has read everything. It remembers nothing.
 
 Stacks fixes that. Drop source material into a folder. Run a skill. Claude reads it, extracts what matters, and writes structured topic guides. Next time you ask "how does X work," it reads from those guides instead of confidently hallucinating a blog post from 2019.
 
-This is [Andrej Karpathy's LLM Wiki idea](https://github.com/karpathy/llm-wiki) — curated synthesis beats bulk context every time. Stacks is the Claude Code implementation.
+This is [Andrej Karpathy's LLM Wiki idea](https://github.com/karpathy/llm-wiki), curated synthesis beats bulk context every time. Stacks is the Claude Code implementation.
 
 ---
 
@@ -28,7 +28,7 @@ This is [Andrej Karpathy's LLM Wiki idea](https://github.com/karpathy/llm-wiki) 
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:new, :ingest, :lookup, :refine
+  skills/        ← /stacks:init, :new, :ingest, :lookup, :refine
   agents/        ← 7 LLM workers (extractors, synthesizers, validators)
   scripts/       ← install.sh, init.sh, update.sh
 
@@ -52,20 +52,26 @@ The tool never knows what's in your library. Your library doesn't care what vers
 git clone https://github.com/chuggies510/stacks ~/stacks
 bash ~/stacks/scripts/install.sh
 # restart claude code
+```
 
-# create your library
-bash ~/stacks/scripts/init.sh ~/knowledge
+Then from any Claude Code session:
 
-# in your library repo, create a stack
-/stacks:new rust-async
+```
+/stacks:init ~/knowledge            # create library + private GitHub repo
+```
 
-# edit rust-async/STACK.md — define your source hierarchy and topic template
+Open a session in your new library:
+
+```
+/stacks:new rust-async               # scaffold a stack
+# edit rust-async/STACK.md — define source hierarchy, topic template, filing rules
 # drop sources into rust-async/sources/incoming/
+/stacks:ingest rust-async            # process sources into topic guides
+```
 
-# process them
-/stacks:ingest rust-async
+Query from anywhere:
 
-# ask questions from any repo, ever
+```
 /stacks:lookup how does tokio schedule tasks across threads
 ```
 
@@ -75,10 +81,11 @@ bash ~/stacks/scripts/init.sh ~/knowledge
 
 | skill | what it does |
 |-------|-------------|
+| `/stacks:init {path}` | create a knowledge library with private GitHub repo |
 | `/stacks:new {name}` | scaffold a new stack from templates |
-| `/stacks:ingest {stack}` | process incoming sources → topic guides (2-wave pipeline) |
-| `/stacks:lookup {query}` | answer a question from your curated guides |
-| `/stacks:refine {stack}` | cross-reference, validate, synthesize glossary + findings (4-wave pipeline) |
+| `/stacks:ingest {stack}` | detect new sources, classify, extract, synthesize into topic guides |
+| `/stacks:lookup {query}` | answer a question from your curated guides (works from any repo) |
+| `/stacks:refine {stack}` | cross-reference, validate, synthesize glossary, find gaps |
 
 ---
 
@@ -102,6 +109,22 @@ topic guides  →  [cross-referencer]  →  contradictions
               →  [synthesizer]       →  glossary + invariants
               →  [findings-analyst]  →  gaps + research direction
 ```
+
+---
+
+## agents
+
+Seven specialized agents power the pipeline:
+
+| agent | role | used by |
+|-------|------|---------|
+| topic-clusterer | group sources into topic clusters, produce plan.md | ingest |
+| topic-extractor | extract claims and data from sources for one topic group | ingest |
+| topic-synthesizer | write/update a topic guide from extracted knowledge | ingest |
+| cross-referencer | find contradictions and gaps across topic guides | refine |
+| validator | verify topic guide claims against source material | refine |
+| synthesizer | produce cross-domain artifacts (glossary, invariants) | refine |
+| findings-analyst | identify gaps, suggest research direction | refine |
 
 ---
 
@@ -130,10 +153,20 @@ Also you don't have to run a vector database.
 ## install
 
 ```bash
-bash scripts/install.sh    # register plugin
-bash scripts/init.sh ~/knowledge   # create library
-bash scripts/uninstall.sh  # remove registration (library untouched)
-bash scripts/update.sh     # git pull + refresh cache
+git clone https://github.com/chuggies510/stacks ~/stacks
+bash ~/stacks/scripts/install.sh    # register plugin with Claude Code
+# restart claude code
 ```
 
-Config lives at `~/.config/stacks/config.json`. Library path is set by `init.sh` and read by `/stacks:lookup` at runtime so it works from any repo.
+After install, everything runs through skills. No more bash commands needed.
+
+**Other lifecycle scripts** (for maintainers):
+
+```bash
+bash scripts/uninstall.sh  # remove plugin registration (library untouched)
+bash scripts/update.sh     # git pull (directory-source plugins update in place)
+```
+
+**Requirements**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), `gh` CLI (authenticated), `jq`.
+
+Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init` and read by `/stacks:lookup` at runtime so it works from any repo.

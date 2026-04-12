@@ -1,7 +1,7 @@
 ---
 name: findings-analyst
 tools: Glob, Grep, Read, Write
-model: claude-sonnet-4-5
+model: sonnet
 description: Analyzes knowledge stack quality and produces findings on coverage, source fragility, gaps, and research direction. Reads all topic guides, cross-reference and validation reports.
 ---
 
