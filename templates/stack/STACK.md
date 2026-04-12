@@ -24,7 +24,7 @@ Sections that every topic guide in this stack should follow.
 - *Add domain-specific sections here*
 - Common Mistakes — what goes wrong, why, how to avoid
 - Field Notes — practitioner experience, lessons learned
-- Sources — which sources contributed, with tier ratings
+- Sources — which sources contributed, with tier ratings (populated by `/stacks:ingest`)
 
 ## Filing Rules
 

@@ -12,8 +12,8 @@ topic guides.
   The ingest process files them by origin and extracts knowledge into topic guides.
 - **Topics are LLM-maintained.** Do not hand-edit topic guides. Use `/stacks:ingest`
   to update them from sources.
-- **index.md is the catalog.** Each stack's index.md lists all sources and topics.
-  Ingest regenerates it. Do not edit manually.
+- **index.md is the stack index.** Each stack's index.md lists all sources and topics
+  for that stack. Ingest regenerates it. Do not edit manually.
 - **log.md is append-only.** Records what operations happened and when.
 - **STACK.md is the schema.** Defines source hierarchy, topic template, and filing
   rules for that stack. Edit this to change how the stack is curated.
