@@ -1,53 +1,139 @@
 # stacks
 
-A Karpathy-inspired knowledge base system for Claude Code. Andrej Karpathy's LLM Wiki concept holds that LLMs work best when given curated, well-structured knowledge rather than raw dumps — organized synthesis beats bulk context every time. Stacks applies that principle to your personal knowledge: you build a library of topic guides synthesized from real sources, and any Claude Code session can query them directly, getting dense, relevant knowledge instead of raw links.
-
-## Two-repo model
-
-The `stacks` repo is the *tool*: skills, agents, scripts, and templates. It is public and FOSS. It knows nothing about your knowledge.
-
-Your library repo is the *content*: stacks, topic guides, source logs, and the catalog. It is private and personal. The tool operates on it; the tool never contains it.
-
-## Quick start
-
-```bash
-# 1. Install the plugin
-git clone https://github.com/chuggies510/stacks ~/path/to/stacks
-cd ~/path/to/stacks
-bash scripts/install.sh
-
-# 2. Initialize your library
-bash scripts/init.sh ~/knowledge
-
-# 3. Create a new stack
-/stacks:new rust-async
-
-# 4. Drop source files into the stack
-# Add markdown, text, PDFs, etc. to {stack}/sources/incoming/
-
-# 5. Ingest sources
-/stacks:ingest
-
-# 6. Query your library
-/stacks:lookup how does tokio schedule tasks
+```
+╔══════════════════════════════════════════════════════════╗
+║                                                          ║
+║    📚  your brain,  but  it  actually  works            ║
+║                                                          ║
+║   sources/incoming/  ──►  agents  ──►  topic guides      ║
+║                                ▲                         ║
+║                         STACK.md schema                  ║
+║                                                          ║
+║   /stacks:lookup "how does X work"  ──►  actual answer   ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
 ```
 
-## Skills
+Your LLM has read everything. It remembers nothing.
 
-| Skill | Description |
+Stacks fixes that. Drop source material into a folder. Run a skill. Claude reads it, extracts what matters, and writes structured topic guides. Next time you ask "how does X work," it reads from those guides instead of confidently hallucinating a blog post from 2019.
+
+This is [Andrej Karpathy's LLM Wiki idea](https://github.com/karpathy/llm-wiki) — curated synthesis beats bulk context every time. Stacks is the Claude Code implementation.
+
+---
+
+## how it works
+
+**Two repos. One rule.**
+
+```
+stacks/          ← this repo. the tool. public. knows nothing about you.
+  skills/        ← /stacks:new, :ingest, :lookup, :refine
+  agents/        ← 7 LLM workers (extractors, synthesizers, validators)
+  scripts/       ← install.sh, init.sh, update.sh
+
+~/my-library/    ← your repo. the content. private. the tool touches this.
+  catalog.md     ← what stacks you have
+  rust-async/
+    STACK.md     ← schema: source tiers, topic template, filing rules
+    index.md     ← what's been ingested
+    sources/     ← raw material goes in here
+    topics/      ← synthesized guides come out here
+```
+
+The tool never knows what's in your library. Your library doesn't care what version of the tool you're running. They're just files.
+
+---
+
+## quick start
+
+```bash
+# clone and install
+git clone https://github.com/chuggies510/stacks ~/stacks
+bash ~/stacks/scripts/install.sh
+# restart claude code
+
+# create your library
+bash ~/stacks/scripts/init.sh ~/knowledge
+
+# in your library repo, create a stack
+/stacks:new rust-async
+
+# edit rust-async/STACK.md — define your source hierarchy and topic template
+# drop sources into rust-async/sources/incoming/
+
+# process them
+/stacks:ingest rust-async
+
+# ask questions from any repo, ever
+/stacks:lookup how does tokio schedule tasks across threads
+```
+
+---
+
+## skills
+
+| skill | what it does |
 |-------|-------------|
-| `/stacks:ingest` | Process raw sources in `sources/incoming/`, extract topics, update guides |
-| `/stacks:refine` | Re-synthesize one or more topic guides from accumulated source extractions |
-| `/stacks:lookup` | Query the library and surface relevant topic guides for a question |
-| `/stacks:new` | Scaffold a new stack directory from the stack template |
+| `/stacks:new {name}` | scaffold a new stack from templates |
+| `/stacks:ingest {stack}` | process incoming sources → topic guides (2-wave pipeline) |
+| `/stacks:lookup {query}` | answer a question from your curated guides |
+| `/stacks:refine {stack}` | cross-reference, validate, synthesize glossary + findings (4-wave pipeline) |
 
-## File conventions
+---
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `STACK.md` | Stack root | Stack schema: name, domain, description, config |
-| `index.md` | Stack root | Source and topic catalog for this stack |
-| `log.md` | Stack root | Operation history: ingests, refines, lookups |
-| `catalog.md` | Library root | Library-level index of all stacks |
-| `guide.md` | `topics/{name}/` | Synthesized topic guide for one topic |
+## the pipeline
 
+**ingest** (run when you add sources):
+
+```
+sources/incoming/  →  [topic-clusterer]  →  plan.md
+                              ↓
+              [topic-extractor × N]  →  dev/curate/extractions/
+                              ↓
+              [topic-synthesizer × N]  →  topics/{name}/guide.md
+```
+
+**refine** (run when you want quality):
+
+```
+topic guides  →  [cross-referencer]  →  contradictions
+              →  [validator]         →  drift from sources
+              →  [synthesizer]       →  glossary + invariants
+              →  [findings-analyst]  →  gaps + research direction
+```
+
+---
+
+## file layout
+
+| file | where | purpose |
+|------|-------|---------|
+| `STACK.md` | stack root | schema: source tiers, topic template, filing rules |
+| `index.md` | stack root | source + topic catalog, regenerated on every ingest |
+| `log.md` | stack root | append-only operation history |
+| `catalog.md` | library root | index of all stacks |
+| `guide.md` | `topics/{name}/` | one synthesized topic guide |
+
+---
+
+## why not just use RAG
+
+You could. RAG gives you chunks. Stacks gives you synthesis.
+
+A topic guide written by a domain expert (even a synthetic one) is more useful than the top-3 cosine-similar paragraphs from a PDF you uploaded eight months ago and forgot about. Stacks forces structure up front. The payoff is lookup quality that doesn't degrade as your library grows.
+
+Also you don't have to run a vector database.
+
+---
+
+## install
+
+```bash
+bash scripts/install.sh    # register plugin
+bash scripts/init.sh ~/knowledge   # create library
+bash scripts/uninstall.sh  # remove registration (library untouched)
+bash scripts/update.sh     # git pull + refresh cache
+```
+
+Config lives at `~/.config/stacks/config.json`. Library path is set by `init.sh` and read by `/stacks:lookup` at runtime so it works from any repo.
