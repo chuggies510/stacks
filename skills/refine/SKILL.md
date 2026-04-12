@@ -67,15 +67,16 @@ if [[ -z "$AGENTS_DIR" ]]; then
 fi
 ```
 
+Create the output directory, then dispatch the cross-referencer agent:
+
+```bash
+mkdir -p "$STACK/dev/curate"
+```
+
 Dispatch the cross-referencer agent with:
 - All topic guides (`$STACK/topics/*/guide.md`)
 - `$STACK/STACK.md`
 - Output path: `$STACK/dev/curate/cross-reference-report.md`
-
-Create `$STACK/dev/curate/` directory first:
-```bash
-mkdir -p "$STACK/dev/curate"
-```
 
 Gate: verify `$STACK/dev/curate/cross-reference-report.md` exists before proceeding.
 
@@ -121,7 +122,12 @@ Findings: P1: {p1-count}. P2: {p2-count}. P3: {p3-count}.
 Research queue: {top-3-items}.
 ```
 
-Read the produced reports to extract the counts before writing the log entry.
+Before writing the log entry, read the produced reports and extract:
+- **Cross-reference report**: count the contradiction entries (lines starting with `- **CONTRADICTION**` or the findings table rows marked as contradictions)
+- **Validation report**: count total findings by status (DRIFT + STALE = issues, UNSOURCED = separate)
+- **Glossary**: count `**Term**:` lines
+- **Invariants**: count numbered rule entries
+- **Findings**: count P1, P2, P3 entries; extract the top 3 research direction items from the Research Direction section
 
 ## Step 8: Commit and report
 
