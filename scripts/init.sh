@@ -71,7 +71,7 @@ git commit -m "feat: initialize knowledge library"
 trap - ERR
 
 # Create repo on GitHub (no --source, no --push — those are unreliable)
-if ! gh repo create "$REPO_NAME" "$VISIBILITY" 2>&1; then
+if ! gh repo create "$REPO_NAME" "$VISIBILITY"; then
   echo ""
   echo "WARNING: GitHub repo creation failed. Local library is intact at: $TARGET"
   echo "Create the repo manually and run: git -C \"$TARGET\" remote add origin git@github.com:$GH_USER/$REPO_NAME.git && git -C \"$TARGET\" push -u origin main"

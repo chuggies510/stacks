@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1 — 2026-04-12
+
+- fix: library templates (CLAUDE.md, README.md) had stale skill names from pre-rename
+- fix: refresh-procedure.md referenced nonexistent `/stacks:ingest refresh` mode and wrong output file
+- fix: topic-extractor agent referenced phantom "CLAUDE.md fallback" for source hierarchy
+- fix: telemetry.sh used `#!/bin/bash` instead of `#!/usr/bin/env bash`
+- fix: init.sh removed pointless `2>&1` on `gh repo create`
+- fix: new-stack replaced `perl` placeholder replacement with `sed` (drops unlisted dependency)
+- fix: uninstall.sh added comments explaining why it cleans up files install.sh doesn't write
+
 ## 0.5.0 — 2026-04-12
 
 - feat: rename all skills to descriptive names — `init-library`, `new-stack`, `ingest-sources`, `ask`, `refine-stack`

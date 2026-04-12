@@ -1,6 +1,6 @@
 # Refresh Procedure — Incremental Knowledge Synthesis
 
-Triggered by `/stacks:ingest refresh`. Detects new/changed sources and selectively re-runs affected waves.
+Triggered by `/stacks:ingest-sources` when existing topic guides are present. Detects new/changed sources and selectively re-runs affected waves.
 
 ## Step 1: Detect Changes
 
@@ -35,7 +35,7 @@ Existing plan: dev/curate/plan.md
 Source hierarchy and template: STACK.md
 
 For each source: assign to an existing topic group or propose a new one.
-Write classification to: dev/curate/refresh-classification.md
+Update classification in: dev/curate/plan.md
 Project root: {pwd}"
 ```
 

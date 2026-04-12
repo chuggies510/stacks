@@ -28,7 +28,7 @@ if [[ -f "$SETTINGS" ]]; then
   echo "Removed from settings.json."
 fi
 
-# Remove from known_marketplaces.json
+# Remove from known_marketplaces.json (written by Claude Code when it resolves the marketplace)
 if [[ -f "$KNOWN_MARKETPLACES" ]]; then
   jq --arg m "$MARKETPLACE_NAME" 'del(.[$m])' \
     "$KNOWN_MARKETPLACES" > "$KNOWN_MARKETPLACES.tmp"
@@ -36,7 +36,7 @@ if [[ -f "$KNOWN_MARKETPLACES" ]]; then
   echo "Removed from known_marketplaces.json."
 fi
 
-# Remove from installed_plugins.json
+# Remove from installed_plugins.json (written by Claude Code when it caches the plugin)
 if [[ -f "$INSTALLED_PLUGINS" ]]; then
   jq --arg k "$PLUGIN_KEY" 'del(.plugins[$k])' \
     "$INSTALLED_PLUGINS" > "$INSTALLED_PLUGINS.tmp"

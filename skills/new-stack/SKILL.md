@@ -75,7 +75,7 @@ find "$STACK_NAME" -name '.gitkeep' -delete
 
 ```bash
 DISPLAY_NAME=$(echo "$STACK_NAME" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
-perl -pi -e "s/\\{Stack Name\\}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_NAME/index.md" "$STACK_NAME/log.md"
+sed -i "s/{Stack Name}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_NAME/index.md" "$STACK_NAME/log.md"
 ```
 
 ## Step 5: Guide STACK.md setup

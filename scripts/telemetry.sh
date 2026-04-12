@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Append a skill invocation record to ~/.chuggiesmart/telemetry.jsonl
 # Usage: SKILL_NAME="stacks:new" bash telemetry.sh
 #

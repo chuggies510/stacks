@@ -14,8 +14,8 @@ Extract conservatively. If a claim is ambiguous, quote it rather than interpreti
 
 ## Process
 
-1. Read `STACK.md` (source hierarchy section) (or CLAUDE.md fallback) to understand the trust tiers
-2. Read `STACK.md` (topic template section) (or the default template provided in your prompt) to know the target sections
+1. Read `STACK.md` (source hierarchy section) to understand the trust tiers
+2. Read `STACK.md` (topic template section) to know the target sections
 3. Read every source markdown file assigned to your topic group
 4. For each source, extract: key claims, data points, recommendations, rules of thumb, tables, formulas, sizing guidance
 5. Organize extractions by template section
