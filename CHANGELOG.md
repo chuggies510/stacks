@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.1.1 — 2026-04-12
+## 0.2.0 — 2026-04-12
 
-- fix(install): write to `installed_plugins.json` so Claude Code can locate the plugin — previously only `enabledPlugins` was written, skills did not load after install
+- fix(install): register as directory-source marketplace with `marketplace.json`, matching how ChuggiesMart and impeccable register. Previous approaches (writing `installed_plugins.json`, `pluginPaths`, symlinks) all failed.
+- fix(uninstall): clean up `extraKnownMarketplaces`, `known_marketplaces.json`, and `installed_plugins.json` — was still referencing old `stacks@local` / `pluginPaths` keys
+- fix(update): remove broken `claude plugin update stacks` call. Directory-source plugins update via `git pull`, no cache refresh needed.
+- feat(init): create private GitHub repo and push initial commit via `gh`. `--public` flag available. Uses `git init -b main` to avoid branch name warnings.
 
 ## 0.1.0 — 2026-04-12
 

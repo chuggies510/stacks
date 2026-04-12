@@ -7,7 +7,8 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 usage() {
   echo "Usage: bash update.sh"
   echo ""
-  echo "Pulls latest stacks code and refreshes the plugin cache."
+  echo "Pulls latest stacks code. Since stacks uses a directory-source"
+  echo "marketplace, git pull IS the update — no cache refresh needed."
 }
 
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { usage; exit 0; }
@@ -15,14 +16,14 @@ usage() {
 echo "=== Stacks Plugin Updater ==="
 
 cd "$REPO_DIR"
+
+OLD_VERSION=$(jq -r .version .claude-plugin/plugin.json)
 git pull
-echo "Pulled latest."
+NEW_VERSION=$(jq -r .version .claude-plugin/plugin.json)
 
-if command -v claude &> /dev/null; then
-  claude plugin update stacks 2>/dev/null || echo "Plugin cache refresh skipped (run manually if needed)."
+if [[ "$OLD_VERSION" == "$NEW_VERSION" ]]; then
+  echo "Already up to date. Stacks version: $NEW_VERSION"
 else
-  echo "Claude CLI not found. Restart Claude Code to pick up changes."
+  echo "Updated: $OLD_VERSION → $NEW_VERSION"
+  echo "Restart Claude Code to pick up changes."
 fi
-
-VERSION=$(jq -r .version .claude-plugin/plugin.json)
-echo "Done. Stacks version: $VERSION"
