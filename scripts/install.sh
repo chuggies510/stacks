@@ -8,6 +8,9 @@ INSTALLED_PLUGINS="$HOME/.claude/plugins/installed_plugins.json"
 CONFIG_DIR="$HOME/.config/stacks"
 VERSION=$(jq -r '.version' "$REPO_DIR/.claude-plugin/plugin.json" 2>/dev/null || echo "0.1.0")
 PLUGIN_KEY="stacks@local"
+# Claude Code resolves plugins from ~/.claude/plugins/cache/{marketplace}/{plugin}/{version}/
+# Symlink the repo there so updates are reflected immediately without re-running install.
+CACHE_PATH="$HOME/.claude/plugins/cache/local/stacks/$VERSION"
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
 usage() {
@@ -27,19 +30,27 @@ if [[ ! -f "$SETTINGS" ]]; then
   exit 1
 fi
 
-# 1. Register in settings.json enabledPlugins (idempotent)
+# 1. Symlink repo into Claude Code's plugin cache
+mkdir -p "$(dirname "$CACHE_PATH")"
+if [[ -L "$CACHE_PATH" ]]; then
+  rm "$CACHE_PATH"
+fi
+ln -s "$REPO_DIR" "$CACHE_PATH"
+echo "Symlinked into cache: $CACHE_PATH -> $REPO_DIR"
+
+# 2. Register in settings.json enabledPlugins (idempotent)
 jq --arg k "$PLUGIN_KEY" \
   '.enabledPlugins //= {} | .enabledPlugins[$k] = true' \
   "$SETTINGS" > "$SETTINGS.tmp"
 mv "$SETTINGS.tmp" "$SETTINGS"
 echo "Registered in enabledPlugins as $PLUGIN_KEY"
 
-# 2. Register in installed_plugins.json (the file Claude Code actually reads for paths)
+# 3. Register in installed_plugins.json with the cache path as installPath
 if [[ ! -f "$INSTALLED_PLUGINS" ]]; then
   echo '{"version": 2, "plugins": {}}' > "$INSTALLED_PLUGINS"
 fi
 
-jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" --arg v "$VERSION" --arg now "$NOW" \
+jq --arg k "$PLUGIN_KEY" --arg p "$CACHE_PATH" --arg v "$VERSION" --arg now "$NOW" \
   '.plugins[$k] = [{
     "scope": "user",
     "installPath": $p,
@@ -50,9 +61,9 @@ jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" --arg v "$VERSION" --arg now "$NOW"
   }]' \
   "$INSTALLED_PLUGINS" > "$INSTALLED_PLUGINS.tmp"
 mv "$INSTALLED_PLUGINS.tmp" "$INSTALLED_PLUGINS"
-echo "Registered installPath in installed_plugins.json: $REPO_DIR"
+echo "Registered installPath in installed_plugins.json: $CACHE_PATH"
 
-# 3. Create stacks config directory
+# 4. Create stacks config directory
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/config.json" ]]; then
   echo '{}' > "$CONFIG_DIR/config.json"
