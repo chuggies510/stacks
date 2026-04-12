@@ -23,15 +23,13 @@ if [[ ! -f "$SETTINGS" ]]; then
   exit 1
 fi
 
-# enabledPlugins is a JSON object with "name@source": true entries
+# Register plugin (idempotent — safe to re-run)
 PLUGIN_KEY="stacks@local"
-if jq -e --arg k "$PLUGIN_KEY" '.enabledPlugins[$k] // false' "$SETTINGS" 2>/dev/null | grep -q true; then
-  echo "Already registered in enabledPlugins."
-else
-  jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" '.enabledPlugins[$k] = true | .pluginPaths[$k] = $p' "$SETTINGS" > "$SETTINGS.tmp"
-  mv "$SETTINGS.tmp" "$SETTINGS"
-  echo "Registered in enabledPlugins as $PLUGIN_KEY"
-fi
+jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" \
+  '.enabledPlugins //= {} | .pluginPaths //= {} | .enabledPlugins[$k] = true | .pluginPaths[$k] = $p' \
+  "$SETTINGS" > "$SETTINGS.tmp"
+mv "$SETTINGS.tmp" "$SETTINGS"
+echo "Registered in enabledPlugins as $PLUGIN_KEY"
 
 # Create config directory
 mkdir -p "$CONFIG_DIR"

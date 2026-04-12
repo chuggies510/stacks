@@ -26,6 +26,8 @@ if [[ -d "$TARGET" ]]; then
   exit 1
 fi
 
+trap 'rm -rf "$TARGET"' ERR
+
 echo "=== Creating Knowledge Library ==="
 echo "Location: $TARGET"
 

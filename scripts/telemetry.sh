@@ -17,7 +17,7 @@ LOG="$HOME/.chuggiesmart/telemetry.jsonl"
 mkdir -p "$(dirname "$LOG")"
 printf '%s\n' "$(jq -cn \
   --arg ts "$TS" \
-  --argjson session "$SESSION" \
+  --arg session "$SESSION" \
   --arg skill "$SKILL_NAME" \
   --arg project "$PROJECT" \
   '{ts: $ts, session: $session, tool: "Skill", skill: $skill, project: $project}')" >> "$LOG"

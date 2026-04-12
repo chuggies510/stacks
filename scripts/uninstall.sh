@@ -19,7 +19,7 @@ echo "=== Stacks Plugin Uninstaller ==="
 # Remove from enabledPlugins (object format)
 PLUGIN_KEY="stacks@local"
 if [[ -f "$SETTINGS" ]]; then
-  jq --arg k "$PLUGIN_KEY" 'del(.enabledPlugins[$k]) | del(.pluginPaths[$k])' "$SETTINGS" > "$SETTINGS.tmp"
+  jq --arg k "$PLUGIN_KEY" '.enabledPlugins //= {} | .pluginPaths //= {} | del(.enabledPlugins[$k]) | del(.pluginPaths[$k])' "$SETTINGS" > "$SETTINGS.tmp"
   mv "$SETTINGS.tmp" "$SETTINGS"
   echo "Removed from enabledPlugins."
 fi
