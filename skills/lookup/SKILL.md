@@ -45,16 +45,26 @@ echo "Library: $LIBRARY"
 
 Read `$LIBRARY/catalog.md`. This lists all available stacks with names, descriptions, and counts.
 
-If the catalog has no stacks (only the placeholder text), tell the user: "No stacks in your library yet. Run /stacks:new from your library repo to create one."
+If catalog.md contains no stack entries (no lines starting with `- [`), tell the user: "No stacks in your library yet. Run /stacks:new from your library repo to create one."
 
 ## Step 3: Parse the query
 
-`$ARGUMENTS` contains the full query text. Two formats:
+`$ARGUMENTS` contains the full query text.
 
-- `{stack-name} {query}` — if the first word matches a directory in `$LIBRARY`, use that stack and the rest as the query
-- `{query}` — treat the entire argument as a query; match against catalog descriptions to select the best stack
+Check if the first word of `$ARGUMENTS` matches an existing stack directory:
 
-If no stack can be matched, list available stacks and ask the user which to search.
+```bash
+FIRST_WORD=$(echo "$ARGUMENTS" | awk '{print $1}')
+if [[ -d "$LIBRARY/$FIRST_WORD" ]]; then
+  STACK="$FIRST_WORD"
+  QUERY=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
+else
+  STACK=""
+  QUERY="$ARGUMENTS"
+fi
+```
+
+If `STACK` is empty, read the catalog descriptions and use semantic reasoning to pick the best matching stack for the query. If no good match, list stacks and ask the user which to use.
 
 ## Step 4: Read the stack index
 
@@ -62,7 +72,9 @@ Read `$LIBRARY/{stack}/index.md`. It has two sections:
 - **Topics**: list of topic guides with descriptions
 - **Sources**: list of ingested sources
 
-Match the query against topic names and descriptions to identify the 1-3 most relevant topics.
+If `$LIBRARY/{stack}/index.md` does not exist, tell the user: "Stack `{stack}` has no index yet — it may be newly created. Run /stacks:ingest {stack} from your library repo to populate it." Then stop.
+
+Match the query against topic names and descriptions to identify the 1-3 most relevant topics. Use this preference order: (1) exact keyword match against topic names first, (2) keyword match against topic descriptions, (3) semantic reasoning when no exact matches exist. When multiple topics score similarly, prefer narrower topics over broad overview topics.
 
 If the index is empty (no topics yet), tell the user: "Stack '{stack}' has no topics yet. Run /stacks:ingest {stack} from your library repo first."
 
