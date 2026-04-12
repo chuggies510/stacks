@@ -4,7 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
+INSTALLED_PLUGINS="$HOME/.claude/plugins/installed_plugins.json"
 CONFIG_DIR="$HOME/.config/stacks"
+VERSION=$(jq -r '.version' "$REPO_DIR/.claude-plugin/plugin.json" 2>/dev/null || echo "0.1.0")
+PLUGIN_KEY="stacks@local"
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
 usage() {
   echo "Usage: bash install.sh"
@@ -23,15 +27,32 @@ if [[ ! -f "$SETTINGS" ]]; then
   exit 1
 fi
 
-# Register plugin (idempotent — safe to re-run)
-PLUGIN_KEY="stacks@local"
-jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" \
-  '.enabledPlugins //= {} | .pluginPaths //= {} | .enabledPlugins[$k] = true | .pluginPaths[$k] = $p' \
+# 1. Register in settings.json enabledPlugins (idempotent)
+jq --arg k "$PLUGIN_KEY" \
+  '.enabledPlugins //= {} | .enabledPlugins[$k] = true' \
   "$SETTINGS" > "$SETTINGS.tmp"
 mv "$SETTINGS.tmp" "$SETTINGS"
 echo "Registered in enabledPlugins as $PLUGIN_KEY"
 
-# Create config directory
+# 2. Register in installed_plugins.json (the file Claude Code actually reads for paths)
+if [[ ! -f "$INSTALLED_PLUGINS" ]]; then
+  echo '{"version": 2, "plugins": {}}' > "$INSTALLED_PLUGINS"
+fi
+
+jq --arg k "$PLUGIN_KEY" --arg p "$REPO_DIR" --arg v "$VERSION" --arg now "$NOW" \
+  '.plugins[$k] = [{
+    "scope": "user",
+    "installPath": $p,
+    "version": $v,
+    "installedAt": $now,
+    "lastUpdated": $now,
+    "gitCommitSha": ""
+  }]' \
+  "$INSTALLED_PLUGINS" > "$INSTALLED_PLUGINS.tmp"
+mv "$INSTALLED_PLUGINS.tmp" "$INSTALLED_PLUGINS"
+echo "Registered installPath in installed_plugins.json: $REPO_DIR"
+
+# 3. Create stacks config directory
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/config.json" ]]; then
   echo '{}' > "$CONFIG_DIR/config.json"
