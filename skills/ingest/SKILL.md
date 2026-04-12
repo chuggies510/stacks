@@ -1,0 +1,199 @@
+---
+name: ingest
+description: |
+  Use when the user wants to process new sources into topic guides for a
+  knowledge stack. Detects new sources, classifies them into topic groups,
+  extracts claims per group, and synthesizes topic guides. Must be run from
+  within a library repo (one with catalog.md at root).
+---
+
+# Ingest
+
+Process new sources into topic guides for a knowledge stack.
+
+## Step 0: Telemetry
+
+```bash
+TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
+if [[ -z "$TELEMETRY_SH" ]]; then
+  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
+fi
+SKILL_NAME="stacks:ingest" bash "$TELEMETRY_SH" 2>/dev/null || true
+```
+
+## Step 1: Gate check
+
+```bash
+if [[ ! -f "catalog.md" ]]; then
+  echo "ERROR: Not in a library repo (no catalog.md)."
+  exit 1
+fi
+STACK="$ARGUMENTS"
+if [[ -z "$STACK" ]]; then
+  echo "ERROR: Specify a stack name. Usage: /stacks:ingest {stack-name}"
+  exit 1
+fi
+if [[ ! -f "$STACK/STACK.md" ]]; then
+  echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new $STACK first."
+  exit 1
+fi
+```
+
+## Step 2: Read schema
+
+Read `$STACK/STACK.md` and extract:
+- Source hierarchy (tier rankings for conflict resolution)
+- Topic template (section structure for guides)
+- Filing rules (how to organize sources by publisher/origin)
+- Frontmatter convention (YAML fields expected in topic guides)
+
+## Step 3: Detect new sources
+
+List all files in `$STACK/sources/` (recursively, excluding .gitkeep and incoming/). Read `$STACK/index.md` Sources section. Sources listed in the index are already processed. New sources are files on disk not in the index.
+
+```bash
+# All source files currently on disk (excluding .gitkeep)
+find "$STACK/sources" -type f ! -name ".gitkeep" | sort > /tmp/stacks-disk-sources.txt
+
+# Extract source paths already in the index (lines with markdown links in Sources section)
+# Source entries look like: - [Title](sources/path/to/file) or similar
+grep -oP '\(sources/[^)]+\)' "$STACK/index.md" 2>/dev/null | tr -d '()' | \
+  sed "s|^|$STACK/|" | sort > /tmp/stacks-indexed-sources.txt
+
+# New = on disk but not in index
+NEW_SOURCES=$(comm -23 /tmp/stacks-disk-sources.txt /tmp/stacks-indexed-sources.txt)
+echo "New sources found: $(echo "$NEW_SOURCES" | grep -c . || echo 0)"
+```
+
+If no new sources, tell the user: "All sources already indexed. Nothing to ingest." and stop.
+
+Also check for sources in `$STACK/sources/incoming/` specifically — these are explicitly queued for processing. If any exist, they are always new.
+
+## Step 4: Classify sources (Wave 0b)
+
+Find the agents directory:
+```bash
+AGENTS_DIR=$(find ~/.claude/plugins/cache -type d -name "agents" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
+if [[ -z "$AGENTS_DIR" ]]; then
+  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  AGENTS_DIR="$STACKS_ROOT/agents"
+fi
+```
+
+Read `references/wave-engine.md` for the topic-clusterer dispatch instructions.
+
+If `$STACK/dev/curate/plan.md` already exists, dispatch topic-clusterer in refresh mode to classify new sources into existing groups or propose new ones.
+
+If no plan exists (first ingest), dispatch topic-clusterer in full discovery mode to create the initial plan.
+
+The topic-clusterer reads:
+- The list of new sources (pass the file paths)
+- `$STACK/STACK.md` (filing rules, source hierarchy)
+- `$STACK/dev/curate/plan.md` (if exists, for refresh mode)
+
+It writes `$STACK/dev/curate/plan.md` with source-to-topic-group assignments.
+
+After the agent completes, read `$STACK/dev/curate/plan.md` and present the classification to the user. Ask for confirmation before proceeding:
+
+"Here is how I've classified the new sources into topic groups:
+{list groups with source counts}
+
+Proceed with extraction? (yes/no/edit)"
+
+If the user says edit, allow them to reassign sources to different groups or create new groups. Update the plan accordingly.
+
+## Step 5: Wave 1 — Extract (parallel)
+
+Read `references/wave-engine.md` for the topic-extractor dispatch instructions.
+
+Create the extractions directory:
+```bash
+mkdir -p "$STACK/dev/curate/extractions"
+```
+
+For each topic group in `$STACK/dev/curate/plan.md` that has new sources, dispatch one topic-extractor agent. Dispatch all groups in parallel.
+
+Each agent:
+- Reads source files assigned to its group
+- Reads `$STACK/STACK.md` for source hierarchy and topic template
+- Writes extractions to `$STACK/dev/curate/extractions/{topic-group}.md`
+
+Gate: wait for all extractions to exist before proceeding. Check:
+```bash
+# Verify all expected extraction files exist
+for group in {groups-from-plan}; do
+  [[ -f "$STACK/dev/curate/extractions/$group.md" ]] || { echo "Missing extraction: $group.md"; exit 1; }
+done
+```
+
+## Step 6: Wave 2 — Synthesize (parallel)
+
+Read `references/wave-engine.md` for the topic-synthesizer dispatch instructions.
+
+For each topic group with extractions, dispatch one topic-synthesizer agent. Dispatch all groups in parallel.
+
+Each agent:
+- Reads `$STACK/dev/curate/extractions/{topic-group}.md`
+- Reads `$STACK/STACK.md` for topic template and source hierarchy
+- Reads existing `$STACK/topics/{topic}/guide.md` if it exists (update mode)
+- Writes/updates `$STACK/topics/{topic}/guide.md`
+
+Gate: wait for all guide files to exist before proceeding.
+
+## Step 7: File sources
+
+Move processed files from `$STACK/sources/incoming/` to their proper publisher directory based on STACK.md filing rules:
+
+```bash
+# Only move files that were processed (from incoming/)
+INCOMING_FILES=$(find "$STACK/sources/incoming" -type f ! -name ".gitkeep" 2>/dev/null)
+if [[ -n "$INCOMING_FILES" ]]; then
+  echo "Filing sources from incoming/..."
+fi
+```
+
+For each file in incoming/, determine the publisher directory from the filing rules in STACK.md. If the origin is unclear, ask the user which publisher directory to file under. Create the publisher directory if it doesn't exist.
+
+## Step 8: Update index.md
+
+Regenerate `$STACK/index.md` completely:
+
+**Topics section**: scan `$STACK/topics/*/guide.md`, read frontmatter for title and source count:
+```bash
+find "$STACK/topics" -name "guide.md" | sort
+```
+For each guide, extract `title` and `sources` from YAML frontmatter.
+
+**Sources section**: scan all files in `$STACK/sources/` (all subdirs except incoming, excluding .gitkeep):
+```bash
+find "$STACK/sources" -type f ! -name ".gitkeep" | sort
+```
+List each with its relative path and parent directory (publisher).
+
+Write the complete new index.md.
+
+## Step 9: Update log.md
+
+Prepend an entry to `$STACK/log.md`. Count from this run:
+- N new sources processed (files that were in incoming/ or were new on disk)
+- New topics created (guides that didn't exist before this run)
+- Updated topics (guides that existed and were updated)
+- Extraction count (files written to dev/curate/extractions/)
+
+```markdown
+## [YYYY-MM-DD] ingest | {N} new sources processed
+Processed {N} files. {new-topic-count} new topics. {updated-topic-count} updated. {extraction-count} extractions written.
+```
+
+## Step 10: Commit
+
+```bash
+git add "$STACK/"
+git commit -m "feat($STACK): ingest {N} new sources, update topic guides"
+```
+
+Report summary to user:
+- What was ingested (N sources)
+- Which topics were created vs updated
+- Suggest running `/stacks:refine $STACK` next if 2+ guides exist
