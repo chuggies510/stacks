@@ -1,5 +1,5 @@
 ---
-name: ingest
+name: ingest-sources
 description: |
   Use when the user wants to process new sources into topic guides for a
   knowledge stack. Detects new sources, classifies them into topic groups,
@@ -19,7 +19,7 @@ if [[ -z "$TELEMETRY_SH" ]]; then
   STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
-SKILL_NAME="stacks:ingest" bash "$TELEMETRY_SH" 2>/dev/null || true
+SKILL_NAME="stacks:ingest-sources" bash "$TELEMETRY_SH" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -31,11 +31,11 @@ if [[ ! -f "catalog.md" ]]; then
 fi
 STACK="$ARGUMENTS"
 if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:ingest {stack-name}"
+  echo "ERROR: Specify a stack name. Usage: /stacks:ingest-sources {stack-name}"
   exit 1
 fi
 if [[ ! -f "$STACK/STACK.md" ]]; then
-  echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new $STACK first."
+  echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new-stack $STACK first."
   exit 1
 fi
 ```
@@ -193,7 +193,7 @@ If no guides exist yet, write the Topics section with a placeholder:
 ```markdown
 ## Topics
 
-*No topics yet. Run `/stacks:ingest {stack}` after adding sources.*
+*No topics yet. Run `/stacks:ingest-sources {stack}` after adding sources.*
 ```
 
 **Sources section**: scan all files in `$STACK/sources/` (all subdirs except incoming, excluding .gitkeep):
@@ -232,4 +232,4 @@ git commit -m "feat($STACK): ingest {N} new sources, update topic guides"
 Report summary to user:
 - What was ingested (N sources)
 - Which topics were created vs updated
-- Suggest running `/stacks:refine $STACK` next if 2+ guides exist
+- Suggest running `/stacks:refine-stack $STACK` next if 2+ guides exist

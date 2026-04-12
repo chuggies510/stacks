@@ -9,7 +9,7 @@
 ║                                ▲                         ║
 ║                         STACK.md schema                  ║
 ║                                                          ║
-║   /stacks:lookup "how does X work"  ──►  actual answer   ║
+║   /stacks:ask "how does X work"  ──►  actual answer   ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 ```
@@ -28,7 +28,7 @@ This is [Andrej Karpathy's LLM Wiki idea](https://github.com/karpathy/llm-wiki),
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:init, :new, :ingest, :lookup, :refine
+  skills/        ← /stacks:init-library, :new-stack, :ingest-sources, :ask, :refine-stack
   agents/        ← 7 LLM workers (extractors, synthesizers, validators)
   scripts/       ← install.sh, init.sh, update.sh
 
@@ -57,22 +57,22 @@ bash ~/stacks/scripts/install.sh
 Then from any Claude Code session:
 
 ```
-/stacks:init ~/knowledge            # create library + private GitHub repo
+/stacks:init-library ~/knowledge            # create library + private GitHub repo
 ```
 
 Open a session in your new library:
 
 ```
-/stacks:new rust-async               # scaffold a stack
+/stacks:new-stack rust-async               # scaffold a stack
 # edit rust-async/STACK.md — define source hierarchy, topic template, filing rules
 # drop sources into rust-async/sources/incoming/
-/stacks:ingest rust-async            # process sources into topic guides
+/stacks:ingest-sources rust-async            # process sources into topic guides
 ```
 
 Query from anywhere:
 
 ```
-/stacks:lookup how does tokio schedule tasks across threads
+/stacks:ask how does tokio schedule tasks across threads
 ```
 
 ---
@@ -81,11 +81,11 @@ Query from anywhere:
 
 | skill | what it does |
 |-------|-------------|
-| `/stacks:init {path}` | create a knowledge library with private GitHub repo |
-| `/stacks:new {name}` | scaffold a new stack from templates |
-| `/stacks:ingest {stack}` | detect new sources, classify, extract, synthesize into topic guides |
-| `/stacks:lookup {query}` | answer a question from your curated guides (works from any repo) |
-| `/stacks:refine {stack}` | cross-reference, validate, synthesize glossary, find gaps |
+| `/stacks:init-library {path}` | create a knowledge library with private GitHub repo |
+| `/stacks:new-stack {name}` | scaffold a new stack from templates |
+| `/stacks:ingest-sources {stack}` | detect new sources, classify, extract, synthesize into topic guides |
+| `/stacks:ask {query}` | answer a question from your curated guides (works from any repo) |
+| `/stacks:refine-stack {stack}` | cross-reference, validate, synthesize glossary, find gaps |
 
 ---
 
@@ -169,4 +169,4 @@ bash scripts/update.sh     # git pull (directory-source plugins update in place)
 
 **Requirements**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), `gh` CLI (authenticated), `jq`.
 
-Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init` and read by `/stacks:lookup` at runtime so it works from any repo.
+Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init-library` and read by `/stacks:ask` at runtime so it works from any repo.

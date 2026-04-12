@@ -1,5 +1,5 @@
 ---
-name: refine
+name: refine-stack
 description: |
   Use when the user wants to refine a knowledge stack after ingesting sources.
   Cross-references topics, validates guides against sources, synthesizes
@@ -19,7 +19,7 @@ if [[ -z "$TELEMETRY_SH" ]]; then
   STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
-SKILL_NAME="stacks:refine" bash "$TELEMETRY_SH" 2>/dev/null || true
+SKILL_NAME="stacks:refine-stack" bash "$TELEMETRY_SH" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -31,7 +31,7 @@ if [[ ! -f "catalog.md" ]]; then
 fi
 STACK="$ARGUMENTS"
 if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:refine {stack-name}"
+  echo "ERROR: Specify a stack name. Usage: /stacks:refine-stack {stack-name}"
   exit 1
 fi
 if [[ ! -f "$STACK/STACK.md" ]]; then
@@ -48,7 +48,7 @@ Refine requires at least 2 topic guides to cross-reference.
 GUIDE_COUNT=$(find "$STACK/topics" -name "guide.md" 2>/dev/null | wc -l)
 if [[ "$GUIDE_COUNT" -lt 2 ]]; then
   echo "Only $GUIDE_COUNT topic guide(s) found. Refine needs 2+ to cross-reference."
-  echo "Run /stacks:ingest $STACK to build more topic guides first."
+  echo "Run /stacks:ingest-sources $STACK to build more topic guides first."
   exit 0
 fi
 echo "Found $GUIDE_COUNT topic guides. Running 4-wave refine."

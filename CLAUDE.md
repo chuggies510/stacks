@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This repo is the `stacks` tool: a Claude Code plugin. It is NOT a knowledge library. Do not store knowledge content here. Libraries are created with `/stacks:init`.
+This repo is the `stacks` tool: a Claude Code plugin. It is NOT a knowledge library. Do not store knowledge content here. Libraries are created with `/stacks:init-library`.
 
 ## Plugin structure
 
@@ -13,8 +13,8 @@ stacks/
 ├── agents/                    # 7 subagent definitions (YAML frontmatter + prompt)
 ├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
 ├── templates/
-│   ├── library/               # Files copied when /stacks:init creates a library
-│   └── stack/                 # Files copied when /stacks:new scaffolds a stack
+│   ├── library/               # Files copied when /stacks:init-library creates a library
+│   └── stack/                 # Files copied when /stacks:new-stack scaffolds a stack
 └── references/                # Reference docs: wave engine, refresh procedure, topic template
 ```
 
@@ -49,11 +49,11 @@ Directory-source plugins load directly from the repo. No cache refresh or `claud
 ```bash
 bash scripts/install.sh
 # restart claude code, then:
-/stacks:init ~/tmp/test-library
+/stacks:init-library ~/tmp/test-library
 # open session in ~/tmp/test-library
-/stacks:new test-stack
-/stacks:ingest test-stack
-/stacks:lookup some question
+/stacks:new-stack test-stack
+/stacks:ingest-sources test-stack
+/stacks:ask some question
 # clean up
 rm -rf ~/tmp/test-library
 ```

@@ -1,5 +1,5 @@
 ---
-name: new
+name: new-stack
 description: |
   Use when the user wants to create a new knowledge stack in their library.
   Scaffolds the directory structure, STACK.md schema, index, and log from
@@ -18,7 +18,7 @@ if [[ -z "$TELEMETRY_SH" ]]; then
   STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
-SKILL_NAME="stacks:new" bash "$TELEMETRY_SH" 2>/dev/null || true
+SKILL_NAME="stacks:new-stack" bash "$TELEMETRY_SH" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -28,7 +28,7 @@ Verify this is a library repo:
 ```bash
 if [[ ! -f "catalog.md" ]]; then
   echo "ERROR: catalog.md not found. This doesn't appear to be a library repo."
-  echo "Run /stacks:init to create a library first."
+  echo "Run /stacks:init-library to create a library first."
   exit 1
 fi
 ```
@@ -80,7 +80,7 @@ perl -pi -e "s/\\{Stack Name\\}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_
 
 ## Step 5: Guide STACK.md setup
 
-Tell the user: "Stack '$STACK_NAME' scaffolded at $STACK_NAME/. Edit $STACK_NAME/STACK.md to define your scope, source hierarchy, topic template, and filing rules before running /stacks:ingest."
+Tell the user: "Stack '$STACK_NAME' scaffolded at $STACK_NAME/. Edit $STACK_NAME/STACK.md to define your scope, source hierarchy, topic template, and filing rules before running /stacks:ingest-sources."
 
 Read `$STACK_NAME/STACK.md` and show the user the placeholder sections.
 
@@ -109,4 +109,4 @@ git add "$STACK_NAME/" catalog.md
 git commit -m "feat: create $STACK_NAME stack"
 ```
 
-Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:ingest $STACK_NAME to build topic guides."
+Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:ingest-sources $STACK_NAME to build topic guides."

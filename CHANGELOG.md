@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 — 2026-04-12
+
+- feat: rename all skills to descriptive names — `init-library`, `new-stack`, `ingest-sources`, `ask`, `refine-stack`
+- All cross-references in skills, README, CLAUDE.md updated
+
 ## 0.4.1 — 2026-04-12
 
 - fix(init): split `gh repo create --source --push` into separate create + remote add + push steps — combined flag is unreliable
@@ -14,9 +19,9 @@
 
 ## 0.3.0 — 2026-04-12
 
-- feat: `/stacks:init` skill, library creation is now self-service from within Claude Code
+- feat: `/stacks:init-library` skill, library creation is now self-service from within Claude Code
 - fix: all skills used stale `pluginPaths["stacks@local"]` fallback, replaced with `known_marketplaces.json` lookup
-- fix: gate check error messages now say "Run /stacks:init" instead of "Run bash path/to/..."
+- fix: gate check error messages now say "Run /stacks:init-library" instead of "Run bash path/to/..."
 
 ## 0.2.0 — 2026-04-12
 
@@ -29,7 +34,7 @@
 
 Initial release.
 
-- Five skills: `/stacks:init`, `/stacks:new`, `/stacks:ingest`, `/stacks:lookup`, `/stacks:refine`
+- Five skills: `/stacks:init-library`, `/stacks:new-stack`, `/stacks:ingest-sources`, `/stacks:ask`, `/stacks:refine-stack`
 - Seven agents: topic-clusterer, topic-extractor, topic-synthesizer, cross-referencer, validator, synthesizer, findings-analyst
 - Templates for library and stack bootstrapping
 - Lifecycle scripts: install, uninstall, update, init

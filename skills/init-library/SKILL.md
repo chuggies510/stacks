@@ -1,9 +1,9 @@
 ---
-name: init
+name: init-library
 description: |
   Use when the user wants to create a new knowledge library. Scaffolds the
   directory from templates, creates a private GitHub repo, and updates stacks
-  config. Run this before /stacks:new.
+  config. Run this before /stacks:new-stack.
 ---
 
 # Init Library
@@ -18,7 +18,7 @@ if [[ -z "$TELEMETRY_SH" ]]; then
   STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
-SKILL_NAME="stacks:init" bash "$TELEMETRY_SH" 2>/dev/null || true
+SKILL_NAME="stacks:init-library" bash "$TELEMETRY_SH" 2>/dev/null || true
 ```
 
 ## Step 1: Parse arguments
@@ -87,4 +87,4 @@ If this fails, report the error and stop.
 Tell the user:
 - Library created at the target path
 - GitHub repo URL (from the init.sh output)
-- Next step: `cd $TARGET` and open a Claude Code session there, then run `/stacks:new {name}` to create their first stack
+- Next step: `cd $TARGET` and open a Claude Code session there, then run `/stacks:new-stack {name}` to create their first stack
