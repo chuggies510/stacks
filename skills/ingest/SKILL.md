@@ -56,9 +56,9 @@ List all files in `$STACK/sources/` (recursively, excluding .gitkeep and incomin
 # All source files currently on disk (excluding .gitkeep)
 find "$STACK/sources" -type f ! -name ".gitkeep" | sort > /tmp/stacks-disk-sources.txt
 
-# Extract source paths already in the index (lines with markdown links in Sources section)
-# Source entries look like: - [Title](sources/path/to/file) or similar
-grep -oP '\(sources/[^)]+\)' "$STACK/index.md" 2>/dev/null | tr -d '()' | \
+# Extract source paths from index.md using a broader pattern
+# Source entries look like: - [title](sources/path) — fall back to any sources/ reference
+grep -o 'sources/[^)"]*' "$STACK/index.md" 2>/dev/null | \
   sed "s|^|$STACK/|" | sort > /tmp/stacks-indexed-sources.txt
 
 # New = on disk but not in index
@@ -67,6 +67,8 @@ echo "New sources found: $(echo "$NEW_SOURCES" | grep -c . || echo 0)"
 ```
 
 If no new sources, tell the user: "All sources already indexed. Nothing to ingest." and stop.
+
+Note: source filenames with `(` or `)` characters are not supported by the index parser. Rename such files before ingesting.
 
 Also check for sources in `$STACK/sources/incoming/` specifically — these are explicitly queued for processing. If any exist, they are always new.
 
@@ -119,13 +121,23 @@ Each agent:
 - Reads `$STACK/STACK.md` for source hierarchy and topic template
 - Writes extractions to `$STACK/dev/curate/extractions/{topic-group}.md`
 
-Gate: wait for all extractions to exist before proceeding. Check:
+After all topic-extractor agents complete, verify the gate:
+
 ```bash
-# Verify all expected extraction files exist
-for group in {groups-from-plan}; do
-  [[ -f "$STACK/dev/curate/extractions/$group.md" ]] || { echo "Missing extraction: $group.md"; exit 1; }
+# Parse topic group names from plan.md
+# Groups are section headings (## lines) in plan.md
+GROUPS=$(grep '^## ' "$STACK/dev/curate/plan.md" | sed 's/^## //' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+ALL_FOUND=true
+for group in $GROUPS; do
+  if [[ ! -f "$STACK/dev/curate/extractions/$group.md" ]]; then
+    echo "Missing extraction: $group.md"
+    ALL_FOUND=false
+  fi
 done
+[[ "$ALL_FOUND" == true ]] || { echo "ERROR: Not all extractions completed. Check agent output."; exit 1; }
 ```
+
+Note: topic-clusterer writes group names as `## Group Name` section headings in plan.md. The gate converts these to lowercase-hyphenated filenames matching the extractor output convention.
 
 ## Step 6: Wave 2 — Synthesize (parallel)
 
@@ -165,6 +177,13 @@ find "$STACK/topics" -name "guide.md" | sort
 ```
 For each guide, extract `title` and `sources` from YAML frontmatter.
 
+If no guides exist yet, write the Topics section with a placeholder:
+```markdown
+## Topics
+
+*No topics yet. Run `/stacks:ingest {stack}` after adding sources.*
+```
+
 **Sources section**: scan all files in `$STACK/sources/` (all subdirs except incoming, excluding .gitkeep):
 ```bash
 find "$STACK/sources" -type f ! -name ".gitkeep" | sort
@@ -181,9 +200,14 @@ Prepend an entry to `$STACK/log.md`. Count from this run:
 - Updated topics (guides that existed and were updated)
 - Extraction count (files written to dev/curate/extractions/)
 
-```markdown
-## [YYYY-MM-DD] ingest | {N} new sources processed
-Processed {N} files. {new-topic-count} new topics. {updated-topic-count} updated. {extraction-count} extractions written.
+Set variables from counts gathered during the run, then write the entry:
+
+```bash
+NEW_ENTRY="## [$(date +%Y-%m-%d)] ingest | $N_SOURCES new sources processed
+Processed $N_SOURCES files. $NEW_TOPICS new topics. $UPDATED_TOPICS updated. $EXTRACTION_COUNT extractions written."
+
+{ printf '%s\n\n' "$NEW_ENTRY"; cat "$STACK/log.md"; } > /tmp/stacks-log.tmp
+mv /tmp/stacks-log.tmp "$STACK/log.md"
 ```
 
 ## Step 10: Commit
