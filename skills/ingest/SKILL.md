@@ -16,7 +16,7 @@ Process new sources into topic guides for a knowledge stack.
 ```bash
 TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
 if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
 SKILL_NAME="stacks:ingest" bash "$TELEMETRY_SH" 2>/dev/null || true
@@ -78,7 +78,7 @@ Find the agents directory:
 ```bash
 AGENTS_DIR=$(find ~/.claude/plugins/cache -type d -name "agents" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
 if [[ -z "$AGENTS_DIR" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   AGENTS_DIR="$STACKS_ROOT/agents"
 fi
 ```
@@ -87,7 +87,7 @@ fi
 # Locate wave-engine.md in the stacks plugin
 WAVE_ENGINE=$(find ~/.claude/plugins/cache -name "wave-engine.md" -path "*/stacks/*/references/*" 2>/dev/null | sort -V | tail -1)
 if [[ -z "$WAVE_ENGINE" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
 fi
 ```

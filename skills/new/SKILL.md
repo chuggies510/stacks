@@ -15,7 +15,7 @@ Create a new empty knowledge stack in this library.
 ```bash
 TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
 if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
 SKILL_NAME="stacks:new" bash "$TELEMETRY_SH" 2>/dev/null || true
@@ -28,7 +28,7 @@ Verify this is a library repo:
 ```bash
 if [[ ! -f "catalog.md" ]]; then
   echo "ERROR: catalog.md not found. This doesn't appear to be a library repo."
-  echo "Run 'bash path/to/stacks/scripts/init.sh' to create a library first."
+  echo "Run /stacks:init to create a library first."
   exit 1
 fi
 ```
@@ -58,7 +58,7 @@ Find the stack template in the stacks plugin directory:
 TEMPLATE_DIR=$(find ~/.claude/plugins/cache -type d -name "stack" -path "*/stacks/*/templates/stack" 2>/dev/null | sort -V | tail -1)
 # Fallback: local install path from settings
 if [[ -z "$TEMPLATE_DIR" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   [[ -n "$STACKS_ROOT" && -d "$STACKS_ROOT/templates/stack" ]] && TEMPLATE_DIR="$STACKS_ROOT/templates/stack"
 fi
 if [[ -z "$TEMPLATE_DIR" ]]; then

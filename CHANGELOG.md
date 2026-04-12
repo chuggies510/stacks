@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-04-12
+
+- feat: `/stacks:init` skill, library creation is now self-service from within Claude Code
+- fix: all skills used stale `pluginPaths["stacks@local"]` fallback, replaced with `known_marketplaces.json` lookup
+- fix: gate check error messages now say "Run /stacks:init" instead of "Run bash path/to/..."
+
 ## 0.2.0 — 2026-04-12
 
 - fix(install): register as directory-source marketplace with `marketplace.json`, matching how ChuggiesMart and impeccable register. Previous approaches (writing `installed_plugins.json`, `pluginPaths`, symlinks) all failed.

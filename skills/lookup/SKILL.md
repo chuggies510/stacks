@@ -16,7 +16,7 @@ Query knowledge stacks from any repo.
 ```bash
 TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
 if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.pluginPaths["stacks@local"] // empty' ~/.claude/settings.json 2>/dev/null)
+  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
   TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
 fi
 SKILL_NAME="stacks:lookup" bash "$TELEMETRY_SH" 2>/dev/null || true
@@ -28,14 +28,14 @@ SKILL_NAME="stacks:lookup" bash "$TELEMETRY_SH" 2>/dev/null || true
 CONFIG="$HOME/.config/stacks/config.json"
 if [[ ! -f "$CONFIG" ]]; then
   echo "ERROR: No stacks config found at $CONFIG"
-  echo "Run 'bash path/to/stacks/scripts/install.sh' first."
+  echo "Run /stacks:init to create a library first."
   exit 1
 fi
 LIBRARY=$(jq -r '.library // empty' "$CONFIG")
 LIBRARY="${LIBRARY/#\~/$HOME}"
 if [[ -z "$LIBRARY" || ! -d "$LIBRARY" ]]; then
   echo "ERROR: Library not found at '$LIBRARY'"
-  echo "Update $CONFIG or run init.sh to create a library."
+  echo "Update $CONFIG or run /stacks:init to create a library."
   exit 1
 fi
 echo "Library: $LIBRARY"
