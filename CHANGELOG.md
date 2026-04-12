@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 — 2026-04-12
+
+- fix(init): split `gh repo create --source --push` into separate create + remote add + push steps — combined flag is unreliable
+- fix(init): error trap no longer deletes local directory after GitHub repo is created; reports recovery instructions instead
+
 ## 0.4.0 — 2026-04-12
 
 - docs: README rewrite with accurate skill list, agent table, pipeline descriptions, requirements

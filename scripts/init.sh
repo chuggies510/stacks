@@ -51,24 +51,42 @@ if ! gh auth status &>/dev/null; then
   exit 1
 fi
 
-trap 'rm -rf "$TARGET"' ERR
+GH_USER=$(gh api user -q .login)
 
 echo "=== Creating Knowledge Library ==="
 echo "Location: $TARGET"
-echo "GitHub repo: $REPO_NAME ($VISIBILITY)"
+echo "GitHub repo: $GH_USER/$REPO_NAME ($VISIBILITY)"
 
-# Create and populate from template
+# Phase 1: local setup — trap cleans up on failure
+trap 'echo "ERROR: Setup failed, cleaning up local directory."; rm -rf "$TARGET"' ERR
+
 mkdir -p "$TARGET"
 cp -r "$REPO_DIR/templates/library/." "$TARGET/"
-
-# Git init + initial commit
 cd "$TARGET"
 git init -b main
 git add -A
 git commit -m "feat: initialize knowledge library"
 
-# Create GitHub repo and push
-gh repo create "$REPO_NAME" "$VISIBILITY" --source . --push
+# Phase 2: GitHub — after this point, don't delete local dir on failure
+trap - ERR
+
+# Create repo on GitHub (no --source, no --push — those are unreliable)
+if ! gh repo create "$REPO_NAME" "$VISIBILITY" 2>&1; then
+  echo ""
+  echo "WARNING: GitHub repo creation failed. Local library is intact at: $TARGET"
+  echo "Create the repo manually and run: git -C \"$TARGET\" remote add origin git@github.com:$GH_USER/$REPO_NAME.git && git -C \"$TARGET\" push -u origin main"
+  exit 1
+fi
+
+# Set remote and push
+git remote add origin "git@github.com:$GH_USER/$REPO_NAME.git"
+if ! git push -u origin main; then
+  echo ""
+  echo "WARNING: Push failed. Local library and GitHub repo both exist."
+  echo "Push manually: git -C \"$TARGET\" push -u origin main"
+  exit 1
+fi
+
 echo "GitHub repo created and pushed."
 
 # Update stacks config with absolute path
@@ -82,7 +100,7 @@ fi
 
 echo ""
 echo "Done. Library created at: $TARGET"
-echo "GitHub: https://github.com/$(gh api user -q .login)/$REPO_NAME"
+echo "GitHub: https://github.com/$GH_USER/$REPO_NAME"
 echo "Config updated: $CONFIG_FILE"
 echo ""
-echo "Next: cd $TARGET && run /stacks:new {name} to create your first stack"
+echo "Next: open a Claude Code session in $TARGET, then run /stacks:new {name}"
