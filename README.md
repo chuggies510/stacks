@@ -18,7 +18,7 @@ Your LLM has read everything. It remembers nothing.
 
 Stacks fixes that. Drop source material into a folder. Run a skill. Claude reads it, extracts what matters, and writes structured topic guides. Next time you ask "how does X work," it reads from those guides instead of confidently hallucinating a blog post from 2019.
 
-This is Andrej Karpathy's LLM Wiki idea: curated synthesis beats bulk context every time. Stacks is the Claude Code implementation.
+This is [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): curated synthesis beats bulk context every time. Stacks is the Claude Code implementation.
 
 ---
 
