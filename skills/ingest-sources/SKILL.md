@@ -4,7 +4,9 @@ description: |
   Use when the user wants to process new sources into topic guides for a
   knowledge stack. Detects new sources, classifies them into topic groups,
   extracts claims per group, and synthesizes topic guides. Must be run from
-  within a library repo (one with catalog.md at root).
+  within a library repo (one with catalog.md at root). Accepts an optional
+  --from {path} argument to stage source files from an existing directory
+  (e.g. migrating from another repo) before ingesting.
 ---
 
 # Ingest
@@ -24,21 +26,82 @@ SKILL_NAME="stacks:ingest-sources" bash "$TELEMETRY_SH" 2>/dev/null || true
 
 ## Step 1: Gate check
 
+Parse arguments. The full argument string is `$ARGUMENTS`. Extract stack name and optional `--from` path:
+
 ```bash
 if [[ ! -f "catalog.md" ]]; then
   echo "ERROR: Not in a library repo (no catalog.md)."
   exit 1
 fi
-STACK="$ARGUMENTS"
+
+# Parse: /stacks:ingest-sources {stack} [--from {path}]
+ARGS="$ARGUMENTS"
+FROM_PATH=""
+if [[ "$ARGS" == *"--from"* ]]; then
+  STACK=$(echo "$ARGS" | sed 's/--from.*//' | tr -d '[:space:]')
+  FROM_PATH=$(echo "$ARGS" | sed 's/.*--from[[:space:]]*//' | sed 's/[[:space:]]*$//')
+  # Expand ~ if present
+  FROM_PATH="${FROM_PATH/#\~/$HOME}"
+else
+  STACK="$ARGS"
+fi
+
 if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:ingest-sources {stack-name}"
+  echo "ERROR: Specify a stack name. Usage: /stacks:ingest-sources {stack-name} [--from {path}]"
   exit 1
 fi
 if [[ ! -f "$STACK/STACK.md" ]]; then
   echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new-stack $STACK first."
   exit 1
 fi
+if [[ -n "$FROM_PATH" ]] && [[ ! -d "$FROM_PATH" ]]; then
+  echo "ERROR: --from path does not exist: $FROM_PATH"
+  exit 1
+fi
 ```
+
+## Step 1.5: Stage sources from --from path (if provided)
+
+If `$FROM_PATH` is set, copy readable source files into `$STACK/sources/incoming/` before detection runs. Only copy files Claude can read and extract knowledge from: markdown (`.md`, `.txt`) and text files. Skip binaries, PDFs, images, and other non-text formats — those require separate extraction tooling.
+
+```bash
+if [[ -n "$FROM_PATH" ]]; then
+  echo "Staging sources from: $FROM_PATH"
+  STAGED=0
+  SKIPPED=0
+  while IFS= read -r -d '' src_file; do
+    filename=$(basename "$src_file")
+    dest="$STACK/sources/incoming/$filename"
+    # Handle filename collisions by appending a counter
+    if [[ -f "$dest" ]]; then
+      base="${filename%.*}"
+      ext="${filename##*.}"
+      counter=2
+      while [[ -f "$STACK/sources/incoming/${base}-${counter}.${ext}" ]]; do
+        ((counter++))
+      done
+      dest="$STACK/sources/incoming/${base}-${counter}.${ext}"
+    fi
+    cp "$src_file" "$dest"
+    ((STAGED++))
+  done < <(find "$FROM_PATH" -type f \( -name "*.md" -o -name "*.txt" \) -print0 2>/dev/null)
+
+  # Count skipped (non-text files)
+  TOTAL=$(find "$FROM_PATH" -type f ! -name ".gitkeep" 2>/dev/null | wc -l | tr -d ' ')
+  SKIPPED=$((TOTAL - STAGED))
+
+  echo "Staged $STAGED file(s) to $STACK/sources/incoming/"
+  [[ $SKIPPED -gt 0 ]] && echo "Skipped $SKIPPED non-text file(s) (PDFs, images, binaries)"
+
+  if [[ $STAGED -eq 0 ]]; then
+    echo "ERROR: No readable source files found in $FROM_PATH"
+    echo "Supported formats: .md, .txt"
+    exit 1
+  fi
+fi
+```
+
+Report staging results to the user before proceeding. Tell them how many files were staged and which were skipped (and why).
 
 ## Step 2: Read schema
 

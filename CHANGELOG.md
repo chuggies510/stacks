@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 — 2026-04-12
+
+- feat(ingest-sources): `--from {path}` flag stages markdown/text files from an existing directory into `sources/incoming/` before ingest runs. Enables one-command migration from existing knowledge repos. Skips PDFs, images, and binaries with a count reported to the user.
+
 ## 0.5.2 — 2026-04-12
 
 - feat: library CLAUDE.md template now includes Session Start section — enumerates stacks, shows topic/source/incoming counts, available commands, and derives next-action suggestion after /workspace-toolkit:start runs
