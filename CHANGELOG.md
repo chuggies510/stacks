@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — 2026-04-12
+
+- feat: library CLAUDE.md template now includes Session Start section — enumerates stacks, shows topic/source/incoming counts, available commands, and derives next-action suggestion after /workspace-toolkit:start runs
+- fix: catalog.md template had stale skill name (`/stacks:new` → `/stacks:new-stack`)
+
 ## 0.5.1 — 2026-04-12
 
 - fix: library templates (CLAUDE.md, README.md) had stale skill names from pre-rename
