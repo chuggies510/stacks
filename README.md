@@ -3,13 +3,13 @@
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║    📚  your brain,  but  it  actually  works            ║
+║    📚  your brain,  but  it  actually  works             ║
 ║                                                          ║
 ║   sources/incoming/  ──►  agents  ──►  topic guides      ║
 ║                                ▲                         ║
 ║                         STACK.md schema                  ║
 ║                                                          ║
-║   /stacks:ask "how does X work"  ──►  actual answer   ║
+║   /stacks:ask "how does X work"  ──►  actual answer      ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 ```
