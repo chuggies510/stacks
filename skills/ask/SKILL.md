@@ -105,3 +105,39 @@ Format the response as:
 ```
 
 If no relevant topics are found: "No matching topics found in {stack}. The stack covers: {list topic names from index.md}. Consider adding sources and running /stacks:ingest-sources {stack}."
+
+## Step 7: File result back (Karpathy loop)
+
+Valuable answers compound into the library rather than disappearing into chat history. After delivering the answer, assess whether it should be filed:
+
+**File the result if the answer:**
+- Synthesized something non-obvious across multiple topics (the synthesis didn't exist as a single place before)
+- Resolved a contradiction or ambiguity between guides
+- Produced a comparison or decision table that would be useful again
+- Revealed a gap that is now partially answered by the synthesis itself
+
+**Do not file if the answer:**
+- Simply restated what one existing guide already says clearly
+- Was a lookup that required no synthesis
+- Is ephemeral context specific to the current task
+
+If the answer warrants filing, ask: "File this answer into the {stack} stack? (yes/no)"
+
+If yes:
+
+1. Determine whether it fits an existing topic (extends a guide) or is genuinely new (needs its own guide).
+
+2. **Extends existing topic:** append the synthesized content to the relevant `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section. Increment the `sources` frontmatter count if new source material was drawn in.
+
+3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Populate it from the synthesized answer. Add it to `$LIBRARY/{stack}/index.md` Topics table.
+
+4. Update `$LIBRARY/{stack}/log.md`, prepending:
+   ```
+   ## [YYYY-MM-DD] query | "{short query summary}" → filed to {topic}
+   Synthesized answer filed. {new | updated} topic: {topic-slug}.
+   ```
+
+5. Commit:
+   ```bash
+   cd "$LIBRARY" && git add "{stack}/" && git commit -m "feat({stack}): file query result — {short description}"
+   ```
