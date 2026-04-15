@@ -1,3 +1,6 @@
+## 0.7.0 — 2026-04-15
+
+- feat(refine-stack): add Step 9 gap-filling loop — after findings are presented, agent fetches sources for P1/P2 research items, saves to incoming/, and re-ingests only affected topic groups. Implements the Karpathy principle: identifying gaps is half the job, the LLM should also close them. P3 items (new topics) are flagged but not acted on without human direction.
 # Changelog
 
 ## 0.6.0 — 2026-04-12
