@@ -1,3 +1,8 @@
+## 0.7.2 — 2026-04-15
+
+- fix(templates/stack): STACK.md topic template now distinguishes Pitfalls (terrain surprises) from Patterns (how to do things correctly) and Field Notes (production observations). Added explicit pitfall gate definition to prevent misclassification.
+- fix(topic-synthesizer): added pitfall gate to Judgment Bias — only file under Pitfalls if an experienced practitioner who understands the design intent would still get burned.
+- fix(topic-extractor): added same pitfall gate to extraction tagging — catches misclassification before synthesis.
 ## 0.7.1 — 2026-04-15
 
 - feat(ask): add Step 7 query-filing loop — valuable synthesized answers are filed back into the stack as new or updated topic guides. Implements Karpathy's compounding principle: knowledge gained through querying accumulates in the library, not just chat history.

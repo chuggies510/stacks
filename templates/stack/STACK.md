@@ -20,10 +20,11 @@ How to rank conflicting sources. Higher tiers win conflicts.
 Sections that every topic guide in this stack should follow.
 
 - Overview — what this is, when/why you'd use it
-- Key Concepts — core principles, configurations, trade-offs
+- Key Concepts — core principles, configurations, trade-offs, and how the system actually behaves (the terrain)
+- Patterns — tested approaches, recipes, correct usage
 - *Add domain-specific sections here*
-- Common Mistakes — what goes wrong, why, how to avoid
-- Field Notes — practitioner experience, lessons learned
+- Pitfalls — behavior that surprises an experienced practitioner who already understands the design intent. Gate: would someone who read the docs and understood the system still get burned by this? If yes, it's a pitfall. If it follows directly from understanding how the system works (general language behavior, documented API semantics, resource cleanup), it belongs in Patterns or Key Concepts instead.
+- Field Notes — practitioner experience, production lessons, design consequences, and observations that don't fit a prescriptive section
 - Sources — which sources contributed, with tier ratings (populated by `/stacks:ingest`)
 
 ## Filing Rules
