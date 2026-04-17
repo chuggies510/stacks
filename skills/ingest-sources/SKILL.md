@@ -131,7 +131,17 @@ echo "New sources found: $(echo "$NEW_SOURCES" | grep -c . || echo 0)"
 
 If no new sources, tell the user: "All sources already indexed. Nothing to ingest." and stop.
 
-Note: source filenames with `(` or `)` characters are not supported by the index parser. Rename such files before ingesting.
+Gate: source filenames with `(` or `)` characters break the index parser (the `grep -o 'sources/[^)"]*'` regex in Step 3 terminates on `)`). Fail early if any exist so the user can rename before any agents run:
+
+```bash
+PAREN_FILES=$(find "$STACK/sources" -type f \( -name '*(*' -o -name '*)*' \) ! -name ".gitkeep" 2>/dev/null)
+if [[ -n "$PAREN_FILES" ]]; then
+  echo "ERROR: Source filenames contain '(' or ')' which breaks the index parser:"
+  echo "$PAREN_FILES"
+  echo "Rename these files before ingesting (e.g., replace '(foo)' with '-foo')."
+  exit 1
+fi
+```
 
 Also check for sources in `$STACK/sources/incoming/` specifically — these are explicitly queued for processing. If any exist, they are always new.
 

@@ -170,7 +170,16 @@ Read `$STACK/dev/curate/findings.md`. For each P1 and P2 research item:
    ```
    Name the file descriptively: `{publisher}-{topic-slug}.md`. Skip sources that are already in the stack (check `$STACK/index.md`).
 
-3. **Report what was fetched** before proceeding — file names, tiers, and which P1/P2 item each closes.
+   After each save, verify the file is non-empty before counting it as fetched:
+   ```bash
+   if [[ ! -s "$STACK/sources/incoming/{filename}" ]]; then
+     echo "WARN: fetch produced empty file for {URL} — removing and skipping"
+     rm -f "$STACK/sources/incoming/{filename}"
+   fi
+   ```
+   An empty fetch (404 body, paywall stub, auth redirect rendered as blank) must not enter the ingest waves — Wave 1 would extract nothing and leave a dead source entry in the index.
+
+3. **Report what was fetched** before proceeding — file names, tiers, and which P1/P2 item each closes. Only report files that passed the non-empty check in step 2.
 
 4. **Re-run ingest waves on new sources only.** After fetching, run Wave 0b (cluster into existing plan), then Wave 1 (extract) and Wave 2 (synthesize) for only the affected topic groups. Do not re-run waves for unaffected topics. File sources from incoming/ to their publisher directories.
 

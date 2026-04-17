@@ -1,3 +1,9 @@
+## 0.8.2 — 2026-04-17
+
+- feat(process-inbox): add split-content classification rule. Files whose `## ` sub-topics span multiple stacks are now routed by ⅔ majority rather than always treated as ties. The winning stack is recorded along with off-topic sub-topic headings so the ingestion step can flag them. Only near-even splits stay in inbox. Addresses the library-stack S4 s779 tie where 3 testing sub-topics + 2 sysops sub-topics had no routing rule.
+- fix(ingest-sources): add pre-ingest gate for source filenames containing `(` or `)`. The Step 3 index parser `grep -o 'sources/[^)"]*'` silently truncates on `)`, producing a broken index. Fail early with a rename instruction instead of running agents against a broken source list.
+- fix(refine-stack): verify WebFetch produced a non-empty file in Step 9 gap-filling before counting it as fetched. Empty fetches (404 body, paywall stub, auth redirect rendered as blank) were silently entering the ingest waves and leaving dead source entries in the index. Removes the file and skips instead.
+
 ## 0.8.1 — 2026-04-17
 
 - fix(process-inbox): stage inbox deletions alongside incoming additions. The commit step assumed `inbox/` was gitignored (true for new libraries scaffolded at 0.8.0+, false for libraries that predate the template gitignore). Now uses `git add -A inbox/ {stacks}/sources/incoming/` so both tracked and ignored inbox files produce a clean tree after routing. Observed in library-stack where the first 14-file route left deletions unstaged and required a cleanup commit.

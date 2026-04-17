@@ -95,7 +95,8 @@ done <<< "$INBOX_FILES"
 Using the header block (filename, H1 title, Source line, Extracted from line, first 5 `##` section headings) and the stack STACK.md scope context collected in Step 2, classify each file:
 
 - **One clear match**: the content clearly belongs to one stack based on domain (e.g., California Energy Code → mep-stack, Svelte reactivity → svelte). Route it.
-- **Tie (two+ equal matches)**: cannot confidently distinguish between stacks — leave in inbox, record both candidate stacks for the report.
+- **Split content (mixed sub-topics across stacks)**: the file's `## ` sub-topics do not all point to the same stack. Count how many sub-topics match each candidate stack. If one stack wins with ≥⅔ of sub-topics (e.g., 4 of 5, 3 of 4, 2 of 3), route to that stack and record the split in the report so ingestion can flag the off-topic sub-topic. If no stack wins ≥⅔, treat as a tie.
+- **Tie (no stack wins ≥⅔ of sub-topics, or no stack has a clear domain majority)**: cannot confidently route — leave in inbox, record candidate stacks and the per-stack sub-topic counts in the report.
 - **No match**: content doesn't fit any existing stack — leave in inbox, record as unmatched.
 
 For each matched file, move it to `{stack}/sources/incoming/`:
@@ -157,12 +158,15 @@ Unmatched — left in inbox/ (N):
   {filename}  (no clear stack home)
 
 Tied — left in inbox/ (N):
-  {filename}  (candidates: stack1, stack2)
+  {filename}  (candidates: stack1 [M sub-topics], stack2 [M sub-topics])
+
+Split — routed with off-topic sub-topic flagged (N):
+  {filename} → {winning-stack}/sources/incoming/  (off-topic sub-topics: "{heading}" belongs to {other-stack})
 
 Next steps:
   /stacks:ingest-sources {stack}    (for each stack that received files)
 ```
 
-If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section.
+If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section. If no files were routed as splits, omit the Split section.
 
 Note at the bottom: "process-inbox routes files to incoming/. Run /stacks:ingest-sources {stack} per affected stack to synthesize topic guides."
