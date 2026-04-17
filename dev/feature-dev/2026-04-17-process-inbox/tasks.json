@@ -14,7 +14,8 @@
         "templates/library/inbox/.gitkeep",
         "templates/library/.gitignore"
       ],
-      "verifyCommand": "test -f templates/library/inbox/.gitkeep && grep -q 'inbox/' templates/library/.gitignore && echo OK",
+      "notes": "Use 'git add -f templates/library/inbox/.gitkeep' — the /inbox/ pattern in templates/library/.gitignore causes git to ignore it otherwise. Pattern must be /inbox/ (leading slash) not inbox/ to avoid matching nested inbox/ dirs at any depth.",
+      "verifyCommand": "git ls-files --error-unmatch templates/library/inbox/.gitkeep 2>/dev/null && grep -q '/inbox/' templates/library/.gitignore && echo OK",
       "metadata": {
         "issue": null
       }
@@ -27,14 +28,14 @@
       "files": [
         "skills/process-inbox/SKILL.md"
       ],
-      "verifyCommand": "test -f skills/process-inbox/SKILL.md && grep -q 'name: process-inbox' skills/process-inbox/SKILL.md && grep -q 'Use when' skills/process-inbox/SKILL.md && echo OK",
+      "verifyCommand": "test -f skills/process-inbox/SKILL.md && grep -q 'name: process-inbox' skills/process-inbox/SKILL.md && grep -q 'Use when' skills/process-inbox/SKILL.md && grep -q 'SKILL_NAME=\"stacks:process-inbox\"' skills/process-inbox/SKILL.md && echo OK",
       "metadata": {
         "issue": null
       }
     },
     {
       "id": "T3",
-      "subject": "Version bump to 0.8.0 and CHANGELOG entry",
+      "subject": "Version bump to 0.8.0, CHANGELOG entry, commit and push",
       "status": "pending",
       "blockedBy": ["T1", "T2"],
       "files": [
@@ -42,7 +43,8 @@
         ".claude-plugin/marketplace.json",
         "CHANGELOG.md"
       ],
-      "verifyCommand": "jq -r .version .claude-plugin/plugin.json | grep -q '0.8.0' && jq -r '.plugins[0].version' .claude-plugin/marketplace.json | grep -q '0.8.0' && echo OK",
+      "notes": "marketplace.json plugins[0].version is currently 0.6.0 — bump to 0.8.0, not 0.7.0. Both files must land on 0.8.0. CHANGELOG format: '## 0.8.0 — YYYY-MM-DD' followed by blank line then bullet entries with 'feat(scope):' prefix. After commit, run 'git push' — push is the activation step for directory-source plugins.",
+      "verifyCommand": "jq -r .version .claude-plugin/plugin.json | grep -q '0.8.0' && jq -r '.plugins[0].version' .claude-plugin/marketplace.json | grep -q '0.8.0' && grep -q '0.8.0' CHANGELOG.md && git log --oneline -1 | grep -q '0.8.0' && echo OK",
       "metadata": {
         "issue": null
       }
