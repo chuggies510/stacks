@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "issue": 12,
+    "slug": "process-inbox",
+    "created": "2026-04-17"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "Add inbox scaffolding to library template",
+      "status": "pending",
+      "blockedBy": [],
+      "files": [
+        "templates/library/inbox/.gitkeep",
+        "templates/library/.gitignore"
+      ],
+      "verifyCommand": "test -f templates/library/inbox/.gitkeep && grep -q 'inbox/' templates/library/.gitignore && echo OK",
+      "metadata": {
+        "issue": null
+      }
+    },
+    {
+      "id": "T2",
+      "subject": "Write skills/process-inbox/SKILL.md",
+      "status": "pending",
+      "blockedBy": [],
+      "files": [
+        "skills/process-inbox/SKILL.md"
+      ],
+      "verifyCommand": "test -f skills/process-inbox/SKILL.md && grep -q 'name: process-inbox' skills/process-inbox/SKILL.md && grep -q 'Use when' skills/process-inbox/SKILL.md && echo OK",
+      "metadata": {
+        "issue": null
+      }
+    },
+    {
+      "id": "T3",
+      "subject": "Version bump to 0.8.0 and CHANGELOG entry",
+      "status": "pending",
+      "blockedBy": ["T1", "T2"],
+      "files": [
+        ".claude-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        "CHANGELOG.md"
+      ],
+      "verifyCommand": "jq -r .version .claude-plugin/plugin.json | grep -q '0.8.0' && jq -r '.plugins[0].version' .claude-plugin/marketplace.json | grep -q '0.8.0' && echo OK",
+      "metadata": {
+        "issue": null
+      }
+    }
+  ]
+}
