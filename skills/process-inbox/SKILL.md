@@ -71,16 +71,16 @@ If INBOX_FILES is empty, tell the user: "Inbox is empty. Drop session extract fi
 Count and report:
 
 ```bash
-N=$(echo "$INBOX_FILES" | grep -c .)
+N=$(echo "$INBOX_FILES" | wc -l | tr -d ' ')
 echo "Found $N file(s) in inbox/"
 ```
 
 ## Step 4: Classify and route
 
-For each file in INBOX_FILES, extract its header block:
+For each file in INBOX_FILES, extract its header block. Use `while IFS= read -r` to handle filenames safely:
 
 ```bash
-for f in $INBOX_FILES; do
+while IFS= read -r f; do
   filename=$(basename "$f")
   header_h1=$(head -1 "$f")
   header_meta=$(sed -n '3,4p' "$f")
@@ -89,7 +89,7 @@ for f in $INBOX_FILES; do
   echo "$header_h1"
   echo "$header_meta"
   echo "$header_sections"
-done
+done <<< "$INBOX_FILES"
 ```
 
 Using the header block (filename, H1 title, Source line, Extracted from line, first 5 `##` section headings) and the stack STACK.md scope context collected in Step 2, classify each file:
@@ -131,13 +131,15 @@ cd "$LIBRARY"
 
 If MOVED is empty, tell the user: "No files routed — all files are unmatched or tied. See report below." Skip the commit and proceed to Step 6.
 
-If any files were moved:
+If any files were moved, stage the additions in each affected stack's `sources/incoming/` directory and commit. Inbox files are untracked by git (excluded by `.gitignore`), so only the incoming additions need staging:
 
 ```bash
-N_MOVED=$(count from MOVED list)
-git add inbox/ $(for stack in AFFECTED_STACKS; do echo "$stack/sources/incoming/"; done)
-git commit -m "chore(inbox): route $N_MOVED file(s) to stack incoming dirs"
+cd "$LIBRARY"
+git add {each affected stack}/sources/incoming/
+git commit -m "chore(inbox): route {N_MOVED} file(s) to stack incoming dirs"
 ```
+
+Replace `{each affected stack}` with the actual stack paths from the MOVED list. Replace `{N_MOVED}` with the count of moved files.
 
 ## Step 6: Report
 
