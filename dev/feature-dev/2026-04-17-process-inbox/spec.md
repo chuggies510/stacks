@@ -45,26 +45,45 @@ Single `skills/process-inbox/SKILL.md` file. Config-based library discovery (Pat
 
 **Unmatched handling**: leave file in place, report it clearly. No silent drops, no guessing.
 
-**Commit**: after routing, commit the moves (inbox removals + incoming additions) in one commit.
+**Tie-break policy**: if a file matches two stacks with equal confidence, leave it in inbox and report both candidate stacks so the user can decide. Never guess on a tie.
+
+**Filename collisions**: before moving, check if a file with the same name already exists in `{stack}/sources/incoming/`. If yes, append a counter (`-2`, `-3`, etc.) following the same pattern as `ingest-sources` Step 1.5. Never overwrite.
+
+**`sources/incoming/` creation**: `mkdir -p {stack}/sources/incoming/` before each move. Don't assume the directory exists.
+
+**Commit**: after routing, if any files were moved, commit the moves (inbox removals + incoming additions) in one commit. If nothing was moved (all unmatched or inbox was empty), skip the commit and tell the user.
+
+**`inbox/` not found**: if `$LIBRARY/inbox/` does not exist, tell the user "No inbox/ directory found in your library. Create inbox/ and drop session extract files there to process them." Do not create the directory — that is the scaffolding concern (see Done when). Stop.
+
+**Zero stacks**: if no stacks are found in the library, tell the user "No stacks in your library yet. Run /stacks:new-stack {name} first." Stop.
+
+**Relationship to ingest**: `process-inbox` is the missing link in a two-command sequence. It routes files to `sources/incoming/`. The user must still run `/stacks:ingest-sources {stack}` per affected stack to synthesize guides. The skill output must make this clear.
 
 ## Constraints
 
 - Must follow existing skill frontmatter rules exactly (name + description only, "Use when..." trigger)
 - Step 0 telemetry is mandatory and must match existing boilerplate exactly
 - Only reads header block for classification — not full file body (efficiency)
-- Never moves a file unless classification confidence is clear
+- Never moves a file unless classification confidence is clear; never overwrites on collision
 - Must run from any working directory (config-based library discovery)
-- Version bump required: `plugin.json` and `marketplace.json` both to `0.8.0`
+- Version bump required: `plugin.json` and `marketplace.json` both to `0.8.0`; verify both match after editing
+
+## Scaffolding change
+
+Add `templates/library/inbox/.gitkeep` so that `init-library` creates the inbox directory on every new library. Add `inbox/` to `templates/library/.gitignore` (the files are transient routing artifacts, not permanent library content).
 
 ## Done when
 
 - [ ] `skills/process-inbox/SKILL.md` exists with correct frontmatter and step structure
 - [ ] Skill finds the library via `~/.config/stacks/config.json`
-- [ ] Skill enumerates stacks by finding subdirs with `STACK.md`
-- [ ] Skill reads stack scopes and inbox file headers for classification
-- [ ] Skill moves matched files to `{stack}/sources/incoming/` and leaves unmatched in place
-- [ ] Skill reports: what was moved where, what was left behind, and next steps (suggest `/stacks:ingest-sources {stack}`)
-- [ ] Skill commits the moves with a descriptive message
-- [ ] `plugin.json` and `marketplace.json` both at `0.8.0`
+- [ ] Skill gates on zero stacks and missing inbox/ with clear user messages
+- [ ] Skill enumerates stacks by finding subdirs with `STACK.md`, reads STACK.md scope for each
+- [ ] Skill reads header block (H1 + Source + Extracted from + first 5 `##` headings) per inbox file
+- [ ] Skill applies semantic classification: one stack = move; tie = leave + report candidates; no match = leave + report
+- [ ] Skill uses `mkdir -p` before each move; handles filename collisions with counter-append
+- [ ] Skill skips commit if nothing was moved; commits moves otherwise
+- [ ] Skill reports: what was moved where, what was left behind (with tie candidates if applicable), next steps
+- [ ] `templates/library/inbox/.gitkeep` added; `inbox/` added to `templates/library/.gitignore`
+- [ ] `plugin.json` and `marketplace.json` both at `0.8.0`, verified equal
 - [ ] CHANGELOG updated
 - [ ] Committed and pushed
