@@ -131,15 +131,17 @@ cd "$LIBRARY"
 
 If MOVED is empty, tell the user: "No files routed — all files are unmatched or tied. See report below." Skip the commit and proceed to Step 6.
 
-If any files were moved, stage the additions in each affected stack's `sources/incoming/` directory and commit. Inbox files are untracked by git (excluded by `.gitignore`), so only the incoming additions need staging:
+If any files were moved, stage both the additions in each affected stack's `sources/incoming/` directory AND the deletions in `inbox/`. Some libraries track inbox files, some gitignore them — `git add -A` on both paths handles both cases and ensures a clean tree after the commit:
 
 ```bash
 cd "$LIBRARY"
-git add {each affected stack}/sources/incoming/
+git add -A inbox/ {each affected stack}/sources/incoming/
 git commit -m "chore(inbox): route {N_MOVED} file(s) to stack incoming dirs"
 ```
 
 Replace `{each affected stack}` with the actual stack paths from the MOVED list. Replace `{N_MOVED}` with the count of moved files.
+
+Do NOT assume inbox is gitignored. Early versions of the skill only staged additions, which left deletions unstaged in libraries that track `inbox/` and required a second cleanup commit.
 
 ## Step 6: Report
 
