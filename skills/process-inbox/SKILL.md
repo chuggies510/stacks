@@ -71,7 +71,7 @@ If INBOX_FILES is empty, tell the user: "Inbox is empty. Drop session extract fi
 Count and report:
 
 ```bash
-N=$(echo "$INBOX_FILES" | wc -l | tr -d ' ')
+N=$(echo "$INBOX_FILES" | grep -c .)
 echo "Found $N file(s) in inbox/"
 ```
 
