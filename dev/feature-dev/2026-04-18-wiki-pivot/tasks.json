@@ -1,0 +1,325 @@
+{
+  "planPath": "dev/feature-dev/2026-04-18-wiki-pivot/plan.md",
+  "issue": 17,
+  "baselineVersion": "stacks=0.8.3",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Create scripts/assert-written.sh shared write-or-fail helper",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: shared bash helper invoked after every agent dispatch in catalog-sources and audit-stack to enforce write-or-fail.\n\nFiles: scripts/assert-written.sh (new, +x).\n\nAC: Signature `bash scripts/assert-written.sh {path} {dispatch_epoch} {agent_label}`; exits 0 iff file is non-empty AND stat mtime > dispatch_epoch; exits 1 with fixed error string 'AGENT_WRITE_FAILURE: {agent_label} did not write {path} (empty or stale)' otherwise. Linux-only (stat -c %Y).\n\nVerify: chmod test + manual write/no-write/stale-file cases.\n\nSteps: write script, chmod +x, commit.",
+      "metadata": {
+        "files": [
+          "scripts/assert-written.sh"
+        ],
+        "acceptanceCriteria": [
+          "scripts/assert-written.sh exists and is executable",
+          "Passes with a fresh non-empty file written after dispatch_epoch",
+          "Fails with exit 1 on empty file",
+          "Fails with exit 1 on file older than dispatch_epoch"
+        ],
+        "verifyCommand": "test -x scripts/assert-written.sh && grep -q 'stat -c %Y' scripts/assert-written.sh && grep -q 'AGENT_WRITE_FAILURE' scripts/assert-written.sh",
+        "issue": null
+      }
+    },
+    {
+      "id": 2,
+      "subject": "Create scripts/wikilink-pass.sh deterministic linker",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: shared bash helper invoked at W2b (catalog-sources) and A2b (audit-stack) to wrap glossary terms in [[wikilinks]] across articles.\n\nFiles: scripts/wikilink-pass.sh (new, +x).\n\nAC: Signature `bash scripts/wikilink-pass.sh {articles-dir} {glossary-path}`. Reads bold terms from glossary.md via `grep -oP '(?<=\\*\\*)[^*]+(?=\\*\\*)'`. Case-insensitive match, first occurrence per term per article, preserves original capitalization in wrapped text, skips self-links (article slug == term-slugified), skips already-wrapped terms (`[[term]]`). No-op if glossary.md absent.\n\nVerify: unit test with a fixture glossary + 2-3 fixture articles.\n\nSteps: write script, chmod +x, dry-run on a scratch fixture, commit.",
+      "metadata": {
+        "files": [
+          "scripts/wikilink-pass.sh"
+        ],
+        "acceptanceCriteria": [
+          "scripts/wikilink-pass.sh exists and is executable",
+          "No-op when glossary.md is absent",
+          "Wraps first verbatim case-insensitive match per term per article",
+          "Skips self-links and already-wrapped terms"
+        ],
+        "verifyCommand": "test -x scripts/wikilink-pass.sh && grep -q 'glossary' scripts/wikilink-pass.sh",
+        "issue": null
+      }
+    },
+    {
+      "id": 3,
+      "subject": "Create agents/concept-identifier.md",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: new agent that identifies discrete concepts per source AND extracts relevant claims per concept (single-pass; absorbs article-extractor role per spec decision).\n\nFiles: agents/concept-identifier.md (new).\n\nAC: Frontmatter honors plugin convention (tools comma-separated, model, description starting with 'Use when...'). Prompt body documents contract: input = source paths + STACK.md + skip list + existing articles/ listing; output = one dev/extractions/{source-slug}-concepts.md per source with concept blocks (slug, title, source_paths, hash_inputs, target_article). Enforces slug immutability: if a concept matches an existing article by claim overlap, concept block MUST use that article's existing slug as both slug and target_article. New slugs only for genuinely new concepts. Prompt includes 3+ worked examples covering: (a) single source with one new concept, (b) single source with multiple new concepts, (c) source whose concept maps to an existing article (update mode).\n\nVerify: file exists, frontmatter valid, 3+ example blocks present.\n\nSteps: draft agent prompt, include 3 examples, commit.",
+      "metadata": {
+        "files": [
+          "agents/concept-identifier.md"
+        ],
+        "acceptanceCriteria": [
+          "File exists with valid YAML frontmatter",
+          "Frontmatter has tools, model, description",
+          "Description starts with 'Use when'",
+          "Body contains 3 or more worked examples",
+          "Body documents slug-immutability rule explicitly"
+        ],
+        "verifyCommand": "test -s agents/concept-identifier.md && grep -q '^tools:' agents/concept-identifier.md && grep -q '^model:' agents/concept-identifier.md && grep -q 'Use when' agents/concept-identifier.md && [ $(grep -c '^## Example' agents/concept-identifier.md) -ge 3 ] && grep -qi 'slug immutab' agents/concept-identifier.md",
+        "issue": null
+      }
+    },
+    {
+      "id": 4,
+      "subject": "Create agents/article-synthesizer.md",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: new agent that writes one articles/{slug}.md per unique concept.\n\nFiles: agents/article-synthesizer.md (new).\n\nAC: Frontmatter per plugin convention. Prompt body: input = one concept block + existing article (if target_article set) + STACK.md; output = articles/{slug}.md. Frontmatter on first write: extraction_hash (from concept block), last_verified='', updated=today, sources[] (from concept block), title, tags[]. Body 300-800 words (stretch ~1200 if needed), inline [source-slug] citations, no [[wikilinks]] (linker pass writes them). Strip-on-rewrite: when existing article is input, strip all [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] markers from its body before producing the updated version. Include 3+ worked examples: (a) fresh concept, new article; (b) update-mode on existing article with stale marks; (c) multi-source concept (sources[] array populated).\n\nVerify: file exists, frontmatter valid, strip-on-rewrite + 3+ examples present.\n\nSteps: draft prompt, include 3 examples, commit.",
+      "metadata": {
+        "files": [
+          "agents/article-synthesizer.md"
+        ],
+        "acceptanceCriteria": [
+          "File exists with valid YAML frontmatter",
+          "Body contains 3 or more worked examples",
+          "Body specifies strip-on-rewrite behavior",
+          "Body specifies 300-800 word soft target"
+        ],
+        "verifyCommand": "test -s agents/article-synthesizer.md && grep -q '^tools:' agents/article-synthesizer.md && grep -qi 'strip.*mark\\|strip.*rewrite' agents/article-synthesizer.md && [ $(grep -c '^## Example' agents/article-synthesizer.md) -ge 3 ]",
+        "issue": null
+      }
+    },
+    {
+      "id": 5,
+      "subject": "Rewrite references/wave-engine.md with new catalog-sources and audit-stack tables",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: replace old W0-W6 reference with dual-table doc covering catalog-sources (W0, W0b, W1, W1b, W2, W2b, W3, W4) and audit-stack (A1, A2, A2b, A3, A4, A5) per spec.\n\nFiles: references/wave-engine.md (rewrite). Optional: references/wave-engine-legacy.md (preserve old content) — implementer's choice; spec allows either preserve-or-remove.\n\nAC: Both wave tables present with columns (Wave, Agent/Module, Input, Output). Write-or-fail gate is documented per wave. Slug-immutability rule and W1b dedup step are documented. A4 convergence rule documented (2 empty passes or MAX_AUDIT_PASSES).\n\nVerify: file exists, both tables present, convergence rule documented.\n\nSteps: rewrite file with both tables + wave-specific notes, commit.",
+      "metadata": {
+        "files": [
+          "references/wave-engine.md"
+        ],
+        "acceptanceCriteria": [
+          "Both catalog-sources and audit-stack wave tables present",
+          "W1b slug-collision dedup is documented",
+          "A4 convergence rule is documented",
+          "Write-or-fail gate is referenced for each agent-dispatch wave"
+        ],
+        "verifyCommand": "grep -q 'catalog-sources' references/wave-engine.md && grep -q 'audit-stack' references/wave-engine.md && grep -q 'W1b' references/wave-engine.md && grep -qi 'A4.*convergen\\|convergen.*A4\\|2 consecutive empty' references/wave-engine.md",
+        "issue": null
+      }
+    },
+    {
+      "id": 6,
+      "subject": "Create skills/catalog-sources/SKILL.md",
+      "status": "pending",
+      "blockedBy": [1, 2, 3, 4, 5],
+      "description": "Goal: full new-pipeline skill replacing ingest-sources. Waves W0-W4 per spec.\n\nFiles: skills/catalog-sources/SKILL.md (new).\n\nAC: Frontmatter has name + description only (no version/allowed-tools/thinking per plugin CLAUDE.md); description starts with 'Use when...'. Step 0 Telemetry boilerplate. Steps implementing W0 (bash enumerate), W0b (bash prior-findings gate), W1 (dispatch concept-identifier agent), W1b (bash slug-collision dedup), W2 (dispatch article-synthesizer agent, parallel per unique slug), W2b (invoke scripts/wikilink-pass.sh), W3 (bash source filing from incoming/ to {publisher}/), W4 (MoC generator that preserves any ## Reading Paths section in existing index.md verbatim). Every agent dispatch is followed by `bash scripts/assert-written.sh {expected_path} {dispatch_epoch} {agent_label}` with `DISPATCH_EPOCH=$(date +%s)` captured immediately before the Task call.\n\nVerify: file exists, frontmatter valid, Step 0 + 8 waves + assert-written invocations all present.\n\nSteps: draft SKILL.md using ingest-sources as structural reference, commit.",
+      "metadata": {
+        "files": [
+          "skills/catalog-sources/SKILL.md"
+        ],
+        "acceptanceCriteria": [
+          "Frontmatter has only name and description",
+          "Step 0 Telemetry present",
+          "All waves W0, W0b, W1, W1b, W2, W2b, W3, W4 present",
+          "assert-written.sh invoked after every agent dispatch",
+          "wikilink-pass.sh invoked at W2b",
+          "MoC generator preserves ## Reading Paths section"
+        ],
+        "verifyCommand": "test -s skills/catalog-sources/SKILL.md && grep -q '^name: ' skills/catalog-sources/SKILL.md && grep -q '^description: Use when' skills/catalog-sources/SKILL.md && grep -q 'Step 0' skills/catalog-sources/SKILL.md && grep -q 'W1b' skills/catalog-sources/SKILL.md && grep -q 'assert-written' skills/catalog-sources/SKILL.md && grep -q 'wikilink-pass' skills/catalog-sources/SKILL.md && grep -q 'Reading Paths' skills/catalog-sources/SKILL.md",
+        "issue": null
+      }
+    },
+    {
+      "id": 7,
+      "subject": "Bump to 0.9.0-alpha.1 + CHANGELOG (ships #19)",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "Goal: ship #19 with proper semver bump + CHANGELOG per workspace rule.\n\nFiles: .claude-plugin/plugin.json, .claude-plugin/marketplace.json, CHANGELOG.md.\n\nAC: plugin.json version = '0.9.0-alpha.1'; marketplace.json plugins[0].version = '0.9.0-alpha.1'; CHANGELOG.md gains a new top entry documenting catalog-sources pipeline (new skill + concept-identifier + article-synthesizer + shared scripts + new wave-engine) shipped alongside still-runnable ingest-sources.\n\nVerify: jq version checks match; CHANGELOG mentions catalog-sources.\n\nSteps: edit both JSON files via jq, prepend CHANGELOG entry via Edit, commit.",
+      "metadata": {
+        "files": [
+          ".claude-plugin/plugin.json",
+          ".claude-plugin/marketplace.json",
+          "CHANGELOG.md"
+        ],
+        "acceptanceCriteria": [
+          "plugin.json version is '0.9.0-alpha.1'",
+          "marketplace.json plugins[0].version is '0.9.0-alpha.1'",
+          "CHANGELOG has new top entry naming catalog-sources"
+        ],
+        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0-alpha.1' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0-alpha.1' ] && head -20 CHANGELOG.md | grep -q '0.9.0-alpha.1' && head -20 CHANGELOG.md | grep -qi 'catalog-sources'",
+        "issue": 19
+      }
+    },
+    {
+      "id": 8,
+      "subject": "Add article-mode branch to skills/ask/SKILL.md",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "Goal: /stacks:ask detects article mode vs guide mode per decision 11 and routes accordingly.\n\nFiles: skills/ask/SKILL.md (edit).\n\nAC: A new step (or extension of Step 4) reads {stack}/index.md and extracts any ## Reading Paths section as an additional retrieval aid. Step 5 is modified to branch on `articles/` directory presence: `test -d {stack}/articles && find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .`. If present, read matching articles (by filename keyword match against query terms, fall-through to reading all for small N). If absent, fall back to existing topics/*/guide.md logic unchanged.\n\nVerify: ask skill handles both a guide-only stack and an articles-populated stack.\n\nSteps: edit skill file with the branch, commit.",
+      "metadata": {
+        "files": [
+          "skills/ask/SKILL.md"
+        ],
+        "acceptanceCriteria": [
+          "Skill reads ## Reading Paths from index.md when present",
+          "Skill detects articles/ directory and branches",
+          "Guide-only fallback path unchanged"
+        ],
+        "verifyCommand": "grep -qi 'articles/' skills/ask/SKILL.md && grep -qi 'Reading Paths' skills/ask/SKILL.md && grep -q 'topics/' skills/ask/SKILL.md",
+        "issue": null
+      }
+    },
+    {
+      "id": 9,
+      "subject": "Bump to 0.9.0-alpha.2 + CHANGELOG (ships #20)",
+      "status": "pending",
+      "blockedBy": [7, 8],
+      "description": "Goal: ship #20.\n\nFiles: .claude-plugin/plugin.json, .claude-plugin/marketplace.json, CHANGELOG.md.\n\nAC: both JSON versions = '0.9.0-alpha.2'; CHANGELOG entry documents article-mode retrieval + MoC preserving Reading Paths.\n\nSteps: bump + prepend, commit.",
+      "metadata": {
+        "files": [
+          ".claude-plugin/plugin.json",
+          ".claude-plugin/marketplace.json",
+          "CHANGELOG.md"
+        ],
+        "acceptanceCriteria": [
+          "plugin.json version is '0.9.0-alpha.2'",
+          "marketplace.json plugins[0].version is '0.9.0-alpha.2'",
+          "CHANGELOG has new top entry for article-mode retrieval"
+        ],
+        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0-alpha.2' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0-alpha.2' ] && head -20 CHANGELOG.md | grep -q '0.9.0-alpha.2'",
+        "issue": 20
+      }
+    },
+    {
+      "id": 10,
+      "subject": "Update agents/validator.md prompt (inline marks + strip-on-read)",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: reshape validator agent to write inline [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] marks on articles as its sole output, and to strip any prior-cycle marks on input before validating.\n\nFiles: agents/validator.md (edit; keep filename).\n\nAC: Prompt documents: (a) strip prior inline marks from each article before validating (they're stale from the last audit), (b) write fresh marks inline, (c) update last_verified frontmatter to today for each article touched, (d) emit NO separate scratch file. 3+ worked examples covering all four mark types.\n\nVerify: file exists, strip-on-read is explicit, 3+ examples.\n\nSteps: edit prompt body, commit.",
+      "metadata": {
+        "files": [
+          "agents/validator.md"
+        ],
+        "acceptanceCriteria": [
+          "Prompt specifies strip-prior-marks pre-step",
+          "Prompt specifies inline marks as sole output (no scratch file)",
+          "Prompt updates last_verified on touched articles",
+          "3+ worked examples present"
+        ],
+        "verifyCommand": "grep -qi 'strip' agents/validator.md && grep -q 'VERIFIED' agents/validator.md && grep -q 'last_verified' agents/validator.md && [ $(grep -c '^## Example' agents/validator.md) -ge 3 ]",
+        "issue": null
+      }
+    },
+    {
+      "id": 11,
+      "subject": "Update agents/synthesizer.md prompt (glossary + invariants + contradictions)",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: reshape synthesizer to produce three stack-root artifacts.\n\nFiles: agents/synthesizer.md (edit; keep filename).\n\nAC: Prompt documents three outputs at stack root: glossary.md (alphabetical bolded terms from article bodies), invariants.md (rules appearing in 2+ articles independently, per existing tier-gate rule), contradictions.md (claims where two+ articles conflict, with per-article citation). 3+ worked examples.\n\nVerify: file exists, three outputs named, 3+ examples.\n\nSteps: edit prompt body, commit.",
+      "metadata": {
+        "files": [
+          "agents/synthesizer.md"
+        ],
+        "acceptanceCriteria": [
+          "Prompt specifies glossary.md, invariants.md, contradictions.md as outputs",
+          "Outputs are at stack root (not dev/)",
+          "3+ worked examples present"
+        ],
+        "verifyCommand": "grep -q 'glossary.md' agents/synthesizer.md && grep -q 'invariants.md' agents/synthesizer.md && grep -q 'contradictions.md' agents/synthesizer.md && [ $(grep -c '^## Example' agents/synthesizer.md) -ge 3 ]",
+        "issue": null
+      }
+    },
+    {
+      "id": 12,
+      "subject": "Update agents/findings-analyst.md prompt (locked schema + read inline marks)",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "Goal: reshape findings-analyst to write the locked findings.md schema.\n\nFiles: agents/findings-analyst.md (edit; keep filename).\n\nAC: Prompt documents: (a) input = articles (inline marks are the data source), contradictions.md, prior findings.md; (b) output = dev/audit/findings.md with YAML frontmatter (audit_date, stack_head, pass_counter, schema_version) and item blocks with ID = sha256({article-slug}|{finding_type}|{normalized-claim}), status enum (open, applied, closed, deferred, stale, failed — failed terminal), action enum (fetch_source, cross_link, manual_review, none), three sections (New acquisitions, Articles to re-synthesize, Deferred); (c) carry forward prior item status by ID match; items absent from prior run start open. 3+ worked examples.\n\nVerify: schema fields + enums + carry-forward behavior all documented.\n\nSteps: edit prompt body, commit.",
+      "metadata": {
+        "files": [
+          "agents/findings-analyst.md"
+        ],
+        "acceptanceCriteria": [
+          "Prompt documents frontmatter fields audit_date, stack_head, pass_counter, schema_version",
+          "Status enum includes 'failed' as terminal",
+          "Three sections named (New acquisitions, Articles to re-synthesize, Deferred)",
+          "Carry-forward by item ID match specified",
+          "3+ worked examples present"
+        ],
+        "verifyCommand": "grep -q 'schema_version' agents/findings-analyst.md && grep -q 'pass_counter' agents/findings-analyst.md && grep -qi 'failed' agents/findings-analyst.md && grep -qi 'carry.forward\\|carry forward' agents/findings-analyst.md && [ $(grep -c '^## Example' agents/findings-analyst.md) -ge 3 ]",
+        "issue": null
+      }
+    },
+    {
+      "id": 13,
+      "subject": "Create skills/audit-stack/SKILL.md",
+      "status": "pending",
+      "blockedBy": [1, 2, 5, 10, 11, 12],
+      "description": "Goal: full new-pipeline audit skill replacing refine-stack. Waves A1-A5 per spec.\n\nFiles: skills/audit-stack/SKILL.md (new).\n\nAC: Frontmatter (name + description; description starts with 'Use when...'). Step 0 Telemetry. Steps implementing A1 (dispatch validator), A2 (dispatch synthesizer), A2b (invoke wikilink-pass.sh), A3 (dispatch findings-analyst), A4 (bash convergence check: 2 consecutive empty passes OR MAX_AUDIT_PASSES from STACK.md default 3), A5 (bash archive to dev/audit/closed/{audit_date}-findings.md). Every agent dispatch followed by assert-written.sh gate with DISPATCH_EPOCH.\n\nVerify: file exists, waves present, gates in place.\n\nSteps: draft SKILL.md using refine-stack as structural reference, commit.",
+      "metadata": {
+        "files": [
+          "skills/audit-stack/SKILL.md"
+        ],
+        "acceptanceCriteria": [
+          "Frontmatter has only name and description",
+          "Step 0 Telemetry present",
+          "All waves A1, A2, A2b, A3, A4, A5 present",
+          "assert-written.sh invoked after every agent dispatch",
+          "wikilink-pass.sh invoked at A2b",
+          "A4 convergence documented with 2-empty-passes and MAX_AUDIT_PASSES"
+        ],
+        "verifyCommand": "test -s skills/audit-stack/SKILL.md && grep -q '^name: ' skills/audit-stack/SKILL.md && grep -q '^description: Use when' skills/audit-stack/SKILL.md && grep -q 'Step 0' skills/audit-stack/SKILL.md && grep -q 'A2b' skills/audit-stack/SKILL.md && grep -q 'assert-written' skills/audit-stack/SKILL.md && grep -q 'MAX_AUDIT_PASSES' skills/audit-stack/SKILL.md",
+        "issue": null
+      }
+    },
+    {
+      "id": 14,
+      "subject": "Bump to 0.9.0-alpha.3 + CHANGELOG (ships #21)",
+      "status": "pending",
+      "blockedBy": [9, 13],
+      "description": "Goal: ship #21.\n\nFiles: .claude-plugin/plugin.json, .claude-plugin/marketplace.json, CHANGELOG.md.\n\nAC: both JSON versions = '0.9.0-alpha.3'; CHANGELOG entry documents audit-stack + loop closure + findings schema.\n\nSteps: bump + prepend, commit.",
+      "metadata": {
+        "files": [
+          ".claude-plugin/plugin.json",
+          ".claude-plugin/marketplace.json",
+          "CHANGELOG.md"
+        ],
+        "acceptanceCriteria": [
+          "plugin.json version is '0.9.0-alpha.3'",
+          "marketplace.json plugins[0].version is '0.9.0-alpha.3'",
+          "CHANGELOG has new top entry for audit-stack + loop closure"
+        ],
+        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0-alpha.3' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0-alpha.3' ] && head -20 CHANGELOG.md | grep -q '0.9.0-alpha.3' && head -20 CHANGELOG.md | grep -qi 'audit-stack'",
+        "issue": 21
+      }
+    },
+    {
+      "id": 15,
+      "subject": "Cutover: remove old skills/agents + 0.9.0 final + CHANGELOG (ships #22)",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "Goal: atomic breaking commit retiring old pipeline and shipping 0.9.0.\n\nFiles removed: skills/ingest-sources/ (dir), skills/refine-stack/ (dir), agents/topic-clusterer.md, agents/topic-extractor.md, agents/topic-synthesizer.md, agents/cross-referencer.md. Also any dev/curate/ references in templates/stack/.\n\nFiles modified: .claude-plugin/plugin.json (0.9.0), .claude-plugin/marketplace.json (0.9.0), CHANGELOG.md (new top entry documenting the breaking cutover).\n\nAC: grep -rI across repo (excluding .git and CHANGELOG.md) for the old names and dev/curate returns zero lines. Both JSON versions = '0.9.0' (not alpha).\n\nSteps: `git rm -r` the old dirs + `git rm` the old agent files; clean templates/stack/ if needed; bump versions; prepend CHANGELOG; commit.",
+      "metadata": {
+        "files": [
+          ".claude-plugin/plugin.json",
+          ".claude-plugin/marketplace.json",
+          "CHANGELOG.md",
+          "skills/ingest-sources/SKILL.md",
+          "skills/refine-stack/SKILL.md",
+          "agents/topic-clusterer.md",
+          "agents/topic-extractor.md",
+          "agents/topic-synthesizer.md",
+          "agents/cross-referencer.md"
+        ],
+        "acceptanceCriteria": [
+          "plugin.json version is '0.9.0'",
+          "marketplace.json plugins[0].version is '0.9.0'",
+          "Old skill directories removed",
+          "Old agent files removed",
+          "CHANGELOG documents breaking cutover",
+          "grep for old names returns only CHANGELOG hits"
+        ],
+        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0' ] && [ ! -e skills/ingest-sources ] && [ ! -e skills/refine-stack ] && [ ! -e agents/topic-clusterer.md ] && [ ! -e agents/cross-referencer.md ] && [ ! -e agents/topic-extractor.md ] && [ ! -e agents/topic-synthesizer.md ] && [ $(grep -rI -l 'ingest-sources\\|refine-stack\\|topic-clusterer\\|cross-referencer\\|topic-extractor\\|topic-synthesizer' skills agents scripts templates references 2>/dev/null | grep -v 'wave-engine-legacy' | wc -l) -eq 0 ]",
+        "issue": 22
+      }
+    }
+  ],
+  "lastUpdated": "2026-04-18T00:00:00Z"
+}
