@@ -1,3 +1,7 @@
+## 0.8.3 — 2026-04-17
+
+- feat(ingest-sources): auto-pick target stack(s) when invoked with no argument. Scans all stacks for `sources/incoming/` files and ingests each one sequentially, largest batch first. Explicit stack argument and `--from` still win. Removes the "ERROR: Specify a stack name" dead-end when the user's intent is obvious from library state.
+
 ## 0.8.2 — 2026-04-17
 
 - feat(process-inbox): add split-content classification rule. Files whose `## ` sub-topics span multiple stacks are now routed by ⅔ majority rather than always treated as ties. The winning stack is recorded along with off-topic sub-topic headings so the ingestion step can flag them. Only near-even splits stay in inbox. Addresses the library-stack S4 s779 tie where 3 testing sub-topics + 2 sysops sub-topics had no routing rule.

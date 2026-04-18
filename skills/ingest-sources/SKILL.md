@@ -26,7 +26,7 @@ SKILL_NAME="stacks:ingest-sources" bash "$TELEMETRY_SH" 2>/dev/null || true
 
 ## Step 1: Gate check
 
-Parse arguments. The full argument string is `$ARGUMENTS`. Extract stack name and optional `--from` path:
+Parse arguments. The full argument string is `$ARGUMENTS`. Extract optional stack name and optional `--from` path:
 
 ```bash
 if [[ ! -f "catalog.md" ]]; then
@@ -34,31 +34,57 @@ if [[ ! -f "catalog.md" ]]; then
   exit 1
 fi
 
-# Parse: /stacks:ingest-sources {stack} [--from {path}]
+# Parse: /stacks:ingest-sources [{stack}] [--from {path}]
 ARGS="$ARGUMENTS"
 FROM_PATH=""
 if [[ "$ARGS" == *"--from"* ]]; then
   STACK=$(echo "$ARGS" | sed 's/--from.*//' | tr -d '[:space:]')
   FROM_PATH=$(echo "$ARGS" | sed 's/.*--from[[:space:]]*//' | sed 's/[[:space:]]*$//')
-  # Expand ~ if present
   FROM_PATH="${FROM_PATH/#\~/$HOME}"
 else
-  STACK="$ARGS"
+  STACK=$(echo "$ARGS" | tr -d '[:space:]')
 fi
 
-if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:ingest-sources {stack-name} [--from {path}]"
-  exit 1
-fi
-if [[ ! -f "$STACK/STACK.md" ]]; then
-  echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new-stack $STACK first."
-  exit 1
-fi
 if [[ -n "$FROM_PATH" ]] && [[ ! -d "$FROM_PATH" ]]; then
   echo "ERROR: --from path does not exist: $FROM_PATH"
   exit 1
 fi
+
+# Auto-pick target stack(s) when none specified.
+# Rule: no argument = ingest every stack with incoming/ files, largest batch first.
+# Explicit stack argument still wins (needed for --from, or forcing a no-incoming
+# re-ingest after manual edits to sources/).
+if [[ -z "$STACK" ]]; then
+  if [[ -n "$FROM_PATH" ]]; then
+    echo "ERROR: --from requires an explicit stack name."
+    exit 1
+  fi
+  STACK_QUEUE=$(for d in */STACK.md; do
+    name=$(dirname "$d")
+    count=$(find "$name/sources/incoming" -type f ! -name ".gitkeep" 2>/dev/null | wc -l | tr -d ' ')
+    [[ "$count" -gt 0 ]] && echo "$count $name"
+  done | sort -rn | awk '{print $2}')
+  if [[ -z "$STACK_QUEUE" ]]; then
+    echo "No stacks have queued sources in incoming/. Nothing to ingest."
+    exit 0
+  fi
+  echo "Auto-ingesting stacks with queued sources (largest first):"
+  for s in $STACK_QUEUE; do
+    n=$(find "$s/sources/incoming" -type f ! -name ".gitkeep" | wc -l | tr -d ' ')
+    echo "  $s ($n files)"
+  done
+  # Run steps 2-10 once per stack in STACK_QUEUE. Continue on per-stack failures
+  # so one broken source doesn't block the rest.
+else
+  if [[ ! -f "$STACK/STACK.md" ]]; then
+    echo "ERROR: Stack '$STACK' not found (no STACK.md). Run /stacks:new-stack $STACK first."
+    exit 1
+  fi
+  STACK_QUEUE="$STACK"
+fi
 ```
+
+For the remainder of the skill (Steps 2–10), when `STACK_QUEUE` contains multiple stacks, treat each stack as an independent ingestion run: iterate through them sequentially, performing all steps for one stack before moving to the next. Commit per stack (Step 10) so a failure mid-queue still leaves prior stacks in a clean state.
 
 ## Step 1.5: Stage sources from --from path (if provided)
 
