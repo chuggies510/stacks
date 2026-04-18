@@ -7,35 +7,26 @@
 ## Task DAG
 
 ```
- #19 (catalog-sources)        #21 (audit-stack)
- ─────────────────────────    ──────────────────
-  T1  T2  T3  T4  T5           T10  T11  T12
-   \  |   |   |  /              \    |    /
-    \ |   |   | /                 \  |  /
-     \|   |   |/                    \|/
-      T6 (catalog-sources SKILL)     T13 (audit-stack SKILL) ←── needs T1, T2, T5
-       ↓                              ↓
-      T7 (alpha.1 bump, ships #19)    T14 (alpha.3 bump, ships #21) ←── blocked by T9
-       ↓                                   ↑
-      T8 (ask skill mods — #20)            │
-       ↓                                   │
-      T9 (alpha.2 bump, ships #20) ────────┘
-                                          ↓
-                                         T15 (cutover + 0.9.0, ships #22)
+Wave 1 (parallel, 9 tasks): T1, T2, T3, T4, T5, T8, T10, T11, T12
+Wave 2 (parallel, 2 tasks): T6 (needs T1-T5), T13 (needs T1, T2, T5, T10-T12)
+Wave 3:                     T7  (ships #19 as 0.9.0-alpha.1; needs T6)
+Wave 4:                     T9  (ships #20 as 0.9.0-alpha.2; needs T7, T8)
+Wave 5:                     T14 (ships #21 as 0.9.0-alpha.3; needs T9, T13)
+Wave 6:                     T15 (ships #22 as 0.9.0 cutover; needs T14)
 ```
 
 Edges:
 - T1-T5 are independent foundational files (scripts, agents, wave-engine).
 - T6 needs all of T1-T5 present.
 - T7 ships #19 after T6.
-- T8 needs T6 (article shape exists to test against).
+- T8 is independent: pure text edit to `skills/ask/SKILL.md`, article-mode branch checks `articles/` directory at runtime so no plan-time coupling to T6.
 - T9 ships #20 after T7 (version sequence) and T8 (file landed).
-- T10-T12 are agent prompt edits; no code-level deps; run parallel to the #19 chain.
+- T10-T12 are agent prompt edits; no code-level deps; run in Wave 1 alongside T1-T5 and T8.
 - T13 needs T1, T2, T5 (shared helpers + wave-engine) and T10-T12 (agents reshaped).
 - T14 ships #21 after T9 (version sequence) and T13 (file landed).
 - T15 ships #22 after T14; atomic cutover commit.
 
-Maximum parallel fan-out: 8 agents concurrently runnable at start (T1-T5, T10-T12). Next wave: T6 (single), T8 (after T6). T13 (after T10-T12 + T1,T2,T5). Version bumps serialize via their blockedBy chain.
+Maximum parallel fan-out: 9 agents concurrently runnable at start (T1-T5, T8, T10-T12). Wave 2 fans out T6 and T13 in parallel (disjoint file ownership: `skills/catalog-sources/` vs `skills/audit-stack/`). Version bumps serialize via their blockedBy chain.
 
 ## Tasks
 
@@ -93,7 +84,9 @@ Blocked by: T6. Sub-issue: #19 (closes).
 
 Edit existing skill. Add Step 4: read `{stack}/index.md` and extract any `## Reading Paths` section as additional retrieval aid. Modify Step 5: branch on `articles/` directory presence (`find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .`). If articles present, read matching articles; if absent, fall back to existing `topics/*/guide.md` logic.
 
-Blocked by: T6 (article shape exists to reference and test). Sub-issue: #20.
+The three user-message strings that reference `/stacks:ingest-sources` in this file are left correct-for-now (the old skill is still runnable through alpha.3). T15 sweeps them to `/stacks:catalog-sources` as part of the cutover.
+
+No deps: pure text edit; article-mode branch runtime-checks `articles/` directory. Sub-issue: #20.
 
 ### Task 9 — version 0.9.0-alpha.2 + CHANGELOG (ships #20)
 
@@ -103,19 +96,19 @@ Blocked by: T7 (version sequence), T8 (file shipped). Sub-issue: #20 (closes).
 
 ### Task 10 — agents/validator.md (prompt update)
 
-Edit prompt only; keep filename. Update to mark articles inline with `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` (replaces previous refine-stack behavior of emitting a report). Add strip-prior-cycle-marks pre-step: before validating an article, strip any existing inline markers (they're stale from the previous audit). Write inline marks AS the sole output — no separate scratch file. Set `last_verified` frontmatter to today for each article touched. Include 3+ worked examples covering all four mark types.
+Edit prompt only; keep filename. Update to mark articles inline with `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` (replaces previous refine-stack behavior of emitting a report). Add strip-prior-cycle-marks pre-step: before validating an article, strip any existing inline markers (they're stale from the previous audit). Write inline marks AS the sole output — no separate scratch file. Set `last_verified` frontmatter to today for each article touched. Include 3+ worked examples covering all four mark types. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`, `validation-report.md`) from the existing prompt body — T15 sweeps the repo-wide, but catching here prevents a late fail.
 
 No deps. Sub-issue: #21.
 
 ### Task 11 — agents/synthesizer.md (prompt update)
 
-Edit prompt only; keep filename. Three outputs at stack root: `glossary.md` (alphabetical bolded terms extracted from article bodies), `invariants.md` (rules appearing in 2+ articles independently), `contradictions.md` (claims where articles conflict with per-article citation). Include 3+ worked examples.
+Edit prompt only; keep filename. Three outputs at stack root: `glossary.md` (alphabetical bolded terms extracted from article bodies), `invariants.md` (rules appearing in 2+ articles independently), `contradictions.md` (claims where articles conflict with per-article citation). Include 3+ worked examples. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`) from the existing prompt body.
 
 No deps. Sub-issue: #21.
 
 ### Task 12 — agents/findings-analyst.md (prompt update)
 
-Edit prompt only; keep filename. Write `dev/audit/findings.md` per locked schema: frontmatter (`audit_date`, `stack_head`, `pass_counter`, `schema_version`), items with ID = `sha256({article-slug}|{finding_type}|{normalized-claim})`, status enum includes `failed` (terminal), three sections (New acquisitions / Articles to re-synthesize / Deferred). Read inline marks directly from articles (no scratch file); read prior findings.md and carry forward item status by ID match. Include 3+ worked examples.
+Edit prompt only; keep filename. Write `dev/audit/findings.md` per locked schema: frontmatter (`audit_date`, `stack_head`, `pass_counter`, `schema_version`), items with ID = `sha256({article-slug}|{finding_type}|{normalized-claim})`, status enum includes `failed` (terminal), three sections (New acquisitions / Articles to re-synthesize / Deferred). Read inline marks directly from articles (no scratch file); read prior findings.md and carry forward item status by ID match. Include 3+ worked examples. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`) from the existing prompt body.
 
 No deps. Sub-issue: #21.
 
@@ -131,14 +124,39 @@ Bump plugin.json + marketplace.json to `0.9.0-alpha.3`. CHANGELOG entry for audi
 
 Blocked by: T9 (version sequence), T13 (file shipped). Sub-issue: #21 (closes).
 
-### Task 15 — rename cutover + 0.9.0 (ships #22)
+### Task 15 — rename cutover + repo-wide sweep + 0.9.0 (ships #22)
 
-Atomic breaking commit:
+Atomic breaking commit. Three groups of work:
+
+**Group A — remove old pipeline artifacts:**
 - `git rm -r skills/ingest-sources skills/refine-stack`
 - `git rm agents/topic-clusterer.md agents/topic-extractor.md agents/topic-synthesizer.md agents/cross-referencer.md`
-- Remove `dev/curate/` references from `templates/stack/` if any
-- Bump plugin.json + marketplace.json to `0.9.0` (final)
-- Prepend CHANGELOG entry documenting the breaking cutover (old skill/agent names, no migration path for existing guides, `0.9.0-alpha.3 → 0.9.0`)
-- Verify: `grep -rI "ingest-sources\|refine-stack\|topic-clusterer\|cross-referencer\|topic-extractor\|topic-synthesizer\|dev/curate" . --exclude-dir=.git --exclude CHANGELOG.md` returns empty
+- `git rm -r templates/stack/dev/curate` (entire subtree including `extractions/.gitkeep`)
+
+**Group B — scaffold replacement template dirs:**
+- `mkdir -p templates/stack/dev/audit templates/stack/dev/extractions`
+- `touch templates/stack/dev/audit/.gitkeep templates/stack/dev/extractions/.gitkeep`
+
+**Group C — sweep references across repo** (replace old names with new per context; keep historical mentions in `CHANGELOG.md` only):
+- `CLAUDE.md` (repo root) — 3 hits
+- `README.md` (repo root) — 12 hits
+- `skills/ask/SKILL.md` — 3 user-message strings `/stacks:ingest-sources` → `/stacks:catalog-sources`
+- `skills/new-stack/SKILL.md` — 2 hits
+- `skills/process-inbox/SKILL.md` — 2 hits
+- `references/refresh-procedure.md` — 5 hits (pipeline description now describes `catalog-sources` + `audit-stack`)
+- `templates/library/CLAUDE.md` — 6 hits
+- `templates/library/README.md` — 2 hits
+
+**Group D — version bump + CHANGELOG:**
+- Bump `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` to `0.9.0` (final; resolves pre-existing 0.8.3/0.8.0 mismatch as a side effect)
+- Prepend CHANGELOG entry documenting the breaking cutover (old skill/agent names removed, no migration path for existing guides, `0.9.0-alpha.3 → 0.9.0`)
+
+**Verify:**
+```
+grep -rI 'ingest-sources\|refine-stack\|topic-clusterer\|cross-referencer\|topic-extractor\|topic-synthesizer\|dev/curate' . \
+  --exclude-dir=.git --exclude-dir=dev --exclude-dir=.claude \
+  --exclude=CHANGELOG.md --exclude=wave-engine-legacy.md
+```
+Returns zero matches. Excludes are: `.git` (internal), `dev/` (feature-dev artifacts + briefs are historical design record), `.claude/` (memory-bank is session handoff record), `CHANGELOG.md` (historical release notes), `wave-engine-legacy.md` (explicit legacy doc if implementer chose to preserve it in T5).
 
 Blocked by: T14. Sub-issue: #22 (closes).

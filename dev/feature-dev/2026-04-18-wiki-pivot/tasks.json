@@ -122,7 +122,7 @@
           "wikilink-pass.sh invoked at W2b",
           "MoC generator preserves ## Reading Paths section"
         ],
-        "verifyCommand": "test -s skills/catalog-sources/SKILL.md && grep -q '^name: ' skills/catalog-sources/SKILL.md && grep -q '^description: Use when' skills/catalog-sources/SKILL.md && grep -q 'Step 0' skills/catalog-sources/SKILL.md && grep -q 'W1b' skills/catalog-sources/SKILL.md && grep -q 'assert-written' skills/catalog-sources/SKILL.md && grep -q 'wikilink-pass' skills/catalog-sources/SKILL.md && grep -q 'Reading Paths' skills/catalog-sources/SKILL.md",
+        "verifyCommand": "test -s skills/catalog-sources/SKILL.md && grep -q '^name: ' skills/catalog-sources/SKILL.md && grep -q 'Use when' skills/catalog-sources/SKILL.md && grep -q 'Step 0' skills/catalog-sources/SKILL.md && grep -q 'W1b' skills/catalog-sources/SKILL.md && grep -q 'assert-written' skills/catalog-sources/SKILL.md && grep -q 'wikilink-pass' skills/catalog-sources/SKILL.md && grep -q 'Reading Paths' skills/catalog-sources/SKILL.md",
         "issue": null
       }
     },
@@ -151,8 +151,8 @@
       "id": 8,
       "subject": "Add article-mode branch to skills/ask/SKILL.md",
       "status": "pending",
-      "blockedBy": [6],
-      "description": "Goal: /stacks:ask detects article mode vs guide mode per decision 11 and routes accordingly.\n\nFiles: skills/ask/SKILL.md (edit).\n\nAC: A new step (or extension of Step 4) reads {stack}/index.md and extracts any ## Reading Paths section as an additional retrieval aid. Step 5 is modified to branch on `articles/` directory presence: `test -d {stack}/articles && find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .`. If present, read matching articles (by filename keyword match against query terms, fall-through to reading all for small N). If absent, fall back to existing topics/*/guide.md logic unchanged.\n\nVerify: ask skill handles both a guide-only stack and an articles-populated stack.\n\nSteps: edit skill file with the branch, commit.",
+      "blockedBy": [],
+      "description": "Goal: /stacks:ask detects article mode vs guide mode per decision 11 and routes accordingly.\n\nFiles: skills/ask/SKILL.md (edit).\n\nAC: A new step (or extension of Step 4) reads {stack}/index.md and extracts any ## Reading Paths section as an additional retrieval aid. Step 5 is modified to branch on `articles/` directory presence: `test -d {stack}/articles && find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .`. If present, read matching articles (by filename keyword match against query terms, fall-through to reading all for small N). If absent, fall back to existing topics/*/guide.md logic unchanged.\n\nNote: the three user-message strings that reference `/stacks:ingest-sources` in this file stay as-is (correct through alpha.3 while the old skill is still runnable). T15 sweeps them to `/stacks:catalog-sources` at cutover. No deps — article-mode branch checks `articles/` at runtime.\n\nVerify: grep confirms branch logic present. ask skill handles both guide-only and articles-populated stacks.\n\nSteps: edit skill file with the branch, commit.",
       "metadata": {
         "files": [
           "skills/ask/SKILL.md"
@@ -192,7 +192,7 @@
       "subject": "Update agents/validator.md prompt (inline marks + strip-on-read)",
       "status": "pending",
       "blockedBy": [],
-      "description": "Goal: reshape validator agent to write inline [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] marks on articles as its sole output, and to strip any prior-cycle marks on input before validating.\n\nFiles: agents/validator.md (edit; keep filename).\n\nAC: Prompt documents: (a) strip prior inline marks from each article before validating (they're stale from the last audit), (b) write fresh marks inline, (c) update last_verified frontmatter to today for each article touched, (d) emit NO separate scratch file. 3+ worked examples covering all four mark types.\n\nVerify: file exists, strip-on-read is explicit, 3+ examples.\n\nSteps: edit prompt body, commit.",
+      "description": "Goal: reshape validator agent to write inline [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] marks on articles as its sole output, and to strip any prior-cycle marks on input before validating.\n\nFiles: agents/validator.md (edit; keep filename).\n\nAC: Prompt documents: (a) strip prior inline marks from each article before validating (they're stale from the last audit), (b) write fresh marks inline, (c) update last_verified frontmatter to today for each article touched, (d) emit NO separate scratch file. 3+ worked examples covering all four mark types. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`, `validation-report.md`) from the existing prompt body.\n\nVerify: file exists, strip-on-read is explicit, 3+ examples, no old-pipeline references remain.\n\nSteps: edit prompt body, commit.",
       "metadata": {
         "files": [
           "agents/validator.md"
@@ -201,9 +201,10 @@
           "Prompt specifies strip-prior-marks pre-step",
           "Prompt specifies inline marks as sole output (no scratch file)",
           "Prompt updates last_verified on touched articles",
-          "3+ worked examples present"
+          "3+ worked examples present",
+          "No references to topic-clusterer/topic-extractor/topic-synthesizer/cross-referencer/refine-stack/ingest-sources/validation-report.md remain"
         ],
-        "verifyCommand": "grep -qi 'strip' agents/validator.md && grep -q 'VERIFIED' agents/validator.md && grep -q 'last_verified' agents/validator.md && [ $(grep -c '^## Example' agents/validator.md) -ge 3 ]",
+        "verifyCommand": "grep -qi 'strip' agents/validator.md && grep -q 'VERIFIED' agents/validator.md && grep -q 'last_verified' agents/validator.md && [ $(grep -c '^## Example' agents/validator.md) -ge 3 ] && ! grep -qE 'topic-clusterer|topic-extractor|topic-synthesizer|cross-referencer|refine-stack|ingest-sources|validation-report' agents/validator.md",
         "issue": null
       }
     },
@@ -212,7 +213,7 @@
       "subject": "Update agents/synthesizer.md prompt (glossary + invariants + contradictions)",
       "status": "pending",
       "blockedBy": [],
-      "description": "Goal: reshape synthesizer to produce three stack-root artifacts.\n\nFiles: agents/synthesizer.md (edit; keep filename).\n\nAC: Prompt documents three outputs at stack root: glossary.md (alphabetical bolded terms from article bodies), invariants.md (rules appearing in 2+ articles independently, per existing tier-gate rule), contradictions.md (claims where two+ articles conflict, with per-article citation). 3+ worked examples.\n\nVerify: file exists, three outputs named, 3+ examples.\n\nSteps: edit prompt body, commit.",
+      "description": "Goal: reshape synthesizer to produce three stack-root artifacts.\n\nFiles: agents/synthesizer.md (edit; keep filename).\n\nAC: Prompt documents three outputs at stack root: glossary.md (alphabetical bolded terms from article bodies), invariants.md (rules appearing in 2+ articles independently, per existing tier-gate rule), contradictions.md (claims where two+ articles conflict, with per-article citation). 3+ worked examples. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`) from the existing prompt body.\n\nVerify: file exists, three outputs named, 3+ examples, no old-pipeline references remain.\n\nSteps: edit prompt body, commit.",
       "metadata": {
         "files": [
           "agents/synthesizer.md"
@@ -220,9 +221,10 @@
         "acceptanceCriteria": [
           "Prompt specifies glossary.md, invariants.md, contradictions.md as outputs",
           "Outputs are at stack root (not dev/)",
-          "3+ worked examples present"
+          "3+ worked examples present",
+          "No references to topic-clusterer/topic-extractor/topic-synthesizer/cross-referencer/refine-stack/ingest-sources remain"
         ],
-        "verifyCommand": "grep -q 'glossary.md' agents/synthesizer.md && grep -q 'invariants.md' agents/synthesizer.md && grep -q 'contradictions.md' agents/synthesizer.md && [ $(grep -c '^## Example' agents/synthesizer.md) -ge 3 ]",
+        "verifyCommand": "grep -q 'glossary.md' agents/synthesizer.md && grep -q 'invariants.md' agents/synthesizer.md && grep -q 'contradictions.md' agents/synthesizer.md && [ $(grep -c '^## Example' agents/synthesizer.md) -ge 3 ] && ! grep -qE 'topic-clusterer|topic-extractor|topic-synthesizer|cross-referencer|refine-stack|ingest-sources' agents/synthesizer.md",
         "issue": null
       }
     },
@@ -231,7 +233,7 @@
       "subject": "Update agents/findings-analyst.md prompt (locked schema + read inline marks)",
       "status": "pending",
       "blockedBy": [],
-      "description": "Goal: reshape findings-analyst to write the locked findings.md schema.\n\nFiles: agents/findings-analyst.md (edit; keep filename).\n\nAC: Prompt documents: (a) input = articles (inline marks are the data source), contradictions.md, prior findings.md; (b) output = dev/audit/findings.md with YAML frontmatter (audit_date, stack_head, pass_counter, schema_version) and item blocks with ID = sha256({article-slug}|{finding_type}|{normalized-claim}), status enum (open, applied, closed, deferred, stale, failed — failed terminal), action enum (fetch_source, cross_link, manual_review, none), three sections (New acquisitions, Articles to re-synthesize, Deferred); (c) carry forward prior item status by ID match; items absent from prior run start open. 3+ worked examples.\n\nVerify: schema fields + enums + carry-forward behavior all documented.\n\nSteps: edit prompt body, commit.",
+      "description": "Goal: reshape findings-analyst to write the locked findings.md schema.\n\nFiles: agents/findings-analyst.md (edit; keep filename).\n\nAC: Prompt documents: (a) input = articles (inline marks are the data source), contradictions.md, prior findings.md; (b) output = dev/audit/findings.md with YAML frontmatter (audit_date, stack_head, pass_counter, schema_version) and item blocks with ID = sha256({article-slug}|{finding_type}|{normalized-claim}), status enum (open, applied, closed, deferred, stale, failed — failed terminal), action enum (fetch_source, cross_link, manual_review, none), three sections (New acquisitions, Articles to re-synthesize, Deferred); (c) carry forward prior item status by ID match; items absent from prior run start open. 3+ worked examples. Rewrite must also remove any lingering references to the old pipeline (`topic-clusterer`, `topic-extractor`, `topic-synthesizer`, `cross-referencer`, `refine-stack`, `ingest-sources`) from the existing prompt body.\n\nVerify: schema fields + enums + carry-forward behavior all documented, no old-pipeline references remain.\n\nSteps: edit prompt body, commit.",
       "metadata": {
         "files": [
           "agents/findings-analyst.md"
@@ -241,9 +243,10 @@
           "Status enum includes 'failed' as terminal",
           "Three sections named (New acquisitions, Articles to re-synthesize, Deferred)",
           "Carry-forward by item ID match specified",
-          "3+ worked examples present"
+          "3+ worked examples present",
+          "No references to topic-clusterer/topic-extractor/topic-synthesizer/cross-referencer/refine-stack/ingest-sources remain"
         ],
-        "verifyCommand": "grep -q 'schema_version' agents/findings-analyst.md && grep -q 'pass_counter' agents/findings-analyst.md && grep -qi 'failed' agents/findings-analyst.md && grep -qi 'carry.forward\\|carry forward' agents/findings-analyst.md && [ $(grep -c '^## Example' agents/findings-analyst.md) -ge 3 ]",
+        "verifyCommand": "grep -q 'schema_version' agents/findings-analyst.md && grep -q 'pass_counter' agents/findings-analyst.md && grep -qi 'failed' agents/findings-analyst.md && grep -qi 'carry.forward\\|carry forward' agents/findings-analyst.md && [ $(grep -c '^## Example' agents/findings-analyst.md) -ge 3 ] && ! grep -qE 'topic-clusterer|topic-extractor|topic-synthesizer|cross-referencer|refine-stack|ingest-sources' agents/findings-analyst.md",
         "issue": null
       }
     },
@@ -265,7 +268,7 @@
           "wikilink-pass.sh invoked at A2b",
           "A4 convergence documented with 2-empty-passes and MAX_AUDIT_PASSES"
         ],
-        "verifyCommand": "test -s skills/audit-stack/SKILL.md && grep -q '^name: ' skills/audit-stack/SKILL.md && grep -q '^description: Use when' skills/audit-stack/SKILL.md && grep -q 'Step 0' skills/audit-stack/SKILL.md && grep -q 'A2b' skills/audit-stack/SKILL.md && grep -q 'assert-written' skills/audit-stack/SKILL.md && grep -q 'MAX_AUDIT_PASSES' skills/audit-stack/SKILL.md",
+        "verifyCommand": "test -s skills/audit-stack/SKILL.md && grep -q '^name: ' skills/audit-stack/SKILL.md && grep -q 'Use when' skills/audit-stack/SKILL.md && grep -q 'Step 0' skills/audit-stack/SKILL.md && grep -q 'A2b' skills/audit-stack/SKILL.md && grep -q 'assert-written' skills/audit-stack/SKILL.md && grep -q 'MAX_AUDIT_PASSES' skills/audit-stack/SKILL.md",
         "issue": null
       }
     },
@@ -292,31 +295,44 @@
     },
     {
       "id": 15,
-      "subject": "Cutover: remove old skills/agents + 0.9.0 final + CHANGELOG (ships #22)",
+      "subject": "Cutover: remove old skills/agents + repo-wide sweep + 0.9.0 + CHANGELOG (ships #22)",
       "status": "pending",
       "blockedBy": [14],
-      "description": "Goal: atomic breaking commit retiring old pipeline and shipping 0.9.0.\n\nFiles removed: skills/ingest-sources/ (dir), skills/refine-stack/ (dir), agents/topic-clusterer.md, agents/topic-extractor.md, agents/topic-synthesizer.md, agents/cross-referencer.md. Also any dev/curate/ references in templates/stack/.\n\nFiles modified: .claude-plugin/plugin.json (0.9.0), .claude-plugin/marketplace.json (0.9.0), CHANGELOG.md (new top entry documenting the breaking cutover).\n\nAC: grep -rI across repo (excluding .git and CHANGELOG.md) for the old names and dev/curate returns zero lines. Both JSON versions = '0.9.0' (not alpha).\n\nSteps: `git rm -r` the old dirs + `git rm` the old agent files; clean templates/stack/ if needed; bump versions; prepend CHANGELOG; commit.",
+      "description": "Goal: atomic breaking commit retiring the old pipeline, sweeping references across the repo, scaffolding replacement template dirs, shipping 0.9.0.\n\nGroup A — remove old pipeline artifacts (git rm -r / git rm):\n- skills/ingest-sources/ (dir)\n- skills/refine-stack/ (dir)\n- agents/topic-clusterer.md\n- agents/topic-extractor.md\n- agents/topic-synthesizer.md\n- agents/cross-referencer.md\n- templates/stack/dev/curate/ (entire subtree including extractions/.gitkeep)\n\nGroup B — scaffold replacement template dirs (mkdir -p + touch):\n- templates/stack/dev/audit/.gitkeep\n- templates/stack/dev/extractions/.gitkeep\n\nGroup C — sweep references across repo (replace old names with new per context; leave historical mentions in CHANGELOG.md only):\n- CLAUDE.md (repo root) — 3 hits\n- README.md (repo root) — 12 hits\n- skills/ask/SKILL.md — 3 user-message strings /stacks:ingest-sources → /stacks:catalog-sources\n- skills/new-stack/SKILL.md — 2 hits\n- skills/process-inbox/SKILL.md — 2 hits\n- references/refresh-procedure.md — 5 hits (pipeline description now describes catalog-sources + audit-stack)\n- templates/library/CLAUDE.md — 6 hits\n- templates/library/README.md — 2 hits\n\nGroup D — version bump + CHANGELOG:\n- .claude-plugin/plugin.json → 0.9.0 (final)\n- .claude-plugin/marketplace.json → 0.9.0 (final; resolves pre-existing 0.8.3/0.8.0 mismatch as side effect)\n- CHANGELOG.md — new top entry documenting breaking cutover (old skills/agents removed, no migration path for existing guides, 0.9.0-alpha.3 → 0.9.0)\n\nAC: grep -rI of old names across repo excluding .git, dev/, .claude/, CHANGELOG.md, wave-engine-legacy.md returns zero matches. Both JSON versions = '0.9.0'. templates/stack/dev/audit/ and templates/stack/dev/extractions/ scaffolded with .gitkeep.\n\nSteps: git rm old skills/agents + templates/stack/dev/curate; mkdir + touch replacement dirs; edit each sweep-file replacing old names; jq bump both JSON versions; prepend CHANGELOG; commit.",
       "metadata": {
         "files": [
           ".claude-plugin/plugin.json",
           ".claude-plugin/marketplace.json",
           "CHANGELOG.md",
+          "CLAUDE.md",
+          "README.md",
+          "skills/ask/SKILL.md",
+          "skills/new-stack/SKILL.md",
+          "skills/process-inbox/SKILL.md",
+          "references/refresh-procedure.md",
+          "templates/library/CLAUDE.md",
+          "templates/library/README.md",
+          "templates/stack/dev/audit/.gitkeep",
+          "templates/stack/dev/extractions/.gitkeep",
           "skills/ingest-sources/SKILL.md",
           "skills/refine-stack/SKILL.md",
           "agents/topic-clusterer.md",
           "agents/topic-extractor.md",
           "agents/topic-synthesizer.md",
-          "agents/cross-referencer.md"
+          "agents/cross-referencer.md",
+          "templates/stack/dev/curate/extractions/.gitkeep"
         ],
         "acceptanceCriteria": [
           "plugin.json version is '0.9.0'",
           "marketplace.json plugins[0].version is '0.9.0'",
-          "Old skill directories removed",
-          "Old agent files removed",
+          "Old skill directories (skills/ingest-sources, skills/refine-stack) removed",
+          "Old agent files (topic-clusterer, topic-extractor, topic-synthesizer, cross-referencer) removed",
+          "templates/stack/dev/curate/ removed entirely",
+          "templates/stack/dev/audit/.gitkeep and templates/stack/dev/extractions/.gitkeep exist",
           "CHANGELOG documents breaking cutover",
-          "grep for old names returns only CHANGELOG hits"
+          "Repo-wide grep of old names (excluding .git, dev/, .claude/, CHANGELOG.md, wave-engine-legacy.md) returns zero matches"
         ],
-        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0' ] && [ ! -e skills/ingest-sources ] && [ ! -e skills/refine-stack ] && [ ! -e agents/topic-clusterer.md ] && [ ! -e agents/cross-referencer.md ] && [ ! -e agents/topic-extractor.md ] && [ ! -e agents/topic-synthesizer.md ] && [ $(grep -rI -l 'ingest-sources\\|refine-stack\\|topic-clusterer\\|cross-referencer\\|topic-extractor\\|topic-synthesizer' skills agents scripts templates references 2>/dev/null | grep -v 'wave-engine-legacy' | wc -l) -eq 0 ]",
+        "verifyCommand": "[ \"$(jq -r .version .claude-plugin/plugin.json)\" = '0.9.0' ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = '0.9.0' ] && [ ! -e skills/ingest-sources ] && [ ! -e skills/refine-stack ] && [ ! -e agents/topic-clusterer.md ] && [ ! -e agents/cross-referencer.md ] && [ ! -e agents/topic-extractor.md ] && [ ! -e agents/topic-synthesizer.md ] && [ ! -e templates/stack/dev/curate ] && [ -f templates/stack/dev/audit/.gitkeep ] && [ -f templates/stack/dev/extractions/.gitkeep ] && [ $(grep -rI -l 'ingest-sources\\|refine-stack\\|topic-clusterer\\|cross-referencer\\|topic-extractor\\|topic-synthesizer\\|dev/curate' . --exclude-dir=.git --exclude-dir=dev --exclude-dir=.claude --exclude=CHANGELOG.md --exclude=wave-engine-legacy.md 2>/dev/null | wc -l) -eq 0 ]",
         "issue": 22
       }
     }
