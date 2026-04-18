@@ -28,7 +28,7 @@ Drove the wiki-pivot epic (#17) through feature-dev Phases 1–5 (up through pla
 
 ### Chat
 
-(to be filled in Phase 8)
+S1-wiki-pivot-spec-and-plan
 
 ### Changes Made
 
