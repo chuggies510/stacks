@@ -107,7 +107,7 @@
     {
       "id": 6,
       "subject": "Create skills/catalog-sources/SKILL.md",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         1,
         2,
@@ -264,7 +264,7 @@
     {
       "id": 13,
       "subject": "Create skills/audit-stack/SKILL.md",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         1,
         2,
