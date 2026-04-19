@@ -70,80 +70,236 @@ Dispatch architecture (three explorers, full details in session log):
 
 ### #23 — extraction_hash computed by helper script called from W1b
 
-Introduce `scripts/compute-extraction-hash.sh` taking a `path + slug` concatenation and emitting `sha256sum` of the UTF-8 bytes. Invoke from W1b (`skills/catalog-sources/SKILL.md` Step 7) during dedup: for each unique slug, compute `sha256sum <<< "{sorted-source-paths-newline-joined}|{slug}"` and write `extraction_hash: {value}` into the `_dedup.md` block. Remove the `hash_inputs` field from concept-identifier's output contract (it becomes vestigial once hash lands in `_dedup.md`). Rewrite `agents/article-synthesizer.md:16` — strike "already computed" and re-describe the input as "extraction_hash populated by W1b dedup pass." Rewrite `agents/concept-identifier.md:29` — strike "computed downstream"; replace with "hash is computed by `scripts/compute-extraction-hash.sh` during W1b dedup."
+Introduce `scripts/compute-extraction-hash.sh` taking a `path + slug` concatenation and emitting `sha256sum` of the UTF-8 bytes. Script opens with `set -euo pipefail`; errors to stderr with prefix `COMPUTE_EXTRACTION_HASH:` matching the `AGENT_WRITE_FAILURE:` convention in `scripts/assert-written.sh`.
+
+Invoke from W1b (`skills/catalog-sources/SKILL.md` Step 7) during dedup: for each unique slug, compute `sha256sum <<< "{sorted-source-paths-newline-joined}|{slug}"` and write `extraction_hash: {value}` into the `_dedup.md` block. Remove the `hash_inputs` field from concept-identifier's output contract (it becomes vestigial once hash lands in `_dedup.md`). Files to edit for #23:
+
+- `scripts/compute-extraction-hash.sh` (new)
+- `agents/concept-identifier.md:29` — strike "computed downstream"; replace with "hash is computed by `scripts/compute-extraction-hash.sh` during W1b dedup." Also remove `hash_inputs:` blocks from the three example concept blocks at lines 45-47, 72-74, 101-103 (they now have vestigial inputs).
+- `agents/article-synthesizer.md:16` — strike "already computed" from the input description; rewrite as "extraction_hash populated by W1b dedup pass."
+- `skills/catalog-sources/SKILL.md:260-310` — the W1b awk block; add post-awk bash loop that computes hash per slug and rewrites `_dedup.md` to include `extraction_hash: {value}`.
+- `references/wave-engine.md:148` — rewrite concept-block field list; replace `hash_inputs` with `extraction_hash` (and note it is populated by W1b, not by concept-identifier).
 
 Verification: grep a post-catalog article for `extraction_hash: [0-9a-f]{64}` — must match.
 
-### #25 — Declared vocabulary in STACK.md + post-W2 normalizer sweep
+### #25 — Declared vocabulary in STACK.md + post-W2 halt-on-drift check
 
-Add `allowed_tags:` block to the STACK.md template (`templates/stack/STACK.md`). The block is an ordered list of canonical tag strings. article-synthesizer reads STACK.md (already an input per `agents/article-synthesizer.md:18`) and the prompt section is rewritten to require tags chosen from the declared vocabulary. This is necessary but not sufficient.
+Add a new `## Tag Vocabulary` section to the STACK.md template (`templates/stack/STACK.md`), inserted between the existing `## Filing Rules` section and `## Frontmatter Convention` section. The new section contains an `allowed_tags:` YAML block — an ordered list of canonical tag strings — plus a one-paragraph explainer telling operators these are the values article-synthesizer agents must choose from.
 
-The sufficient mechanism: a deterministic post-W2 `scripts/normalize-tags.sh` that reads every `articles/*.md` tag, checks membership in the declared vocabulary, and emits a diff report. For any tag not in vocabulary, the script falls back to a levenshtein-distance match against vocabulary entries (`{article-tag}: {vocab-match} (distance=N)`). If distance ≤ 2, auto-rewrite in place; otherwise halt with a `TAG_DRIFT` error naming every unresolved tag. The normalizer sweep runs after W2b (wikilink pass), before W3 (source filing). Operators extend the vocabulary by editing STACK.md — no code changes required.
+article-synthesizer reads STACK.md (already an input per `agents/article-synthesizer.md:18`). Rewrite the tag-selection prose in that agent's prompt to require tags chosen from the declared `allowed_tags:` list. When the list is absent or empty, emit a warning but allow free-form tags (backward compatibility for existing stacks).
 
-Verification: on a stack with `allowed_tags: [bash, powershell, linux]`, an article emitting `tags: [bash-scripting]` must either be auto-rewritten to `bash` or halt the pipeline. Test fixtures in `scripts/tests/`.
+Post-W2 check: `scripts/normalize-tags.sh` reads `allowed_tags:` from STACK.md, greps every `articles/*.md` for `tags[0]` values not in that list, and halts with a `TAG_DRIFT:` stderr error naming every offending `{article-slug}: {offending-tag}` pair. No Levenshtein matching, no auto-rewrite — operators edit the article (or extend `allowed_tags:`) and rerun. This matches the existing `scripts/assert-written.sh` halt-on-failure pattern. The check runs after W2b (wikilink pass), before W3 (source filing). Script opens with `set -euo pipefail`; errors to stderr with prefix `TAG_DRIFT:`.
 
-### #26 — Deterministic batch sizing: ceil(N/5) capped at 10 sources/agent
+Files to edit for #25:
 
-Replace the prose "one per source or per batch" in `skills/catalog-sources/SKILL.md:233,243` with a concrete rule: `N_AGENTS = ceil(min(N_SOURCES, N_SOURCES/5))`, `SOURCES_PER_AGENT = ceil(N_SOURCES / N_AGENTS)`, capped so no single agent receives more than 10 sources. Below `N_SOURCES < 10`, dispatch one agent per source (current behavior — single-agent and batch rules agree at small N). Dispatch math lives in a bash block before W1 dispatch. Output file naming changes: batch agents write to `dev/extractions/batch-{batch-id}-concepts.md` instead of `{source-slug}-concepts.md`. W1b dedup awk already globs `*-concepts.md` — zero change required there. The assert-written gate loop iterates over batch IDs instead of source slugs. concept-identifier's prompt now says "you receive N sources (N≥1); produce one merged concepts file containing concept blocks from all of them."
+- `scripts/normalize-tags.sh` (new)
+- `templates/stack/STACK.md` — insert `## Tag Vocabulary` section between `## Filing Rules` and `## Frontmatter Convention`.
+- `agents/article-synthesizer.md:34-36` — rewrite tag-selection prose to require values from `allowed_tags:` list in STACK.md.
+- `skills/catalog-sources/SKILL.md` — add post-W2b bash invocation of `normalize-tags.sh`; wire into the pipeline between Step 9 (W2b) and Step 10 (W3).
 
-Verification: on an artificial 50-source stack, dispatch count is 5 (ceil(50/5) = 10; capped to max sources/agent gives 5 agents at 10 sources each).
+Verification: on a stack with `allowed_tags: [bash, powershell, linux]`, an article emitting `tags: [bash-scripting]` halts the pipeline with a `TAG_DRIFT:` error naming the offending article. Test fixture: `scripts/tests/fixtures/tag-drift/`.
+
+### #26 — Deterministic batch sizing: target 5 agents, cap 10 sources/agent
+
+Replace the prose "one per source or per batch" in `skills/catalog-sources/SKILL.md:233,243` with a concrete bash block that computes batch size first, then agent count:
+
+```bash
+if (( N_SOURCES < 10 )); then
+  SOURCES_PER_AGENT=1
+else
+  SOURCES_PER_AGENT=$(( (N_SOURCES + 4) / 5 ))   # ceil(N/5) — target 5 agents
+  (( SOURCES_PER_AGENT > 10 )) && SOURCES_PER_AGENT=10
+fi
+N_AGENTS=$(( (N_SOURCES + SOURCES_PER_AGENT - 1) / SOURCES_PER_AGENT ))  # ceil(N / per-agent)
+BATCH_IDS=( $(seq 1 "$N_AGENTS") )
+```
+
+Worked examples:
+- N=7: below threshold → SOURCES_PER_AGENT=1, N_AGENTS=7 (one-per-source, current behavior)
+- N=50: SOURCES_PER_AGENT = ceil(50/5) = 10 (cap holds), N_AGENTS = 5
+- N=107: SOURCES_PER_AGENT = ceil(107/5) = 22 → capped at 10, N_AGENTS = ceil(107/10) = 11
+- N=10: SOURCES_PER_AGENT = ceil(10/5) = 2, N_AGENTS = 5
+
+Output file naming: batch agents write to `dev/extractions/batch-{batch_id}-concepts.md` for `batch_id` in 1..N_AGENTS. W1b dedup awk already globs `*-concepts.md` — zero change required there.
+
+Gate loop rewrite at `skills/catalog-sources/SKILL.md:250-254`:
+
+```bash
+for batch_id in "${BATCH_IDS[@]}"; do
+  "$SCRIPTS_DIR/assert-written.sh" \
+    "$STACK/dev/extractions/batch-${batch_id}-concepts.md" \
+    "${DISPATCH_EPOCH}" \
+    "concept-identifier"
+done
+```
+
+concept-identifier's prompt (`agents/concept-identifier.md`) updates: "you receive N sources (N≥1); produce one merged concepts file at `dev/extractions/batch-{batch_id}-concepts.md` containing concept blocks from all of them." Also remove references to `{source-slug}-concepts.md` as the output path.
+
+Files to edit for #26:
+- `skills/catalog-sources/SKILL.md:225-256` — dispatch math bash block + gate loop rewrite
+- `agents/concept-identifier.md:30,34` — output path from `{source-slug}-concepts.md` to `batch-{batch_id}-concepts.md`; note that one agent writes one merged file for N sources
+- `references/wave-engine.md:18` — W1 output path column in the waves table; update to `batch-{batch_id}-concepts.md`
+
+Note on W3 source filing: W3 (`SKILL.md:355-377`) iterates `sources/incoming/` directly, not the extraction files. Publisher inference reads each source file's frontmatter or filename; it does not depend on the extraction-file naming. Batch naming is invisible to W3.
+
+Verification: on an artificial 50-source stack, dispatch count is 5 agents at 10 sources each.
 
 ### #27 — concept-identifier-orchestrator wrapper (wraps W1 + W1b + W2 only)
 
-Introduce `agents/concept-identifier-orchestrator.md`. Main session dispatches one orchestrator with:
+Introduce `agents/concept-identifier-orchestrator.md` with frontmatter:
+
+```yaml
+---
+name: concept-identifier-orchestrator
+tools: Task, Bash, Glob, Grep, Read, Write
+model: sonnet
+description: Use when catalog-sources needs to dispatch W1 (concept-identifier batch agents), W1b (dedup + hash compute), and W2 (article-synthesizer per concept) without accumulating agent summaries in the main session. Returns one JSON summary; main session retains W0, W0b, W2b, W3, W4, and commit.
+---
+```
+
+Tools rationale: `Task` to dispatch child agents, `Bash` to run the W1b dedup awk + `compute-extraction-hash.sh` + per-batch assert-written loop, `Glob` and `Read` to enumerate existing articles and STACK.md, `Write` for the `_dedup.md` scratch file.
+
+Main session dispatches one orchestrator with inputs:
 - Source list (from `NEW_SOURCES`)
 - Skip-list of extraction hashes (from W0b)
-- STACK.md path
-- Articles-directory listing
-- Scripts dir path (so it can call `compute-extraction-hash.sh` and `assert-written.sh`)
+- STACK.md path, articles directory path, dev/extractions directory path
+- Scripts dir path (for `compute-extraction-hash.sh`, `assert-written.sh`)
+- Agents dir path (for concept-identifier and article-synthesizer prompt files)
 
 Orchestrator performs:
-- W1 dispatch using the #26 batching rule (parallel batch agents)
+- Compute dispatch math per #26
+- W1 dispatch (parallel batch agents)
 - W1 gate loop (assert-written per batch file)
-- W1b dedup (invoking awk block + compute-extraction-hash.sh per unique slug)
+- W1b dedup (awk block + compute-extraction-hash.sh per unique slug)
 - W2 dispatch (parallel article-synthesizer agents, one per unique slug)
 - W2 gate loop (assert-written per article)
 
-Orchestrator returns **one** summary to main session: `{n_sources, n_batches, n_concepts, n_articles_new, n_articles_updated, failed_articles[]}`. Main session keeps W0 (enumerate), W0b (skip-list), W2b (wikilink pass), W3 (source filing), W4 (MoC regen), and commit (Step 12) — these are bash-only, small, and benefit from staying visible.
+Orchestrator returns **one** summary JSON to main session:
 
-Verification: on a 25-source stack (svelte-sized), main session context at end of catalog is at least 50% smaller than the pre-refactor baseline. Explicit metric: token count of main-session messages between W0 and the final commit message.
+```json
+{
+  "n_sources": 25,
+  "n_batches": 5,
+  "n_concepts": 47,
+  "n_articles_new": 42,
+  "n_articles_updated": 5,
+  "new_article_slugs": ["slug-a", "slug-b", ...],
+  "updated_article_slugs": ["slug-c", ...],
+  "failed_articles": []
+}
+```
+
+Main session retains W0 (enumerate), W0b (skip-list), W2b (wikilink pass), W3 (source filing), W4 (MoC regen), and commit (Step 12). The commit step's bash at `skills/catalog-sources/SKILL.md:437-438` currently dereferences `${NEW_ARTICLE_SLUGS[@]}` / `${UPDATED_ARTICLE_SLUGS[@]}` — arrays that no longer exist in main-session context. Rewrite those two lines to read the integer counts directly from the orchestrator's summary JSON (the orchestrator must parse the JSON it returns and expose `N_ARTICLES_NEW` / `N_ARTICLES_UPDATED` as shell variables in the main session; the cleanest mechanism is for the orchestrator to `Write` the summary to a known path like `$STACK/dev/extractions/_orchestrator-summary.json` and have the main session `jq -r` from it).
+
+Files to edit for #27:
+- `agents/concept-identifier-orchestrator.md` (new)
+- `skills/catalog-sources/SKILL.md` — replace inline W1/W1b/W2 blocks (Steps 6-8) with a single orchestrator dispatch; keep the orchestrator-summary-write and `jq -r` hand-off for the commit step at `SKILL.md:437-438`.
+- `references/wave-engine.md:136-165` — update "Execution" subsection for W1+W1b+W2 to note orchestrator-wrapper pattern.
+
+Verification: on a 25-source stack (svelte-sized), main session context at end of catalog is at least 50% smaller than the pre-refactor baseline. Explicit metric: count of Task-tool-return messages visible to the main session between W0 and the final commit. Pre-refactor: one per batch agent + one per article (~50 for a 25-source stack). Post-refactor: exactly one (the orchestrator summary).
 
 ### #29 — `resolvable_by` field on findings items
 
-Schema change (`agents/findings-analyst.md:54-75` item shape): add `resolvable_by: {audit-stack, catalog-sources, external}` to both claim-keyed and question-keyed item shapes. Emit-time rules:
-- `action: fetch_source` → `resolvable_by: catalog-sources` (always — audit-stack has no fetch capability)
-- `action: resynthesize` → `resolvable_by: audit-stack` (re-validation catches the corrected claim next pass)
-- `action: research_question` → `resolvable_by: external` (requires new material)
-- `action: noop` → `resolvable_by: audit-stack`
+Schema change (`agents/findings-analyst.md:54-75` item shape): add `resolvable_by: {audit-stack, catalog-sources, external}` to both claim-keyed and question-keyed item shapes. `agents/findings-analyst.md` is designated the **canonical** home for the findings schema; `skills/audit-stack/SKILL.md` and `references/wave-engine.md` reference it rather than duplicate the field list. Emit-time rules:
 
-A4 convergence awk (`skills/audit-stack/SKILL.md:214-227`) rewritten: `generative_open` counts only items where `resolvable_by == audit-stack` AND action is `fetch_source` or `research_question` in non-terminal status. In practice this means `resynthesize` drives convergence (which never blocks because resynthesize → the article is edited → next pass re-validates). Open `fetch_source` items report but don't block.
+- `action: fetch_source` → `resolvable_by: catalog-sources` (audit-stack has no fetch capability)
+- `action: resynthesize` → `resolvable_by: audit-stack` (re-validation catches the corrected claim on the next pass)
+- `action: research_question` → `resolvable_by: external` (requires new material the operator must acquire)
+- `action: noop` → `resolvable_by: audit-stack` (already resolved within the pass)
 
-Convergence definition must stay synchronized across three files:
-- `skills/audit-stack/SKILL.md:214-227` (A4 awk)
-- `agents/findings-analyst.md:100-102` (convergence prose)
-- `references/wave-engine.md:97-99` (wave-engine spec)
+A4 convergence rewrite. The current awk at `skills/audit-stack/SKILL.md:214-227` counts items where action is `fetch_source` OR `research_question` AND status is non-terminal. Replace that filter with: **count items where `resolvable_by == audit-stack` AND status is non-terminal.** In practice only `resynthesize` (and lingering `noop`) ever hit this filter, which is the correct convergence signal — resynthesize work is done by audit-stack itself; fetch_source and research_question work is not.
 
-Migration: existing `findings.md` files produced under schema_version: 2 are missing `resolvable_by`. Bump to `schema_version: 3`; findings-analyst promotes missing fields on carry-forward using the default-by-action rules above. No hand-migration of user files required.
+Rewritten awk (to be applied verbatim at SKILL.md:214-227):
 
-Verification: on a freshly-cataloged 11-article stack with only `fetch_source` UNSOURCED items, A4 converges on pass 1 (not pass 3 budget-cap).
+```bash
+generative_open=$(awk '
+  /^- id:/ {
+    if (in_item && resolvable == "audit-stack" && status != "terminal") count++
+    in_item=1; resolvable=""; status=""
+    next
+  }
+  in_item && /resolvable_by: audit-stack/ { resolvable="audit-stack" }
+  in_item && /status: (applied|closed|deferred|stale|failed)/ { status="terminal" }
+  END {
+    if (in_item && resolvable == "audit-stack" && status != "terminal") count++
+    print count+0
+  }
+' "$FINDINGS" 2>/dev/null || echo "0")
+```
+
+Updated convergence prose (to be applied verbatim at `agents/findings-analyst.md:100-102` and `references/wave-engine.md:97-99`):
+
+> An audit pass is empty when: zero items with `status: open` AND zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (`fetch_source`) or `resolvable_by: external` (`research_question`) are reported but do not block convergence — they queue for the next catalog cycle or external action.
+
+**Intentional behavior change: `research_question` items no longer block audit-stack convergence** (they previously did, via the combined fetch_source-OR-research_question filter). Rationale: research questions require new material or external verification; audit-stack cannot resolve them by re-dispatching A1-A3. Operators see them in the findings summary at Step 10; they persist in the active `findings.md` until resolved manually or carried forward by a subsequent audit that closes them.
+
+Schema migration: existing `findings.md` files under `schema_version: 2` lack `resolvable_by`. Bump to `schema_version: 3`; findings-analyst's carry-forward rule (`agents/findings-analyst.md:90-96`) is extended: when the prior-pass item lacks `resolvable_by`, fill it using the default-by-action rules above before emitting the new item. This means the first v3 audit pass on an existing stack auto-populates the field for every carried-forward item. No hand-migration required.
+
+Files to edit for #29:
+- `agents/findings-analyst.md:54-75` — add `resolvable_by` to both item shapes
+- `agents/findings-analyst.md:90-96` — extend carry-forward rule with v2→v3 field promotion
+- `agents/findings-analyst.md:100-102` — updated convergence prose (verbatim text above)
+- `agents/findings-analyst.md:27-33` — bump frontmatter `schema_version` from 2 to 3 in the template
+- `skills/audit-stack/SKILL.md:174-183` — update schema_version reference and note that findings-analyst is canonical schema home
+- `skills/audit-stack/SKILL.md:214-227` — replace A4 awk with the rewritten version above
+- `references/wave-engine.md:97-99` — updated convergence prose (verbatim text above)
+
+Verification: on a freshly-cataloged 11-article stack with only `fetch_source` UNSOURCED items, A4 converges on pass 1 (not pass 3 budget-cap). Also verify with a stack that has only `research_question` items — same result.
 
 ### #30 — Sharded validator + validator-orchestrator wrapper
 
-Mirror the #26 + #27 pattern on the audit side. Introduce `agents/validator-orchestrator.md`. Main session A1 dispatches one orchestrator with:
+Mirror the #26 + #27 pattern on the audit side. Introduce `agents/validator-orchestrator.md` with frontmatter:
+
+```yaml
+---
+name: validator-orchestrator
+tools: Task, Bash, Glob, Read
+model: sonnet
+description: Use when audit-stack A1 needs to shard validator dispatches across a large article set without accumulating per-agent summaries in the main session. Returns one JSON summary with mark distribution.
+---
+```
+
+Tools rationale: `Task` to dispatch child validators, `Bash` for dispatch math + assert-written loop, `Glob` + `Read` for article enumeration. No `Write` because the orchestrator only reads; the validators themselves edit articles in place.
+
+Main session A1 dispatches one orchestrator with:
 - Articles list (from `EXPECTED_ARTICLES`)
-- Sources directory
-- STACK.md
-- Scripts dir path
+- Sources directory (passed in full — each per-batch validator gets all sources, because any article in its shard may cite any source)
+- STACK.md path
+- Scripts dir, agents dir paths
+
+Orchestrator dispatch math (mirrors #26 shape):
+
+```bash
+if (( N_ARTICLES < 15 )); then
+  ARTICLES_PER_AGENT="$N_ARTICLES"
+  N_AGENTS=1
+else
+  ARTICLES_PER_AGENT=$(( (N_ARTICLES + 4) / 5 ))  # ceil(N/5) — target 5 agents
+  (( ARTICLES_PER_AGENT > 15 )) && ARTICLES_PER_AGENT=15
+  N_AGENTS=$(( (N_ARTICLES + ARTICLES_PER_AGENT - 1) / ARTICLES_PER_AGENT ))
+fi
+```
+
+Worked examples:
+- N=11 (sysops): ARTICLES_PER_AGENT=11, N_AGENTS=1 (single-validator, current behavior)
+- N=75 (svelte): ARTICLES_PER_AGENT=15, N_AGENTS=5
+- N=250 (pre-split mep): ARTICLES_PER_AGENT=15 (capped), N_AGENTS=17
 
 Orchestrator performs:
-- Dispatch math: `N_AGENTS = ceil(N_ARTICLES / 5)`, `ARTICLES_PER_AGENT = ceil(N_ARTICLES / N_AGENTS)`, capped at 15 articles/agent. Below `N_ARTICLES < 15`, one validator over all (current behavior).
-- Parallel validator dispatches (unchanged `agents/validator.md` prompt; each validator now receives a shard of articles instead of the full set)
-- Per-article assert-written gate loop (unchanged from current A1)
-- Return summary: `{n_articles_validated, mark_distribution: {VERIFIED, DRIFT, UNSOURCED, STALE}, failed_articles[]}`
+- Parallel validator dispatches (unchanged `agents/validator.md` prompt; each validator receives a shard of articles + all sources + STACK.md)
+- Per-article assert-written gate loop (unchanged from current A1 at `skills/audit-stack/SKILL.md:117-127`)
+- Returns one summary JSON: `{n_articles_validated, n_agents, mark_distribution: {VERIFIED, DRIFT, UNSOURCED, STALE}, failed_articles: []}`
 
-A2 (synthesizer), A2b, A3 (findings-analyst) are unchanged — they already receive the full article set and their context pressure is a separate concern (out of scope for this epic).
+Each per-batch validator receives the **full** `sources/` directory (not a source shard). Rationale: a validator checking article X must follow any inline `[source-slug]` citation in X, and those citations may reference sources that also appear in other articles' shards. Sharding sources would break validator correctness.
 
-Verification: on a 75-article stack, dispatch count is 5 (ceil(75/5) = 15, capped to 15 articles/agent gives 5 agents). The full A1 pass completes without "Prompt is too long" on any single validator.
+A2 (synthesizer), A2b, A3 (findings-analyst) are unchanged. They already receive the full article set and their context pressure is a separate concern out of scope for this epic.
+
+Files to edit for #30:
+- `agents/validator-orchestrator.md` (new)
+- `skills/audit-stack/SKILL.md:103-127` — replace the inline single-validator dispatch with an orchestrator dispatch; keep the per-article assert-written gate loop as-is (the orchestrator invokes it, not the main session — main session now only asserts the orchestrator's own return, which is implicit in the orchestrator's successful exit)
+- `references/wave-engine.md:192-210` — update A1 execution prose to describe the orchestrator pattern
+
+Verification: on a 75-article stack, dispatch count is 5 agents at 15 articles each. The full A1 pass completes without "Prompt is too long" on any single validator. Main-session context budget during A1 drops to one Task return instead of 171 tool-call summaries.
 
 ## Constraints
 
@@ -153,7 +309,7 @@ Verification: on a 75-article stack, dispatch count is 5 (ceil(75/5) = 15, cappe
 - **Convergence definition in three files.** Any change to A4 must update `skills/audit-stack/SKILL.md`, `agents/findings-analyst.md`, and `references/wave-engine.md` together. Plan must enumerate all three as files-to-edit.
 - **gotcha: directory mtime does NOT advance on in-place file edits (Linux).** CLAUDE.md gotcha. `assert-written.sh` usage must pass per-file paths, never directories.
 - **gotcha: parallel agent verify side-effects destroy sibling work.** CLAUDE.md gotcha. None of the new validators/orchestrators can run a verify-command that mutates global state (git, fixture dirs). Verify commands stay read-only — grep, jq, wc.
-- **Alpha versioning per sub-issue.** Plugin is at 0.11.1. This epic ships 6 functional sub-issues; plan uses `0.12.0-alpha.1` through `0.12.0-alpha.5` per sub-issue commit, then clean `0.12.0` on the final commit. (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` must stay in sync per CLAUDE.md.)
+- **Alpha versioning per sub-issue.** Plugin is at 0.11.1. This epic ships 6 functional sub-issues; plan uses `0.12.0-alpha.1` through `0.12.0-alpha.6` (one per sub-issue commit), then a seventh commit bumps to clean `0.12.0` with the rolled-up CHANGELOG entry. Matches the S6 pattern (0.9.0-alpha.1 through alpha.3, then 0.9.0). (`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` must stay in sync per CLAUDE.md.)
 - **Single git repo, no cross-repo.** All work in `stacks/`. No worktree needed — master branch is fine per S6 precedent.
 
 ## Done When
