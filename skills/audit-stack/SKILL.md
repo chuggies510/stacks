@@ -106,7 +106,7 @@ EXPECTED_ARTICLES=( "$STACK"/articles/*.md )
 
 Dispatch the `validator` agent (read `$AGENTS_DIR/validator.md` for the full prompt). Provide:
 - All articles: `$STACK/articles/*.md`
-- All source files: `$STACK/sources/` recursively
+- All source files: `$STACK/sources/` recursively, excluding `sources/incoming/` and `sources/trash/`
 - `$STACK/STACK.md` (source hierarchy for conflict resolution)
 
 The validator reads each article, strips prior-cycle marks (`[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]`), marks each substantive claim inline, and updates the `last_verified` frontmatter field. It edits article files in place.

@@ -1,3 +1,9 @@
+## 0.9.2 — 2026-04-18
+
+- feat(templates): add `sources/trash/` soft-delete bin to stack template. `mv {stack}/sources/{publisher}/foo.md {stack}/sources/trash/` pulls a filed source out of circulation without losing it. Gitignored. Closes #1.
+- feat(validator + audit-stack A1): validator input now explicitly excludes `sources/incoming/` (pending) and `sources/trash/` (soft-deleted). Prevents trashed sources from re-surfacing as citation targets during audit.
+- docs(library template): trash usage blurb in `templates/library/CLAUDE.md` Conventions section.
+
 ## 0.9.1 — 2026-04-18
 
 - feat(templates): add `templates/stack/.gitignore` with `sources/incoming/`. New stacks scaffolded via `/stacks:new-stack` ignore the incoming staging directory, matching the library-level `/inbox/` pattern. Closes #4.

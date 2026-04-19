@@ -14,7 +14,7 @@ When uncertain, err toward UNSOURCED rather than DRIFT. A missing citation is le
 ## Input
 
 - `articles/*.md` — all articles in the stack
-- `sources/` — all source files
+- `sources/` — all source files, excluding `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted)
 - `STACK.md` (source hierarchy section) — for conflict resolution when sources disagree
 
 ## Process

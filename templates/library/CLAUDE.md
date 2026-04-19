@@ -48,6 +48,9 @@ Derive "Next" from state:
 
 - **Sources are immutable.** Drop raw material in `{stack}/sources/incoming/`.
   The catalog process files them by origin and synthesizes knowledge into article-per-concept wiki entries.
+- **Trash is soft-delete.** To pull a filed source out of circulation without losing it,
+  `mv {stack}/sources/{publisher}/foo.md {stack}/sources/trash/`. The trash dir is gitignored
+  and skipped by `catalog-sources` and `audit-stack`. Recover by moving the file back.
 - **Articles are LLM-maintained.** Do not hand-edit article files. Use `/stacks:catalog-sources`
   to update them from sources.
 - **index.md is the stack index.** Each stack's index.md lists all sources and articles
