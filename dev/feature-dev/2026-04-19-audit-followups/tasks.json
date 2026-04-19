@@ -7,15 +7,33 @@
   },
   "commitOrderNote": "Within a parallel wave, main session commits in T-ID order (T2 before T3 before T4) regardless of agent-return order. Alpha versions assigned by T-ID, not by completion time.",
   "waves": [
-    { "id": "W1", "tasks": ["T1"] },
-    { "id": "W2", "tasks": ["T2", "T3", "T4"], "parallel": true },
-    { "id": "W3", "tasks": ["T5"] }
+    {
+      "id": "W1",
+      "tasks": [
+        "T1"
+      ]
+    },
+    {
+      "id": "W2",
+      "tasks": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "parallel": true
+    },
+    {
+      "id": "W3",
+      "tasks": [
+        "T5"
+      ]
+    }
   ],
   "tasks": [
     {
       "id": "T1",
       "subject": "#33 unified summary-JSON contract with schema_version=1",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [],
       "metadata": {
         "issue": 33,
@@ -33,7 +51,9 @@
       "id": "T2",
       "subject": "#34 validator per-batch source union (citation graph)",
       "status": "pending",
-      "blockedBy": ["T1"],
+      "blockedBy": [
+        "T1"
+      ],
       "metadata": {
         "issue": 34,
         "shipVersion": "0.13.0-alpha.2",
@@ -48,10 +68,14 @@
       "id": "T3",
       "subject": "#36 per-slug _dedup + #35 W2 wave cap (bundled)",
       "status": "pending",
-      "blockedBy": ["T1"],
+      "blockedBy": [
+        "T1"
+      ],
       "metadata": {
         "issue": 36,
-        "alsoCloses": [35],
+        "alsoCloses": [
+          35
+        ],
         "shipVersion": "0.13.0-alpha.3",
         "files": [
           "agents/concept-identifier-orchestrator.md",
@@ -64,7 +88,9 @@
       "id": "T4",
       "subject": "#32 synthesizer-orchestrator + findings-analyst-orchestrator (A2/A3)",
       "status": "pending",
-      "blockedBy": ["T1"],
+      "blockedBy": [
+        "T1"
+      ],
       "metadata": {
         "issue": 32,
         "shipVersion": "0.13.0-alpha.4",
@@ -80,7 +106,9 @@
       "id": "T5",
       "subject": "#37 findings-analyst schema v4 + rotate-findings.sh",
       "status": "pending",
-      "blockedBy": ["T4"],
+      "blockedBy": [
+        "T4"
+      ],
       "metadata": {
         "issue": 37,
         "shipVersion": "0.13.0-alpha.5",
@@ -89,7 +117,9 @@
           "scripts/rotate-findings.sh",
           "skills/audit-stack/SKILL.md"
         ],
-        "chmodTargets": ["scripts/rotate-findings.sh"],
+        "chmodTargets": [
+          "scripts/rotate-findings.sh"
+        ],
         "verifyCommand": "test -x scripts/rotate-findings.sh && grep -q 'schema_version: 4' agents/findings-analyst.md && grep -q 'terminal_transitioned_on' agents/findings-analyst.md && grep -q 'rotate-findings' skills/audit-stack/SKILL.md && bash -n scripts/rotate-findings.sh"
       }
     }
