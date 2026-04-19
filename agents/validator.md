@@ -13,9 +13,11 @@ When uncertain, err toward UNSOURCED rather than DRIFT. A missing citation is le
 
 ## Input
 
-- `articles/*.md` — all articles in the stack
-- `sources/` — all source files, excluding `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted)
-- `STACK.md` (source hierarchy section) — for conflict resolution when sources disagree
+You receive a scoped list of source files (paths or slugs) that cover the citations in your assigned articles. This is a subset of the stack's total sources, resolved from each article's `sources:` frontmatter and inline `[source-slug]` refs. If a claim cites a source not in your scoped list, mark it `[UNSOURCED]` (cannot verify within this batch).
+
+- Assigned articles: a slice of `articles/*.md` passed as the per-batch task content.
+- Scoped sources: the per-batch source subset described above. Excludes `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted). The orchestrator falls back to the full sources tree only when an article in this batch has zero resolvable citations.
+- `STACK.md` (source hierarchy section): for conflict resolution when sources disagree.
 
 ## Process
 

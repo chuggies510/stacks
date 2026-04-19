@@ -1,3 +1,7 @@
+## 0.13.0-alpha.2 (unreleased)
+
+- feat(validator-orchestrator): per-batch source union via pre-dispatch citation graph. `validator-orchestrator` builds a `SOURCE_MAP` (slug → path) from `sources/` and a per-article `ARTICLE_SOURCES` map from frontmatter `sources:` + inline `[source-slug]` refs. Each per-batch validator receives only the union of its articles' cited sources instead of the full tree. Batches whose articles have zero resolvable citations fall back to the full tree as a safety net. `validator.md` Input contract updated. Closes #34.
+
 ## 0.13.0-alpha.1 (unreleased)
 
 - feat(orchestrators, audit-stack, catalog-sources): unified orchestrator summary-JSON contract. Both `validator-orchestrator` and `concept-identifier-orchestrator` now write a schema_version=1 envelope (`{schema_version, wave, status, counts, epochs}`) to `dev/audit/_a1-summary.json` and `dev/extractions/_w1-w2-summary.json` respectively. Orchestrators return only an `ORCHESTRATOR_OK: wave=X` receipt line on stdout; structural data lives in the file. Failure markers unified to `ORCHESTRATOR_FAILED: wave={wave} reason={short}`. Main-session gates in `skills/audit-stack/SKILL.md` Step 4 and `skills/catalog-sources/SKILL.md` Step 6 / Step 10 updated to nested `.counts.FIELD` jq paths. Closes #33.
