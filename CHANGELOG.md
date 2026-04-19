@@ -1,3 +1,10 @@
+## 0.10.0 — 2026-04-18
+
+- feat(findings-analyst): generate cross-article **Research Questions** alongside gap/drift findings. Schema `v1` → `v2`. Adds fourth section to `dev/audit/findings.md` with `action: research_question` items that name a tension, the articles involved, and a verification target. Question IDs are keyed on sorted article slugs + question text (stable across passes regardless of listing order). Closes #8.
+- feat(audit-stack A4 convergence): research_question items count toward empty-pass gating alongside fetch_source. Renamed internal counter `fetch_open` → `generative_open` to reflect both action types. Budget cap and 2-consecutive-empty-pass rules unchanged.
+- feat(wave-engine reference): updated convergence rule, feedback flywheel, and W0 gate text to document the two generative action types.
+- compat: no migration required. Existing schema-v1 findings files carry forward unchanged — the agent reads old items and writes the schema-v2 file on the next pass. Old items retain their existing IDs; carry-forward rules apply.
+
 ## 0.9.2 — 2026-04-18
 
 - feat(templates): add `sources/trash/` soft-delete bin to stack template. `mv {stack}/sources/{publisher}/foo.md {stack}/sources/trash/` pulls a filed source out of circulation without losing it. Gitignored. Closes #1.

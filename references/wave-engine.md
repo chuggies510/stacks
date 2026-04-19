@@ -94,7 +94,7 @@ The script reads glossary bold terms and rewrites the first occurrence of each t
 
 A4 runs a bash convergence check after each audit-stack pass.
 
-**Empty pass**: zero items with `status: open` AND zero items with `action: fetch_source` in a non-terminal status. Terminal statuses are `applied`, `closed`, `deferred`, `stale`, `failed`. Items stuck in `failed` do not keep convergence open; they are handled out-of-band.
+**Empty pass**: zero items with `status: open` AND zero items with generative actions (`action: fetch_source` or `action: research_question`) in a non-terminal status. Terminal statuses are `applied`, `closed`, `deferred`, `stale`, `failed`. Items stuck in `failed` do not keep convergence open; they are handled out-of-band.
 
 **Convergence fires when**: 2 consecutive empty passes OR `MAX_AUDIT_PASSES` (read from `STACK.md`, default 3), whichever comes first. On convergence, A5 archives the findings file.
 
@@ -104,8 +104,8 @@ A4 runs a bash convergence check after each audit-stack pass.
 
 The loop between the two pipelines closes as follows:
 
-1. `audit-stack` produces `dev/audit/findings.md` with structured items (`action: fetch_source` or `action: resynthesize`, `status` field per item).
-2. `catalog-sources` reads prior findings at W0b: it builds a skip list of `extraction_hash` values for already-synthesized content and surfaces `fetch_source` items as new acquisition candidates.
+1. `audit-stack` produces `dev/audit/findings.md` (schema v2) with four sections: New Acquisitions (`action: fetch_source`), Articles to Re-Synthesize (`action: resynthesize`), Research Questions (`action: research_question`), and Deferred. Each item has a `status` field.
+2. `catalog-sources` reads prior findings at W0b: it builds a skip list of `extraction_hash` values for already-synthesized content and surfaces generative items (`fetch_source` and `research_question` with identifiable `verification_target`) as new acquisition candidates.
 3. `audit-stack` carries item status forward across passes: `applied`, `closed`, `deferred`, `failed`, `stale`. A second audit run is differential, not a full re-run from scratch.
 4. On convergence, A5 archives findings to `dev/audit/closed/{audit_date}-findings.md`, clearing the active queue.
 
@@ -124,7 +124,7 @@ ls {stack}/sources/incoming/ | sort > /tmp/sources-incoming.txt
 # compare against indexed sources to find not-yet-processed files
 ```
 
-Gate: if `NEW_SOURCES` is empty and no open `fetch_source` findings exist in `findings.md`, stop with "Nothing to catalog."
+Gate: if `NEW_SOURCES` is empty and no open generative findings (`fetch_source` or `research_question`) exist in `findings.md`, stop with "Nothing to catalog."
 
 ### W0b — Prior-findings gate
 
@@ -245,7 +245,7 @@ The agent reads articles (inline marks are the data source), `contradictions.md`
 
 ### A4 — Convergence check
 
-Bash reads `dev/audit/findings.md`. Checks empty-pass condition: zero `status: open` items AND zero `action: fetch_source` items in non-terminal status.
+Bash reads `dev/audit/findings.md`. Checks empty-pass condition: zero `status: open` items AND zero generative items (`action: fetch_source` or `action: research_question`) in non-terminal status.
 
 If empty pass and this is the 2nd consecutive empty pass: convergence. Proceed to A5.
 If `MAX_AUDIT_PASSES` reached: convergence regardless of open count. Proceed to A5.

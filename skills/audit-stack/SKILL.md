@@ -174,9 +174,11 @@ The agent writes `dev/audit/findings.md` with this locked frontmatter:
 audit_date: YYYY-MM-DD
 stack_head: <git sha>
 pass_counter: <int>
-schema_version: 1
+schema_version: 2
 ---
 ```
+
+Schema 2 adds a **Research Questions** section alongside New Acquisitions / Articles to Re-Synthesize / Deferred. See `$AGENTS_DIR/findings-analyst.md` for the question-item shape and generation rules.
 
 After the agent returns, gate the output:
 
@@ -200,28 +202,29 @@ FINDINGS="$STACK/dev/audit/findings.md"
 # Count items with status: open
 open_count=$(grep -c '^\s*status:\s*open\s*$' "$FINDINGS" 2>/dev/null || echo "0")
 
-# Count fetch_source items that are NOT in a terminal status.
+# Count fetch_source + research_question items that are NOT in a terminal status.
 # awk parses item blocks (each item starts with "- id:"). At every new item
 # boundary, first tally the PRIOR item's state, then reset. The count rule
 # must fire before the reset rule on the same `- id:` line: awk runs matching
 # rules in document order for each input line, so we do the tally-then-reset
 # inside a single combined rule to avoid the reset-before-count race.
-fetch_open=$(awk '
+generative_open=$(awk '
   /^- id:/ {
-    if (in_item && action == "fetch_source" && status != "terminal") count++
+    if (in_item && (action == "fetch_source" || action == "research_question") && status != "terminal") count++
     in_item=1; action=""; status=""
     next
   }
   in_item && /action: fetch_source/ { action="fetch_source" }
+  in_item && /action: research_question/ { action="research_question" }
   in_item && /status: (applied|closed|deferred|stale|failed)/ { status="terminal" }
   END {
-    if (in_item && action == "fetch_source" && status != "terminal") count++
+    if (in_item && (action == "fetch_source" || action == "research_question") && status != "terminal") count++
     print count+0
   }
 ' "$FINDINGS" 2>/dev/null || echo "0")
 
 # Determine empty-pass: both counters must be zero
-if [[ "$open_count" -eq 0 && "$fetch_open" -eq 0 ]]; then
+if [[ "$open_count" -eq 0 && "$generative_open" -eq 0 ]]; then
   empty_pass=1
 else
   empty_pass=0
@@ -237,11 +240,11 @@ if [[ "$empty_pass" -eq 1 ]]; then
     converged=1
   else
     prev_empty=1
-    echo "Pass $pass_counter complete: empty pass (open=$open_count, fetch_open=$fetch_open). Running one more pass to confirm convergence."
+    echo "Pass $pass_counter complete: empty pass (open=$open_count, generative_open=$generative_open). Running one more pass to confirm convergence."
   fi
 else
   prev_empty=0
-  echo "Pass $pass_counter complete: open=$open_count, fetch_source_open=$fetch_open."
+  echo "Pass $pass_counter complete: open=$open_count, generative_open=$generative_open (fetch_source + research_question)."
   if [[ "$pass_counter" -ge "$MAX_AUDIT_PASSES" ]]; then
     echo "Budget cap reached ($MAX_AUDIT_PASSES passes). Treating as converged."
     converged=1
@@ -298,5 +301,5 @@ Present a summary to the user:
 - Pass count completed and convergence outcome
 - Validator findings: VERIFIED/DRIFT/UNSOURCED/STALE mark counts across all articles
 - Synthesized artifacts: glossary term count, invariant count, contradiction count
-- Findings: open item count at close, fetch_source vs resynthesize breakdown
+- Findings: open item count at close, fetch_source vs resynthesize vs research_question breakdown
 - Archive path (if converged) or next recommended action (if budget-capped without convergence)
