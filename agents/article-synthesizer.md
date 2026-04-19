@@ -13,7 +13,7 @@ Write conservatively. Do not editorialize or add context not present in the extr
 
 ## Input
 
-- One concept block from `dev/extractions/{source-slug}-concepts.md` (post W1b dedup: `source_paths[]` merged across sources). The concept block includes an `extraction_hash: {64-hex}` line populated by W1b via `scripts/compute-extraction-hash.sh`; copy that value verbatim into the output article's frontmatter. Do not recompute it.
+- One concept block from `dev/extractions/_dedup.md` (post W1b dedup: `source_paths[]` merged across all batches, `extraction_hash: {64-hex}` populated by W1b via `scripts/compute-extraction-hash.sh`). Copy `extraction_hash` verbatim into the output article's frontmatter; do not recompute it. Upstream W1 writes per-batch extraction files (`dev/extractions/{batch_id}-concepts.md`) that W1b merges into `_dedup.md` — you do not read the per-batch files.
 - `articles/{slug}.md` — read this if `target_article` is set (existing article to update)
 - `STACK.md` — for source hierarchy, to understand relative trust of conflicting claims
 

@@ -219,19 +219,42 @@ Create the extractions scratch directory:
 mkdir -p "$STACK/dev/extractions"
 ```
 
-Build source slugs from the `NEW_SOURCES` list (basename without extension, lowercased, hyphens for spaces):
+Compute the dispatch plan deterministically from the `NEW_SOURCES` count. We batch to keep agent dispatch bounded regardless of source-set size: a 60-source run would otherwise fan out to 60 agents and exhaust the parallel-dispatch budget.
 
 ```bash
-SOURCE_SLUGS=()
+# Load NEW_SOURCES into a bash array (one path per element, blank lines stripped).
+NEW_SOURCES_ARR=()
 while IFS= read -r src; do
   [[ -z "$src" ]] && continue
-  slug=$(basename "$src" | sed 's/\.[^.]*$//' | tr '[:upper:]' '[:lower:]' | tr ' _' '-' | sed 's/[^a-z0-9-]//g')
-  SOURCE_SLUGS+=("$slug")
+  NEW_SOURCES_ARR+=("$src")
 done <<< "$NEW_SOURCES"
+N_SOURCES=${#NEW_SOURCES_ARR[@]}
+
+# Batching rule:
+#   - Baseline SOURCES_PER_AGENT=10.
+#   - Small-stack bypass: when N_SOURCES < 10, drop to 1-per-agent so a 3-source
+#     run still dispatches 3 agents in parallel (don't serialize tiny runs).
+if (( N_SOURCES < 10 )); then
+  SOURCES_PER_AGENT=1
+else
+  SOURCES_PER_AGENT=10
+fi
+
+# N_AGENTS = ceil(N_SOURCES / SOURCES_PER_AGENT)
+N_AGENTS=$(( (N_SOURCES + SOURCES_PER_AGENT - 1) / SOURCES_PER_AGENT ))
+
+# BATCH_IDS: stable `batch-{1..N}` ids (no zero-padding — order is deterministic
+# from NEW_SOURCES_ARR enumeration and the count is visible in the id itself).
+BATCH_IDS=()
+for ((i=1; i<=N_AGENTS; i++)); do
+  BATCH_IDS+=("batch-$i")
+done
+
+echo "W1 dispatch: $N_SOURCES sources → $N_AGENTS agents (SOURCES_PER_AGENT=$SOURCES_PER_AGENT)"
 ```
 
-Capture the dispatch epoch, then dispatch one `concept-identifier` agent per source batch in parallel. Pass each agent:
-- Its assigned source file paths (from `NEW_SOURCES`)
+Capture the dispatch epoch, then dispatch one `concept-identifier` agent per batch in parallel. For each `batch_id` at index `idx` (0-based) in `BATCH_IDS`, the agent receives sources at indices `idx*SOURCES_PER_AGENT` through `idx*SOURCES_PER_AGENT + SOURCES_PER_AGENT - 1` from `NEW_SOURCES_ARR` (clamped by `N_SOURCES`). Pass each agent:
+- Its assigned `batch_id` (e.g. `batch-3`) and that slice of `NEW_SOURCES_ARR`
 - `$STACK/STACK.md`
 - The skip list of `extraction_hash` values from W0b
 - The existing `$STACK/articles/` listing (for slug immutability checks)
@@ -240,16 +263,18 @@ The agent reads `$AGENTS_DIR/concept-identifier.md` for its full prompt and cont
 
 ```bash
 DISPATCH_EPOCH=$(date +%s)
-# Dispatch concept-identifier agents in parallel via Task tool (one per source or per batch).
-# Each agent writes: dev/extractions/{source-slug}-concepts.md
+# Dispatch N_AGENTS concept-identifier agents in parallel via Task tool —
+# one per batch, NOT one per source. Each agent writes a single merged file:
+#   dev/extractions/{batch_id}-concepts.md  (batch_id already carries the `batch-N` prefix)
+# containing one concept block per unique concept across its assigned sources.
 ```
 
 After all agents complete (fan-in), run the write-or-fail gate for each expected output:
 
 ```bash
-for slug in "${SOURCE_SLUGS[@]}"; do
+for batch_id in "${BATCH_IDS[@]}"; do
   "$SCRIPTS_DIR/assert-written.sh" \
-    "$STACK/dev/extractions/${slug}-concepts.md" \
+    "$STACK/dev/extractions/${batch_id}-concepts.md" \
     "${DISPATCH_EPOCH}" \
     "concept-identifier"
 done

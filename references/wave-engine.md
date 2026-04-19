@@ -15,7 +15,7 @@ The loop closes because `audit-stack` produces `dev/audit/findings.md` and `cata
 |------|----------------|-------|--------|
 | W0 | bash enumerate | `sources/incoming/*`, `index.md` | `NEW_SOURCES` list |
 | W0b | bash prior-findings gate | `findings.md` | skip list of already-synthesized `extraction_hash` values |
-| W1 | `concept-identifier` (parallel per source batch) | source files, `STACK.md`, skip list | `dev/extractions/{source-slug}-concepts.md` |
+| W1 | `concept-identifier` (parallel per batch) | source files, `STACK.md`, skip list | `dev/extractions/{batch_id}-concepts.md` |
 | W1b | bash slug-collision dedup | all W1 outputs | unified concept list with `source_paths[]` merged for shared slugs |
 | W2 | `article-synthesizer` (parallel per unique concept) | concept block, existing article if present, `STACK.md` | `articles/{slug}.md` |
 | W2b | bash wikilink pass | all articles + `glossary.md` (if present) | articles mutated in-place |
@@ -135,18 +135,20 @@ Gate: no write-or-fail check (bash read-only pass). Missing `findings.md` is a n
 
 ### W1 — Concept identification (parallel)
 
-Capture epoch, then dispatch one `concept-identifier` agent per source batch:
+Capture epoch, then dispatch `N_AGENTS` `concept-identifier` agents in parallel — one per batch, not one per source:
 
 ```bash
 DISPATCH_EPOCH=$(date +%s)
-# dispatch concept-identifier agents in parallel via Task tool
+# dispatch concept-identifier agents in parallel via Task tool (one per batch)
 # after fan-in:
-for slug in ${SOURCE_SLUGS}; do
-  scripts/assert-written.sh "dev/extractions/${slug}-concepts.md" "${DISPATCH_EPOCH}" "concept-identifier"
+for batch_id in "${BATCH_IDS[@]}"; do
+  scripts/assert-written.sh "dev/extractions/${batch_id}-concepts.md" "${DISPATCH_EPOCH}" "concept-identifier"
 done
 ```
 
-Each agent reads its source files, `STACK.md`, and the skip list. Output: `dev/extractions/{source-slug}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `extraction_hash` (populated by W1b), `target_article`).
+Each agent receives N sources (N≥1) and a `batch_id`, reads its assigned source files, `STACK.md`, and the skip list. Output: one merged `dev/extractions/{batch_id}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `extraction_hash` (populated by W1b), `target_article`). When N>1 the agent dedups within-batch at the source level so a concept appearing in multiple assigned sources becomes one block with a multi-entry `source_paths:`.
+
+The batching rule (SOURCES_PER_AGENT=10 baseline, with a small-stack bypass of 1-per-agent when `N_SOURCES < 10`) lives in `skills/catalog-sources/SKILL.md`. `N_AGENTS = ceil(N_SOURCES / SOURCES_PER_AGENT)` bounds parallel dispatch regardless of source-set size.
 
 ### W1b — Slug-collision dedup
 
