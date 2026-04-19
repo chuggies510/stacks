@@ -21,6 +21,8 @@ Be specific. "Something is wrong" is not useful. "Article `chiller-efficiency-me
 
 Write `dev/audit/findings.md` with this locked schema.
 
+**Response shape — critical.** Your response to the operator must be a one-line confirmation naming the written file and a short summary (e.g., "Wrote dev/audit/findings.md — 23 UNSOURCED, 4 research questions, pass_counter=1"). Do NOT include the findings content, the YAML frontmatter, or any item bodies in your response. The file IS the output; your response is only the receipt. If you find yourself writing a long structured response, stop and invoke Write instead. A pipeline gate verifies the file was written and will halt if it is missing, even if your response contains correct content inline.
+
 **Frontmatter:**
 ```yaml
 ---

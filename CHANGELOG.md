@@ -1,3 +1,8 @@
+## 0.11.1 — 2026-04-19
+
+- fix(catalog-sources, audit-stack): SCRIPTS_DIR/STACKS_ROOT detection now prefers `installLocation` from `~/.claude/plugins/known_marketplaces.json` over scanning `~/.claude/plugins/cache/`. Directory-source installs have an authoritative path in `known_marketplaces.json`; cache scans could return a stale pre-pivot version (e.g. 0.8.3) and dispatch removed agents or skip newer scripts. Cache scan is now the fallback for registry-style installs. Closes #24.
+- fix(findings-analyst): agent prompt now reinforces that the response to the operator must be a one-line confirmation only, not the findings content. Agent was silently returning full YAML inline and skipping the Write call despite having the tool; the assert-written gate caught it but re-dispatch was expensive. Closes #28.
+
 ## 0.11.0 — 2026-04-18
 
 - fix(ask): Step 7 (file-result-back / Karpathy loop) now branches on the same MODE flag set in Step 5. Article-mode stacks write filings to `articles/{slug}.md` with proper frontmatter (`extraction_hash: ""`, `last_verified: ""`, `updated: <today>`); guide-mode stacks keep writing to `topics/{topic}/guide.md`. Previously both branches wrote to legacy `topics/` which does not exist in article-mode stacks (shipped bug from the 0.9.0 wiki-pivot cutover). Addresses #7 (filing-path slice only; broader "entity/comparison/synthesis page types" reframe left open).

@@ -143,12 +143,15 @@ Read `$STACK/STACK.md` and extract:
 Anchor on the `scripts/` subdirectory under the plugin cache (path-guarded so a similarly-named dir from another plugin cannot collide), then derive every other plugin path from the shared root:
 
 ```bash
-SCRIPTS_DIR=$(find ~/.claude/plugins/cache -type d -name "scripts" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
-if [[ -z "$SCRIPTS_DIR" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  SCRIPTS_DIR="$STACKS_ROOT/scripts"
-else
+# Prefer installLocation from known_marketplaces.json — authoritative for
+# directory-source installs. Fall back to a cache scan only when that field
+# is not set (registry-style installs).
+STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
+if [[ -z "$STACKS_ROOT" ]]; then
+  SCRIPTS_DIR=$(find ~/.claude/plugins/cache -type d -name "scripts" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
   STACKS_ROOT="${SCRIPTS_DIR%/scripts}"
+else
+  SCRIPTS_DIR="$STACKS_ROOT/scripts"
 fi
 
 AGENTS_DIR="$STACKS_ROOT/agents"
