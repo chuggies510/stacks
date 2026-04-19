@@ -25,13 +25,13 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 `/stacks:process-inbox` (from any repo) → read library's `inbox/*.md` → classify each against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched.
 
 ### Audit pipeline (A1 → A5) with convergence loop
-`/stacks:audit-stack {stack}` → A1 validator inline-marks articles `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` (strips prior-cycle marks first, updates `last_verified` frontmatter) → A2 synthesizer produces `glossary.md`, `invariants.md`, `contradictions.md` at stack root → A2b shared wikilink pass → A3 findings-analyst writes `dev/audit/findings.md` per locked schema (id = SHA256, status enum with terminal `failed`, carry-forward) → A4 bash convergence check (2 consecutive empty passes OR `MAX_AUDIT_PASSES` cap, default 3) → A5 on convergence `cp` to `dev/audit/closed/{audit_date}-findings.md` so active `findings.md` persists for the next catalog cycle.
+`/stacks:audit-stack {stack}` → A1 validator inline-marks articles `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` (strips prior-cycle marks first, updates `last_verified` frontmatter; excludes `sources/incoming/` and `sources/trash/`) → A2 synthesizer produces `glossary.md`, `invariants.md`, `contradictions.md` at stack root → A2b shared wikilink pass → A3 findings-analyst writes `dev/audit/findings.md` per locked schema v2 (four sections: New Acquisitions, Articles to Re-Synthesize, Research Questions, Deferred; id = SHA256; status enum with terminal `failed`; carry-forward) → A4 bash convergence check: `generative_open` = non-terminal items with `action: fetch_source` OR `action: research_question` (2 consecutive empty passes OR `MAX_AUDIT_PASSES` cap, default 3) → A5 on convergence `cp` to `dev/audit/closed/{audit_date}-findings.md` so active `findings.md` persists for the next catalog cycle.
 
 ### Feedback flywheel
 Catalog reads findings.md at W0b (skip list from terminal statuses; driving acquisitions from open items). Audit writes findings.md at A3 (carry-forward preserves terminal statuses by id). A5 uses cp (not mv) — findings.md is the persistent baseline that closes the loop.
 
 ### Lookup
-`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + indexes → detect article-mode vs guide-mode via `articles/` directory presence → extract `## Reading Paths` context from `index.md` → load up to 3 matching articles (article mode) or topic guides (guide mode) → synthesize answer.
+`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + indexes → detect article-mode vs guide-mode via `articles/` directory presence → extract `## Reading Paths` context from `index.md` → load up to 3 matching articles (article mode) or topic guides (guide mode) → synthesize answer → optional Step 7 file-result-back branches on the same MODE flag (article mode writes `articles/{slug}.md` with `extraction_hash: ""`; guide mode writes `topics/{topic}/guide.md`).
 
 ## Write-or-fail gate
 
@@ -52,6 +52,6 @@ This mirrors the ChuggiesMart pattern — same mechanism, single-plugin variant.
 
 ## Known Weak Spots
 
-- No `sources/incoming/` gitignore in library template yet (#4) — users accidentally commit raw sources.
 - W1b dedup and W4 MoC generator depend on gawk (nested arrays); mawk fallback is noted in catalog-sources SKILL.md but not implemented.
 - Audit-stack outer pass loop re-enters Steps 4-8 textually; not all model variants will execute the loop deterministically without the operator re-invoking.
+- Cross-stack retrieval in `/stacks:ask` is stub (one-stack scope only); blocks on-demand guide synthesis (#5, #18).

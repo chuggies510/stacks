@@ -90,6 +90,21 @@ Do not commit test library content to this repo.
 - **Repo**: git@github.com:chuggies510/stacks.git
 - **Issues**: `gh issue list --state open`
 
+## Gotchas
+
+### Template `.gitignore` Self-Shadows Its Own `.gitkeep` Placeholders
+
+When a template subtree (e.g. `templates/stack/`) ships both a `.gitignore` and a `.gitkeep` inside a to-be-ignored child directory, bare-directory patterns silently block their own placeholder. `sources/trash/` in `templates/stack/.gitignore` matches `templates/stack/sources/trash/` AND `templates/stack/sources/trash/.gitkeep` — so `git add` of the .gitkeep refuses, the template directory ships without its placeholder, and downstream scaffolding has no empty dir to seed. Use `dir/*` + `!dir/.gitkeep`:
+
+```
+sources/incoming/*
+sources/trash/*
+!sources/incoming/.gitkeep
+!sources/trash/.gitkeep
+```
+
+`dir/*` ignores directory *contents* (what you want for user-added files post-scaffold) while leaving the directory entry traversable so `!.gitkeep` re-include reaches. Diagnose with `git check-ignore -v path/to/.gitkeep`. Affects any `templates/` subtree with a nested `.gitignore`.
+
 ## Chuggies Bot
 
 @chuggies_bot is a Telegram-based AI assistant that reads memory banks and issues across repos. It runs on Dev Pi (192.168.3.4) via OpenClaw. Memory bank handoffs are consumed by the bot's nightly refresh (2am Pacific) — keep `active-context.md` structured and current.
