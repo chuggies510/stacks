@@ -22,6 +22,8 @@
 |--------|---------|
 | `scripts/assert-written.sh {path} {dispatch_epoch} {agent_label}` | Write-or-fail gate: `test -s` + `stat -c %Y > dispatch_epoch`. Linux-only. Fixed `AGENT_WRITE_FAILURE` error string. |
 | `scripts/wikilink-pass.sh {articles-dir} {glossary-path}` | Deterministic wikilink injection. Reads bold terms from glossary, wraps first case-insensitive occurrence per term per article, preserves capitalization, skips self-links and already-wrapped. No-op when glossary absent. |
+| `scripts/compute-extraction-hash.sh` (stdin→stdout) | Pipes stdin through `sha256sum \| awk '{print $1}'`. Called by W1b on `echo -n "{sorted-source-paths}\|{slug}"` (paths joined by `\|`, trailing `\|`, then slug). Emits bare 64-hex digest. Anchors the catalog→audit→catalog skip-list flywheel. |
+| `scripts/normalize-tags.sh {stack_root}` | Reads `allowed_tags:` block-list from `{stack_root}/STACK.md`, greps every `articles/*.md` frontmatter `tags:` against it, halts with `TAG_DRIFT: {slug}: {tag}` on stderr per offender (exit 1). Exits 0 with backward-compat warning when `allowed_tags:` absent/empty. Runs as W2b-post in catalog pipeline. |
 
 ## CLI Commands
 
