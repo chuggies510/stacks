@@ -35,7 +35,12 @@ Notable Phase-5 catches:
 
 ### Chat
 
-(filled in Phase 8)
+S8-pipeline-blockers-hash-tags-batch
+
+### Session Rating
+
+**Rating**: 4/5
+**Note**: (none)
 
 ### Changes Made
 
