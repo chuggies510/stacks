@@ -1,3 +1,9 @@
+## 0.11.0 — 2026-04-18
+
+- fix(ask): Step 7 (file-result-back / Karpathy loop) now branches on the same MODE flag set in Step 5. Article-mode stacks write filings to `articles/{slug}.md` with proper frontmatter (`extraction_hash: ""`, `last_verified: ""`, `updated: <today>`); guide-mode stacks keep writing to `topics/{topic}/guide.md`. Previously both branches wrote to legacy `topics/` which does not exist in article-mode stacks (shipped bug from the 0.9.0 wiki-pivot cutover). Addresses #7 (filing-path slice only; broader "entity/comparison/synthesis page types" reframe left open).
+- docs(references): add `references/obsidian.md` covering library-as-vault setup, graph view, Web Clipper configuration for `sources/incoming/`, and four Dataview query recipes (never-validated, single-source, staleness, tag coverage). Closes #9.
+- docs(README): add a short "browse with Obsidian" section pointing to the new reference.
+
 ## 0.10.0 — 2026-04-18
 
 - feat(findings-analyst): generate cross-article **Research Questions** alongside gap/drift findings. Schema `v1` → `v2`. Adds fourth section to `dev/audit/findings.md` with `action: research_question` items that name a tension, the articles involved, and a verification target. Question IDs are keyed on sorted article slugs + question text (stable across passes regardless of listing order). Closes #8.

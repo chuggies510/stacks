@@ -137,6 +137,12 @@ Five specialized agents power the pipeline:
 
 ---
 
+## browse with Obsidian
+
+A library is a directory of markdown files with frontmatter and `[[wikilinks]]` — exactly the shape [Obsidian](https://obsidian.md) is built for. Open your library as a vault and you get graph view over the articles, backlinks, Dataview queries against frontmatter (e.g. "which articles have never been validated"), and one-click source capture via the [Web Clipper](https://obsidian.md/clipper) extension pointed at `sources/incoming/`. See `references/obsidian.md` for setup, Dataview query recipes, and conventions.
+
+---
+
 ## why not just use RAG
 
 You could. RAG gives you chunks. Stacks gives you synthesis.

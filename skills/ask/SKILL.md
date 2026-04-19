@@ -147,19 +147,46 @@ Valuable answers compound into the library rather than disappearing into chat hi
 
 If the answer warrants filing, ask: "File this answer into the {stack} stack? (yes/no)"
 
-If yes:
+If yes, branch on `MODE` (the article/guide flag set in Step 5):
 
-1. Determine whether it fits an existing topic (extends a guide) or is genuinely new (needs its own guide).
+### Article mode
 
-2. **Extends existing topic:** append the synthesized content to the relevant `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section. Increment the `sources` frontmatter count if new source material was drawn in.
+1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
 
-3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Populate it from the synthesized answer. Add it to `$LIBRARY/{stack}/index.md` Topics table.
+2. **Extends existing article:** read `$LIBRARY/{stack}/articles/{slug}.md`, append the synthesized material under an appropriate heading, merge any new source paths into the `sources:` frontmatter list, set `updated: <today>` and `last_verified: ""` (forces revalidation on the next audit). Use inline `[source-slug]` citations to match the article convention. Do not write `[[wikilinks]]` — the next `/stacks:audit-stack` wikilink pass handles those.
+
+3. **New article:** create `$LIBRARY/{stack}/articles/{slug}.md` with this frontmatter:
+   ```yaml
+   ---
+   extraction_hash: ""
+   last_verified: ""
+   updated: <YYYY-MM-DD today>
+   sources:
+     - <path/to/source1.md>
+     - <path/to/source2.md>
+   title: <human-readable title>
+   tags:
+     - <tag>
+   ---
+   ```
+   `extraction_hash` is empty because a query-filed article is not driven by a concept-block extraction; the next `catalog-sources` run will fill it if a source later produces the same slug. Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks — those belong to the validator. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list (keep alphabetical).
+
+### Guide mode (legacy stacks without `articles/`)
+
+1. Determine whether it fits an existing topic (extends a guide) or is genuinely new.
+
+2. **Extends existing topic:** append the synthesized content to `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section. Increment `sources` if new material was drawn in.
+
+3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Populate from the synthesized answer. Add to `$LIBRARY/{stack}/index.md` Topics table.
+
+### Both modes
 
 4. Update `$LIBRARY/{stack}/log.md`, prepending:
    ```
-   ## [YYYY-MM-DD] query | "{short query summary}" → filed to {topic}
-   Synthesized answer filed. {new | updated} topic: {topic-slug}.
+   ## [YYYY-MM-DD] query | "{short query summary}" → filed to {target}
+   Synthesized answer filed. {new | updated} {article|topic}: {slug}.
    ```
+   Where `{target}` is the article slug (article mode) or topic name (guide mode).
 
 5. Commit:
    ```bash
