@@ -129,7 +129,7 @@
     {
       "id": 5,
       "subject": "#30 validator-orchestrator wrapper (sharded A1)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         3
       ],
@@ -156,7 +156,8 @@
         ],
         "verifyCommand": "test -f agents/validator-orchestrator.md && head -6 agents/validator-orchestrator.md | grep -q '^name: validator-orchestrator' && head -6 agents/validator-orchestrator.md | grep -qE '^tools:.*Task' && ! head -6 agents/validator-orchestrator.md | grep -q '^description: Use when' && grep -q 'validator-orchestrator' skills/audit-stack/SKILL.md && grep -q 'ARTICLES_PER_AGENT' agents/validator-orchestrator.md && grep -q 'validator-orchestrator' references/wave-engine.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.5\" ] && grep -q '^## 0.12.0-alpha.5' CHANGELOG.md",
         "issue": 30
-      }
+      },
+      "completedAt": "2026-04-19T00:00:00Z"
     },
     {
       "id": 6,
