@@ -68,7 +68,7 @@
     {
       "id": 3,
       "subject": "#25 tag vocabulary declaration + halt-on-drift check",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         2
       ],
