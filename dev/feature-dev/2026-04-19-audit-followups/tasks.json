@@ -50,7 +50,7 @@
     {
       "id": "T2",
       "subject": "#34 validator per-batch source union (citation graph)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         "T1"
       ],
@@ -67,7 +67,7 @@
     {
       "id": "T3",
       "subject": "#36 per-slug _dedup + #35 W2 wave cap (bundled)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         "T1"
       ],
@@ -87,7 +87,7 @@
     {
       "id": "T4",
       "subject": "#32 synthesizer-orchestrator + findings-analyst-orchestrator (A2/A3)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         "T1"
       ],
