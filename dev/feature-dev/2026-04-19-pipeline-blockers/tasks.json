@@ -162,7 +162,7 @@
     {
       "id": 6,
       "subject": "#27 concept-identifier-orchestrator wrapper + clean 0.12.0 release",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         5
       ],
@@ -191,7 +191,8 @@
         ],
         "verifyCommand": "test -f agents/concept-identifier-orchestrator.md && head -6 agents/concept-identifier-orchestrator.md | grep -q '^name: concept-identifier-orchestrator' && ! head -6 agents/concept-identifier-orchestrator.md | grep -q '^description: Use when' && grep -q 'concept-identifier-orchestrator' skills/catalog-sources/SKILL.md && grep -q '_orchestrator-summary.json' skills/catalog-sources/SKILL.md && grep -qE \"jq -r ['\\\"]\\\\.n_articles_new['\\\"]\" skills/catalog-sources/SKILL.md && ! grep -q 'NEW_ARTICLE_SLUGS\\[@\\]' skills/catalog-sources/SKILL.md && grep -q 'compute-extraction-hash.sh' agents/concept-identifier-orchestrator.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0\" ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = \"0.12.0\" ] && grep -q '^## 0.12.0 — 2026-04-19' CHANGELOG.md && grep -qE '^## 0.12.0-alpha\\.[1-5]' CHANGELOG.md",
         "issue": 27
-      }
+      },
+      "completedAt": "2026-04-19T00:00:00Z"
     }
   ]
 }
