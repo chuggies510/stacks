@@ -135,7 +135,7 @@
     {
       "id": 7,
       "subject": "Bump to 0.9.0-alpha.1 + CHANGELOG (ships #19)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         6
       ],
