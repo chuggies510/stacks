@@ -1,3 +1,7 @@
+## 0.12.1 — 2026-04-19
+
+- refactor(audit-stack, catalog-sources): simplify orchestrator summary-JSON gates to require only the fields the main session actually consumes. `validator-orchestrator` gate now checks `(.n_articles | type) == "number"` only; the other three fields (`n_batches`, `articles_per_agent`, `dispatch_epoch`) stay in the JSON as informational but are not mandatory. `concept-identifier-orchestrator` drops the `new_slugs[]` and `updated_slugs[]` arrays from its summary file — the main session reads only counts at Step 10, and the arrays were never consumed downstream. Also drops a narration paragraph from `concept-identifier-orchestrator.md` body that belonged in a commit message, not an agent prompt.
+
 ## 0.12.0 — 2026-04-19
 
 Pipeline blockers epic (#31). Closes sub-issues #23, #25, #26, #27, #29, #30. Ships the orchestrator-wrapper pattern for both A1 (audit) and W1/W1b/W2 (catalog), the extraction-hash skip-list flywheel, per-stack tag vocabulary with halt-on-drift, deterministic W1 batch math, and a `resolvable_by` schema split that unblocks audit-stack convergence.

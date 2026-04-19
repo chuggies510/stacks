@@ -243,7 +243,7 @@ if [[ ! -s "$SUMMARY_PATH" ]]; then
   echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing" >&2
   exit 1
 fi
-if ! jq -e '(.n_articles_new | type) == "number" and (.n_articles_updated | type) == "number" and (.new_slugs | type) == "array" and (.updated_slugs | type) == "array"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+if ! jq -e '(.n_articles_new | type) == "number" and (.n_articles_updated | type) == "number" and (.n_sources | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
   echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing or wrong-typed required fields" >&2
   exit 1
 fi

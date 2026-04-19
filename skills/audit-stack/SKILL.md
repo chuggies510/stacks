@@ -120,9 +120,10 @@ The main session's A1 gate is a parse of the orchestrator's returned text. Look 
 ```
 
 ```bash
-# Pipe the orchestrator response text through jq to validate shape.
+# Pipe the orchestrator response text through jq to validate shape. Only
+# n_articles is required; the other fields in the JSON are informational.
 ORCH_JSON=$(printf '%s\n' "$ORCH_RESPONSE" | grep -oE '\{[^{}]*"n_articles"[^{}]*\}' | tail -1)
-if [[ -z "$ORCH_JSON" ]] || ! jq -e '.n_articles and .n_batches and .articles_per_agent and .dispatch_epoch' <<< "$ORCH_JSON" >/dev/null 2>&1; then
+if [[ -z "$ORCH_JSON" ]] || ! jq -e '(.n_articles | type) == "number"' <<< "$ORCH_JSON" >/dev/null 2>&1; then
   echo "AGENT_WRITE_FAILURE: validator-orchestrator returned no/invalid summary JSON" >&2
   exit 1
 fi

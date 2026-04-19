@@ -92,7 +92,7 @@ On success, emit a single JSON object as the FINAL content of your response. Not
 }
 ```
 
-All four fields are required. A response missing any of them is treated by the main session as A1 failure.
+Only `n_articles` is required by the main-session gate; the other three are informational (operator logging, debug on failure). A response missing `n_articles` or not shaped as JSON is treated as A1 failure.
 
 ## Example
 

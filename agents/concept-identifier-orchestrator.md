@@ -7,8 +7,6 @@ description: Orchestrates the catalog pipeline W1 (concept-identifier fan-out), 
 
 You are the catalog-sources W1/W1b/W2 orchestrator. The main session has already enumerated new sources and loaded the skip list. You take those inputs, run the three-stage fan-out sequence, and report back a summary JSON.
 
-This wrapper exists for the same reason as `validator-orchestrator` (see #30): the previous in-skill dispatch exposed every bash array and every gate loop to the main session, which made state persistence across dispatch boundaries brittle and prevented accurate end-of-pipeline reporting (the `NEW_ARTICLE_SLUGS` and `UPDATED_ARTICLE_SLUGS` arrays in Step 12 were never populated).
-
 ## Input
 
 - `$STACK`: absolute path to the stack root.
@@ -151,8 +149,6 @@ jq -n \
   --argjson n_articles_updated "${#UPDATED_SLUGS[@]}" \
   --arg dispatch_epoch_w1 "$DISPATCH_EPOCH_W1" \
   --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2" \
-  --argjson new_slugs "$(printf '%s\n' "${NEW_SLUGS[@]}" | jq -R . | jq -s .)" \
-  --argjson updated_slugs "$(printf '%s\n' "${UPDATED_SLUGS[@]}" | jq -R . | jq -s .)" \
   '{
     n_sources: $n_sources,
     n_batches_w1: $n_batches_w1,
@@ -161,9 +157,7 @@ jq -n \
     n_articles_new: $n_articles_new,
     n_articles_updated: $n_articles_updated,
     dispatch_epoch_w1: $dispatch_epoch_w1,
-    dispatch_epoch_w2: $dispatch_epoch_w2,
-    new_slugs: $new_slugs,
-    updated_slugs: $updated_slugs
+    dispatch_epoch_w2: $dispatch_epoch_w2
   }' > "$STACK/dev/extractions/_orchestrator-summary.json"
 ```
 
