@@ -35,8 +35,10 @@
     {
       "id": 2,
       "subject": "#23 extraction_hash helper script + W1b integration",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "Create scripts/compute-extraction-hash.sh (pipes stdin through sha256sum | awk '{print $1}' so output is exactly the 64-hex digest plus newline, no filename suffix); extend W1b in catalog-sources/SKILL.md to compute and inject extraction_hash per unique slug; remove hash_inputs from concept-identifier agent prose and the three worked examples; update article-synthesizer input description; update wave-engine.md W1 output field list. Script opens with set -euo pipefail; stderr errors prefixed COMPUTE_EXTRACTION_HASH:.",
       "metadata": {
         "files": [
@@ -67,7 +69,9 @@
       "id": 3,
       "subject": "#25 tag vocabulary declaration + halt-on-drift check",
       "status": "pending",
-      "blockedBy": [2],
+      "blockedBy": [
+        2
+      ],
       "description": "Create scripts/normalize-tags.sh (halts with TAG_DRIFT: on any article tag not in STACK.md allowed_tags); insert ## Tag Vocabulary section in templates/stack/STACK.md between Filing Rules and Frontmatter Convention; rewrite article-synthesizer tag-selection prose to require vocabulary-chosen tags with backward-compat warning for empty/absent list; wire normalize-tags.sh into catalog-sources/SKILL.md between Step 9 (W2b) and Step 10 (W3). Script opens with set -euo pipefail; stderr prefix TAG_DRIFT:. No auto-rewrite.",
       "metadata": {
         "files": [
@@ -96,7 +100,9 @@
       "id": 4,
       "subject": "#26 W1 batch math + batch-{id}-concepts.md output naming",
       "status": "pending",
-      "blockedBy": [3],
+      "blockedBy": [
+        3
+      ],
       "description": "Rewrite W1 dispatch math in catalog-sources/SKILL.md: compute SOURCES_PER_AGENT = ceil(N/5) capped at 10, N_AGENTS = ceil(N / SOURCES_PER_AGENT); below N_SOURCES < 10 dispatch one-per-source. Output files named batch-{batch_id}-concepts.md. Update concept-identifier prompt to accept N sources and write one merged file at that path. Update wave-engine.md waves table + W1 execution prose.",
       "metadata": {
         "files": [
@@ -124,7 +130,9 @@
       "id": 5,
       "subject": "#30 validator-orchestrator wrapper (sharded A1)",
       "status": "pending",
-      "blockedBy": [3],
+      "blockedBy": [
+        3
+      ],
       "description": "Create agents/validator-orchestrator.md with frontmatter (name, tools: Task+Bash+Glob+Read, model: sonnet, description imperative matching existing agent convention). Body describes dispatch math mirroring #26 (ARTICLES_PER_AGENT capped 15), per-batch validator Task dispatches over shards, full sources dir passed to each, per-article assert-written gate, summary JSON return. Replace audit-stack/SKILL.md Step 4 inline validator dispatch with orchestrator dispatch. Update wave-engine.md A1 section. Independent of Task 4 batch-math changes — blockedBy reflects article-synthesizer.md serialization order only.",
       "metadata": {
         "files": [
@@ -154,7 +162,9 @@
       "id": 6,
       "subject": "#27 concept-identifier-orchestrator wrapper + clean 0.12.0 release",
       "status": "pending",
-      "blockedBy": [5],
+      "blockedBy": [
+        5
+      ],
       "description": "Create agents/concept-identifier-orchestrator.md with frontmatter (tools: Task+Bash+Glob+Grep+Read+Write, model: sonnet, imperative description). Body describes #26 dispatch math + W1b dedup + compute-extraction-hash.sh invocation + W2 article-synthesizer dispatch + summary JSON write to $STACK/dev/extractions/_orchestrator-summary.json. Replace catalog-sources/SKILL.md Steps 6-8 with single orchestrator dispatch. Rewrite commit Step 12 to read counts via jq from the summary file instead of NEW_ARTICLE_SLUGS bash arrays. Update wave-engine.md W1+W1b+W2 execution prose. This is the final task — also bumps plugin.json and marketplace.json to clean 0.12.0 and adds the consolidated ## 0.12.0 CHANGELOG header above the alpha entries.",
       "metadata": {
         "files": [
