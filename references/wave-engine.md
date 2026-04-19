@@ -1,177 +1,263 @@
 # Wave Engine — Knowledge Synthesis
 
-Unified execution engine for Build Mode (all waves) and Refresh Mode (affected waves only).
+Two pipelines replace the old single ingest-then-refine flow:
 
-## Wave Definitions
+- **catalog-sources**: enumerates new sources, identifies concepts, synthesizes articles, files sources, updates the MoC.
+- **audit-stack**: validates articles, synthesizes stack-root artifacts, produces findings, checks convergence, archives.
 
-| Wave | Type | Agent(s) | Parallelism | Input | Output |
-|------|------|----------|-------------|-------|--------|
-| 0 | Enumerate | Diff sources/ vs index.md | Single | sources/, index.md | List of new sources |
-| 0b | Cluster | topic-clusterer | Single | new sources list | dev/curate/plan.md |
-| 1 | Extract | topic-extractor | Parallel per topic | Source markdowns per group | dev/curate/extractions/{topic}.md |
-| 2 | Synthesize | topic-synthesizer | Parallel per topic | Extraction per group | topics/{topic}/guide.md |
-| 3 | Cross-reference | cross-referencer | Single | All topic guides | dev/curate/cross-reference-report.md |
-| 4 | Validate | validator | Single | All guides + sources | dev/curate/validation-report.md |
-| 5 | Synthesize cross-cutting | synthesizer | Single | All guides | dev/curate/glossary.md, dev/curate/invariants.md |
-| 6 | Findings | findings-analyst | Single | All guides + reports | dev/curate/findings.md |
+The loop closes because `audit-stack` produces `dev/audit/findings.md` and `catalog-sources` reads it at W0b to drive the next synthesis pass. See [Feedback flywheel](#feedback-flywheel) below.
 
-Waves 3–6 are dispatched by `/stacks:refine`. Waves 0–2 are dispatched by `/stacks:ingest`.
+---
 
-**Dependency rule**: Each wave gates on the prior wave completing. If any Wave N output is refreshed, Waves N+1 through 6 re-run.
+## catalog-sources waves
+
+| Wave | Agent / Module | Input | Output |
+|------|----------------|-------|--------|
+| W0 | bash enumerate | `sources/incoming/*`, `index.md` | `NEW_SOURCES` list |
+| W0b | bash prior-findings gate | `findings.md` | skip list of already-synthesized `extraction_hash` values |
+| W1 | `concept-identifier` (parallel per source batch) | source files, `STACK.md`, skip list | `dev/extractions/{source-slug}-concepts.md` |
+| W1b | bash slug-collision dedup | all W1 outputs | unified concept list with `source_paths[]` merged for shared slugs |
+| W2 | `article-synthesizer` (parallel per unique concept) | concept block, existing article if present, `STACK.md` | `articles/{slug}.md` |
+| W2b | bash wikilink pass | all articles + `glossary.md` (if present) | articles mutated in-place |
+| W3 | bash source filing | `sources/incoming/*` | `sources/{publisher}/*` |
+| W4 | bash MoC update | all article frontmatter + `index.md` existing `## Reading Paths` block | `{stack}/index.md` |
+
+---
+
+## audit-stack waves
+
+| Wave | Agent / Module | Input | Output |
+|------|----------------|-------|--------|
+| A1 | `validator` (reshaped prompt) | all articles + all sources | inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks on articles |
+| A2 | `synthesizer` (reshaped prompt) | all articles | `{stack}/glossary.md`, `{stack}/invariants.md`, `{stack}/contradictions.md` |
+| A2b | bash wikilink pass (shared helper) | articles + glossary | articles mutated in-place |
+| A3 | `findings-analyst` (reshaped prompt) | articles (inline marks are the data source), contradictions, prior `findings.md` | `dev/audit/findings.md` |
+| A4 | bash convergence check | current + prior findings | empty-pass signal |
+| A5 | bash archive | — | `dev/audit/closed/{audit_date}-findings.md` |
+
+---
+
+## Write-or-fail gate
+
+Every agent-producing wave is guarded by `scripts/assert-written.sh`:
+
+```bash
+# Caller captures epoch immediately before Task dispatch
+DISPATCH_EPOCH=$(date +%s)
+
+# ... dispatch agent via Task tool ...
+
+# After fan-in, assert each expected output
+scripts/assert-written.sh {output_path} "${DISPATCH_EPOCH}" "{agent_label}"
+```
+
+The script combines two checks:
+
+```bash
+test -s "$path" && [ "$(stat -c %Y "$path")" -gt "$dispatch_epoch" ]
+```
+
+- `test -s`: output exists and is non-empty.
+- mtime newer than dispatch epoch: a stale pre-existing file does not pass the gate silently.
+
+On failure the script exits with the fixed error string `AGENT_WRITE_FAILURE` and the pipeline halts. For parallel waves (W1, W2, A1, A2, A3), the caller collects all expected output paths and checks all of them after fan-in, reporting all failures together before halting.
+
+Applies to these waves: W1, W2, A1, A2, A3.
+
+---
+
+## Slug immutability and W1b dedup
+
+### Slug immutability
+
+Once a concept slug is set and its article exists in `articles/`, concept-identifier cannot propose a rename. If a source's concept matches an existing article (by claim overlap), the concept block must use that article's existing slug as both `slug` and `target_article`. New slugs are only created for genuinely new concepts. This eliminates cross-file drift from parallel W2 dispatches at the source.
+
+### W1b dedup
+
+Between W1 fan-in and W2 fan-out, a bash pass groups all concept blocks from all W1 outputs by `slug`. For any slug appearing in 2+ blocks, the pass merges `source_paths[]` into a single unified block and dispatches exactly one W2 article-synthesizer with that unified list. This prevents silent article overwrite by concurrent W2 dispatches.
+
+---
+
+## Wikilink pass
+
+W2b and A2b both call the same shared helper:
+
+```bash
+scripts/wikilink-pass.sh {articles-dir} {glossary-path}
+```
+
+The script reads glossary bold terms and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded (when the article slug matches the term slug). When `glossary.md` is absent (first catalog run before the first audit), the pass is a no-op.
+
+---
+
+## Convergence rule (A4)
+
+A4 runs a bash convergence check after each audit-stack pass.
+
+**Empty pass**: zero items with `status: open` AND zero items with `action: fetch_source` in a non-terminal status. Terminal statuses are `applied`, `closed`, `deferred`, `stale`, `failed`. Items stuck in `failed` do not keep convergence open; they are handled out-of-band.
+
+**Convergence fires when**: 2 consecutive empty passes OR `MAX_AUDIT_PASSES` (read from `STACK.md`, default 3), whichever comes first. On convergence, A5 archives the findings file.
+
+---
+
+## Feedback flywheel
+
+The loop between the two pipelines closes as follows:
+
+1. `audit-stack` produces `dev/audit/findings.md` with structured items (`action: fetch_source` or `action: resynthesize`, `status` field per item).
+2. `catalog-sources` reads prior findings at W0b: it builds a skip list of `extraction_hash` values for already-synthesized content and surfaces `fetch_source` items as new acquisition candidates.
+3. `audit-stack` carries item status forward across passes: `applied`, `closed`, `deferred`, `failed`, `stale`. A second audit run is differential, not a full re-run from scratch.
+4. On convergence, A5 archives findings to `dev/audit/closed/{audit_date}-findings.md`, clearing the active queue.
+
+This replaces the old single-pass model where findings accumulated in a static report with nothing consuming them back into synthesis.
+
+---
 
 ## Execution
 
-### Wave 0 — Source Detection
+### W0 — Source enumeration
 
-Diff `sources/` directory listing against the Sources section of `index.md` to find new sources:
+Diff `sources/incoming/` contents against `index.md` to produce `NEW_SOURCES`:
 
 ```bash
-# List files in sources/ (sorted)
-ls {stack}/sources/ | sort > /tmp/sources-actual.txt
-
-# Extract source filenames from index.md Sources section
-grep -E '^\- |^  - ' {stack}/index.md | sed 's/.*sources\///' | sed 's/[) ].*//' | sort > /tmp/sources-indexed.txt
-
-# New sources = in actual but not indexed
-comm -23 /tmp/sources-actual.txt /tmp/sources-indexed.txt
+ls {stack}/sources/incoming/ | sort > /tmp/sources-incoming.txt
+# compare against indexed sources to find not-yet-processed files
 ```
 
-**Gate**: If diff is empty, "All sources indexed. Nothing to do." Stop.
+Gate: if `NEW_SOURCES` is empty and no open `fetch_source` findings exist in `findings.md`, stop with "Nothing to catalog."
 
-### Wave 0b — Topic Clustering
+### W0b — Prior-findings gate
 
-Dispatch `topic-clusterer` agent:
+Read `dev/audit/findings.md` (if present). Extract `extraction_hash` values from all items with a terminal status (`applied`, `closed`). Pass as skip list to W1 dispatches so concept-identifier does not re-extract already-synthesized content.
 
-```
-Prompt: "Cluster the sources listed in index.md (Sources section) into topic groups.
+Gate: no write-or-fail check (bash read-only pass). Missing `findings.md` is a no-op; skip list is empty.
 
-For each source, read the title and scan the first 50 lines to understand the subject.
-Group by system served, not engineering concept. Minimum 2 sources per group.
+### W1 — Concept identification (parallel)
 
-Read existing dev/curate/plan.md if it exists (refresh mode) or create new (build mode).
-Template sections and source hierarchy are in STACK.md.
+Capture epoch, then dispatch one `concept-identifier` agent per source batch:
 
-Write plan to: dev/curate/plan.md
-Project root: {pwd}"
-```
-
-**Gate**: `dev/curate/plan.md` exists with at least 1 topic group row.
-**User gate**: Present topic groups via AskUserQuestion for confirmation before proceeding.
-
-### Wave 1 — Extraction
-
-For each topic group in dev/curate/plan.md, dispatch one `topic-extractor` agent **in parallel**:
-
-```
-Prompt: "Extract knowledge for the '{topic_name}' topic group.
-
-Source files to read:
-{list of source markdown paths from plan.md row}
-
-Template sections and source hierarchy are in STACK.md.
-
-Write extraction to: dev/curate/extractions/{topic_slug}.md
-Project root: {pwd}"
+```bash
+DISPATCH_EPOCH=$(date +%s)
+# dispatch concept-identifier agents in parallel via Task tool
+# after fan-in:
+for slug in ${SOURCE_SLUGS}; do
+  scripts/assert-written.sh "dev/extractions/${slug}-concepts.md" "${DISPATCH_EPOCH}" "concept-identifier"
+done
 ```
 
-**Gate**: All `dev/curate/extractions/{topic}.md` files exist (one per topic group).
-Update dev/curate/plan.md: Wave 1 status → complete.
+Each agent reads its source files, `STACK.md`, and the skip list. Output: `dev/extractions/{source-slug}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `hash_inputs`, `target_article`).
 
-### Wave 2 — Synthesis
+### W1b — Slug-collision dedup
 
-For each topic group, dispatch one `topic-synthesizer` agent **in parallel**:
+Bash pass reads all `dev/extractions/*-concepts.md` files. Groups concept blocks by `slug`. Merges `source_paths[]` for any duplicate slugs. Emits a unified concept list for W2 dispatch. Ensures one W2 dispatch per unique slug.
 
-```
-Prompt: "Synthesize the '{topic_name}' topic guide.
+### W2 — Article synthesis (parallel)
 
-Extraction file: dev/curate/extractions/{topic_slug}.md
+Capture epoch, then dispatch one `article-synthesizer` agent per unique concept from W1b output:
 
-Template sections and source hierarchy are in STACK.md.
-
-Write topic guide to: topics/{topic_slug}/guide.md
-Create the directory if it doesn't exist.
-Project root: {pwd}"
-```
-
-**Gate**: All `topics/{topic}/guide.md` files exist (one per topic group).
-Update dev/curate/plan.md: Wave 2 status → complete.
-
-### Wave 3 — Cross-Reference
-
-Dispatch single `cross-referencer` agent:
-
-```
-Prompt: "Cross-reference all synthesized topic guides for consistency.
-
-Topic guides to read:
-{list all topics/*/guide.md paths}
-
-Write cross-reference report to: dev/curate/cross-reference-report.md
-Project root: {pwd}"
+```bash
+DISPATCH_EPOCH=$(date +%s)
+# dispatch article-synthesizer agents in parallel via Task tool
+# after fan-in:
+for slug in ${CONCEPT_SLUGS}; do
+  scripts/assert-written.sh "articles/${slug}.md" "${DISPATCH_EPOCH}" "article-synthesizer"
+done
 ```
 
-**Gate**: `dev/curate/cross-reference-report.md` exists.
-Update dev/curate/plan.md: Wave 3 status → complete.
+Each agent receives one concept block, the existing article if `target_article` is set, and `STACK.md`. First-write frontmatter includes: `extraction_hash`, `last_verified=""`, `updated=today`, `sources[]`, `title`, `tags[]`. On re-synthesis, the agent strips prior-cycle inline marks (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) from the existing article body before writing the update.
 
-### Wave 4 — Validation
+### W2b — Wikilink pass
 
-Dispatch single `validator` agent:
-
-```
-Prompt: "Validate topic guide claims against source files.
-
-Topic guides: {list all topics/*/guide.md paths}
-Source files: {list all sources/* paths}
-Source hierarchy: STACK.md
-
-Write validation report to: dev/curate/validation-report.md
-Project root: {pwd}"
+```bash
+scripts/wikilink-pass.sh {stack}/articles/ {stack}/glossary.md
 ```
 
-**Gate**: `dev/curate/validation-report.md` exists.
-Update dev/curate/plan.md: Wave 4 status → complete.
+No-op when `glossary.md` is absent. Runs after all W2 assert-written checks pass.
 
-### Wave 5 — Cross-Cutting Synthesis
+### W3 — Source filing
 
-Dispatch single `synthesizer` agent:
-
-```
-Prompt: "Synthesize cross-cutting artifacts from all topic guides.
-
-Topic guides: {list all topics/*/guide.md paths}
-Source hierarchy: STACK.md
-
-Write glossary to: dev/curate/glossary.md
-Write invariants to: dev/curate/invariants.md
-Project root: {pwd}"
+```bash
+# move sources/incoming/* to sources/{publisher}/
+# publisher is read from source frontmatter or inferred from filename
 ```
 
-**Gate**: `dev/curate/glossary.md` and `dev/curate/invariants.md` exist.
-Update dev/curate/plan.md: Wave 5 status → complete.
+Runs after all W2 article writes pass their gates. Partial failure: unmoved sources stay in `incoming/` and are picked up next run. No rollback.
 
-### Wave 6 — Findings
+### W4 — MoC update
 
-Dispatch single `findings-analyst` agent:
+Bash reads `tags[0]` from all `articles/*.md` frontmatter and regenerates `index.md`. Preserves any existing `## Reading Paths` section verbatim; rewrites all other sections (title, generated groupings by tag).
 
+---
+
+### A1 — Validation (inline marks)
+
+Capture epoch, then dispatch `validator` agent:
+
+```bash
+DISPATCH_EPOCH=$(date +%s)
+# Enumerate expected output files before dispatch. The validator edits every
+# article in place (strips prior-cycle marks, adds new marks, updates
+# last_verified), so each article file's mtime advances past DISPATCH_EPOCH.
+# A directory-path check would not work: editing files inside a directory
+# does not update the directory's own mtime on Linux.
+EXPECTED_ARTICLES=( "{stack}"/articles/*.md )
+# dispatch validator agent
+for article in "${EXPECTED_ARTICLES[@]}"; do
+  scripts/assert-written.sh "$article" "${DISPATCH_EPOCH}" "validator"
+done
 ```
-Prompt: "Analyze knowledge stack quality and produce findings.
 
-Topic guides: {list all topics/*/guide.md paths}
-Cross-reference report: dev/curate/cross-reference-report.md
-Validation report: dev/curate/validation-report.md
-Source hierarchy and template: STACK.md
+The validator reads all articles and all sources. Before running, it strips any prior-cycle marks from article bodies. Output: articles mutated in-place with inline `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` marks appended to claims. No separate validation scratch file. Findings-analyst reads these marks directly from articles at A3.
 
-Write findings to: dev/curate/findings.md
-Project root: {pwd}"
+### A2 — Stack-root artifact synthesis
+
+Capture epoch, then dispatch `synthesizer` agent:
+
+```bash
+DISPATCH_EPOCH=$(date +%s)
+# dispatch synthesizer agent
+scripts/assert-written.sh "{stack}/glossary.md" "${DISPATCH_EPOCH}" "synthesizer"
+scripts/assert-written.sh "{stack}/invariants.md" "${DISPATCH_EPOCH}" "synthesizer"
+scripts/assert-written.sh "{stack}/contradictions.md" "${DISPATCH_EPOCH}" "synthesizer"
 ```
 
-**Gate**: `dev/curate/findings.md` exists.
-Update dev/curate/plan.md: Wave 6 status → complete, Last Synthesized → today's date, Status → complete.
+The synthesizer reads all articles and writes `glossary.md`, `invariants.md`, and `contradictions.md` at stack root.
 
-## Error Handling
+### A2b — Wikilink pass
 
-If an agent fails (no output file produced):
-1. Mark wave status as "failed" in dev/curate/plan.md
-2. Report which topic group / agent failed
-3. Do not proceed to next wave
-4. User can re-run `/stacks:ingest` or `/stacks:refine` to retry from failed wave
+```bash
+scripts/wikilink-pass.sh {stack}/articles/ {stack}/glossary.md
+```
+
+Same shared helper as W2b. Runs after A2 assert-written checks pass.
+
+### A3 — Findings
+
+Capture epoch, then dispatch `findings-analyst` agent:
+
+```bash
+DISPATCH_EPOCH=$(date +%s)
+# dispatch findings-analyst agent
+scripts/assert-written.sh "dev/audit/findings.md" "${DISPATCH_EPOCH}" "findings-analyst"
+```
+
+The agent reads articles (inline marks are the data source), `contradictions.md`, and the prior `dev/audit/findings.md` (to carry forward item status). Output: `dev/audit/findings.md` with locked schema (frontmatter + item shape, status enum: `open | applied | closed | deferred | stale | failed`, item `id` is full SHA256 of `{article-slug}|{finding_type}|{space-normalized claim}`).
+
+### A4 — Convergence check
+
+Bash reads `dev/audit/findings.md`. Checks empty-pass condition: zero `status: open` items AND zero `action: fetch_source` items in non-terminal status.
+
+If empty pass and this is the 2nd consecutive empty pass: convergence. Proceed to A5.
+If `MAX_AUDIT_PASSES` reached: convergence regardless of open count. Proceed to A5.
+Otherwise: report pass count and open item count to user. Pipeline complete for this pass; next pass begins at A1.
+
+### A5 — Archive
+
+On convergence:
+
+```bash
+cp dev/audit/findings.md "dev/audit/closed/$(date +%Y-%m-%d)-findings.md"
+# findings.md remains at dev/audit/findings.md as the baseline for the next cycle
+```
+
+Archived findings serve as the historical record. The active `findings.md` carries forward into the next catalog-sources W0b pass.
