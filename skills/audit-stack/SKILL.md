@@ -108,28 +108,41 @@ Pass the orchestrator:
 - `$STACK`: stack root.
 - `$SCRIPTS_DIR`: for `assert-written.sh`.
 
-The main session's A1 gate is a parse of the orchestrator's returned text. Look for a final JSON object with all four required fields:
+The main session's A1 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a1` on stdout and writes the structural data to `$STACK/dev/audit/_a1-summary.json`. The summary file is the schema-versioned envelope:
 
 ```json
 {
-  "n_articles": 80,
-  "n_batches": 6,
-  "articles_per_agent": 15,
-  "dispatch_epoch": 1713500000
+  "schema_version": 1,
+  "wave": "a1",
+  "status": "ok",
+  "counts": {
+    "n_articles": 80,
+    "n_batches": 6,
+    "articles_per_agent": 15
+  },
+  "epochs": {
+    "dispatch_epoch": 1713500000
+  }
 }
 ```
 
 ```bash
-# Pipe the orchestrator response text through jq to validate shape. Only
-# n_articles is required; the other fields in the JSON are informational.
-ORCH_JSON=$(printf '%s\n' "$ORCH_RESPONSE" | grep -oE '\{[^{}]*"n_articles"[^{}]*\}' | tail -1)
-if [[ -z "$ORCH_JSON" ]] || ! jq -e '(.n_articles | type) == "number"' <<< "$ORCH_JSON" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: validator-orchestrator returned no/invalid summary JSON" >&2
+SUMMARY_PATH="$STACK/dev/audit/_a1-summary.json"
+if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a1'; then
+  echo "AGENT_WRITE_FAILURE: A1 receipt line missing" >&2
+  exit 1
+fi
+if [[ ! -s "$SUMMARY_PATH" ]]; then
+  echo "AGENT_WRITE_FAILURE: _a1-summary.json missing" >&2
+  exit 1
+fi
+if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: _a1-summary.json malformed" >&2
   exit 1
 fi
 ```
 
-If the JSON is missing or malformed, treat A1 as failed and halt the audit loop. On failure the orchestrator also reports every failed article path on stderr and emits an `A1_ORCHESTRATOR_FAILED:` marker line on stdout. Either signal halts the audit loop.
+If any of the three checks fails, treat A1 as failed and halt the audit loop. On failure the orchestrator also reports every failed article path on stderr and emits an `ORCHESTRATOR_FAILED: wave=a1 reason={short}` marker line on stdout. Either signal halts the audit loop.
 
 ## Step 5: A2 — Synthesizer dispatch
 

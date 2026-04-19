@@ -221,30 +221,26 @@ Pass the orchestrator as task content:
 - `$NEW_SOURCES`: newline-separated source paths (from Step 4).
 - `$SKIP_HASHES`: the W0b skip list (may be empty).
 
-The orchestrator writes `$STACK/dev/extractions/_orchestrator-summary.json` with the catalog-run counts (see its contract) and returns a final JSON line of the form:
+The orchestrator writes `$STACK/dev/extractions/_w1-w2-summary.json` with the schema-versioned envelope (see its contract) and returns the receipt line `ORCHESTRATOR_OK: wave=w1-w2` on stdout.
 
-```json
-{"status": "ok", "summary_path": "dev/extractions/_orchestrator-summary.json", "n_articles_new": N, "n_articles_updated": M}
-```
-
-The main session's gate parses the returned text for a valid summary-OK line AND confirms the summary file exists. Either signal missing = catalog-run failure. On failure the orchestrator emits a `CATALOG_ORCHESTRATOR_FAILED:` marker on stdout and reports failed batch ids / slugs on stderr.
+The main session's gate matches the receipt line AND confirms the summary file exists AND type-checks the required nested fields. Any of the three signals missing = catalog-run failure. On failure the orchestrator emits an `ORCHESTRATOR_FAILED: wave=w1-w2 reason={W1|W2}` marker on stdout and reports failed batch ids / slugs on stderr.
 
 ```bash
-# After orchestrator returns, confirm the returned text reports status:ok AND
-# the summary file exists AND the required fields are present with correct
-# types. Type-checks (not truthiness) because zero counts are valid on
-# incremental runs where every source is already in the skip list.
-SUMMARY_PATH="$STACK/dev/extractions/_orchestrator-summary.json"
-if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '"status".*"ok"'; then
-  echo "AGENT_WRITE_FAILURE: concept-identifier-orchestrator returned no status:ok line" >&2
+# After orchestrator returns, confirm the receipt line is present AND the
+# summary file exists AND the required fields are present with correct types.
+# Type-checks (not truthiness) because zero counts are valid on incremental
+# runs where every source is already in the skip list.
+SUMMARY_PATH="$STACK/dev/extractions/_w1-w2-summary.json"
+if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=w1-w2'; then
+  echo "AGENT_WRITE_FAILURE: concept-identifier-orchestrator receipt line missing" >&2
   exit 1
 fi
 if [[ ! -s "$SUMMARY_PATH" ]]; then
-  echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing" >&2
+  echo "AGENT_WRITE_FAILURE: _w1-w2-summary.json missing" >&2
   exit 1
 fi
-if ! jq -e '(.n_articles_new | type) == "number" and (.n_articles_updated | type) == "number" and (.n_sources | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing or wrong-typed required fields" >&2
+if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles_new | type) == "number" and (.counts.n_articles_updated | type) == "number" and (.counts.n_sources | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: _w1-w2-summary.json missing or wrong-typed required fields" >&2
   exit 1
 fi
 ```
@@ -354,10 +350,10 @@ The `## Reading Paths` section is preserved verbatim. Any user-curated reading p
 Prepend an entry to `$STACK/log.md`:
 
 ```bash
-SUMMARY_PATH="$STACK/dev/extractions/_orchestrator-summary.json"
-N_SOURCES=$(jq -r '.n_sources' "$SUMMARY_PATH")
-N_ARTICLES_NEW=$(jq -r '.n_articles_new' "$SUMMARY_PATH")
-N_ARTICLES_UPDATED=$(jq -r '.n_articles_updated' "$SUMMARY_PATH")
+SUMMARY_PATH="$STACK/dev/extractions/_w1-w2-summary.json"
+N_SOURCES=$(jq -r '.counts.n_sources' "$SUMMARY_PATH")
+N_ARTICLES_NEW=$(jq -r '.counts.n_articles_new' "$SUMMARY_PATH")
+N_ARTICLES_UPDATED=$(jq -r '.counts.n_articles_updated' "$SUMMARY_PATH")
 
 NEW_ENTRY="## [$(date +%Y-%m-%d)] catalog | $N_SOURCES new sources, $N_ARTICLES_NEW articles created, $N_ARTICLES_UPDATED articles updated
 Sources processed: $N_SOURCES. New articles: $N_ARTICLES_NEW. Updated articles: $N_ARTICLES_UPDATED."

@@ -1,3 +1,7 @@
+## 0.13.0-alpha.1 (unreleased)
+
+- feat(orchestrators, audit-stack, catalog-sources): unified orchestrator summary-JSON contract. Both `validator-orchestrator` and `concept-identifier-orchestrator` now write a schema_version=1 envelope (`{schema_version, wave, status, counts, epochs}`) to `dev/audit/_a1-summary.json` and `dev/extractions/_w1-w2-summary.json` respectively. Orchestrators return only an `ORCHESTRATOR_OK: wave=X` receipt line on stdout; structural data lives in the file. Failure markers unified to `ORCHESTRATOR_FAILED: wave={wave} reason={short}`. Main-session gates in `skills/audit-stack/SKILL.md` Step 4 and `skills/catalog-sources/SKILL.md` Step 6 / Step 10 updated to nested `.counts.FIELD` jq paths. Closes #33.
+
 ## 0.12.1 — 2026-04-19
 
 - refactor(audit-stack, catalog-sources): simplify orchestrator summary-JSON gates to require only the fields the main session actually consumes. `validator-orchestrator` gate now checks `(.n_articles | type) == "number"` only; the other three fields (`n_batches`, `articles_per_agent`, `dispatch_epoch`) stay in the JSON as informational but are not mandatory. `concept-identifier-orchestrator` drops the `new_slugs[]` and `updated_slugs[]` arrays from its summary file — the main session reads only counts at Step 10, and the arrays were never consumed downstream. Also drops a narration paragraph from `concept-identifier-orchestrator.md` body that belonged in a commit message, not an agent prompt.

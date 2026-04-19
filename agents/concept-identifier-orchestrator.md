@@ -72,7 +72,7 @@ for batch_id in "${BATCH_IDS[@]}"; do
 done
 if (( ${#W1_FAILED[@]} > 0 )); then
   printf 'W1_FAILED: %s\n' "${W1_FAILED[@]}" >&2
-  echo "CATALOG_ORCHESTRATOR_FAILED: W1 gate" >&1
+  echo "ORCHESTRATOR_FAILED: wave=w1-w2 reason=W1" >&1
   exit 1
 fi
 ```
@@ -130,14 +130,14 @@ for slug in "${CONCEPT_SLUGS[@]}"; do
 done
 if (( ${#W2_FAILED[@]} > 0 )); then
   printf 'W2_FAILED: %s\n' "${W2_FAILED[@]}" >&2
-  echo "CATALOG_ORCHESTRATOR_FAILED: W2 gate" >&1
+  echo "ORCHESTRATOR_FAILED: wave=w1-w2 reason=W2" >&1
   exit 1
 fi
 ```
 
 ### 5. Write summary JSON
 
-Write to `$STACK/dev/extractions/_orchestrator-summary.json`:
+Write to `$STACK/dev/extractions/_w1-w2-summary.json`:
 
 ```bash
 jq -n \
@@ -150,26 +150,36 @@ jq -n \
   --arg dispatch_epoch_w1 "$DISPATCH_EPOCH_W1" \
   --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2" \
   '{
-    n_sources: $n_sources,
-    n_batches_w1: $n_batches_w1,
-    n_concepts_input: $n_concepts_input,
-    n_unique_concepts: $n_unique_concepts,
-    n_articles_new: $n_articles_new,
-    n_articles_updated: $n_articles_updated,
-    dispatch_epoch_w1: $dispatch_epoch_w1,
-    dispatch_epoch_w2: $dispatch_epoch_w2
-  }' > "$STACK/dev/extractions/_orchestrator-summary.json"
+    schema_version: 1,
+    wave: "w1-w2",
+    status: "ok",
+    counts: {
+      n_sources: $n_sources,
+      n_batches_w1: $n_batches_w1,
+      n_concepts_input: $n_concepts_input,
+      n_unique_concepts: $n_unique_concepts,
+      n_articles_new: $n_articles_new,
+      n_articles_updated: $n_articles_updated,
+      n_w2_waves: 0
+    },
+    epochs: {
+      dispatch_epoch_w1: $dispatch_epoch_w1,
+      dispatch_epoch_w2: $dispatch_epoch_w2
+    }
+  }' > "$STACK/dev/extractions/_w1-w2-summary.json"
 ```
 
-### 6. Return confirmation
+`n_w2_waves` is a placeholder of `0` here. T3 (W2 wave cap, #35) will populate it with the real loop count once W2 dispatch is wrapped in a wave loop.
 
-Emit as the final content of your response:
+### 6. Return receipt line
 
-```json
-{"status": "ok", "summary_path": "dev/extractions/_orchestrator-summary.json", "n_articles_new": N, "n_articles_updated": M}
+Emit ONLY the receipt line as the final content of your response. Do NOT include inline JSON; the structural data lives in the summary file.
+
+```
+ORCHESTRATOR_OK: wave=w1-w2
 ```
 
-All four fields are required. If this JSON is missing or the `_orchestrator-summary.json` file is absent, the main session treats the catalog run as failed.
+The main-session gate matches that exact prefix and then reads `$STACK/dev/extractions/_w1-w2-summary.json` for structural fields. A response missing the receipt line, or a missing/malformed summary file, is treated as catalog-run failure.
 
 ## Notes
 

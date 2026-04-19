@@ -77,26 +77,45 @@ done
 
 The gate is per-article, not per-directory: editing files inside a directory does not advance the directory's mtime on Linux (see CLAUDE.md gotcha "Directory mtime Does NOT Advance On In-Place File Edits").
 
-If `FAILED` is non-empty, report every failed path together on stderr and do NOT emit the success JSON. Return a failure marker line `A1_ORCHESTRATOR_FAILED: {N failed}` on stdout so the main session can detect the failure even when stderr is not piped back. Do not re-dispatch from inside the orchestrator; the main session owns retry policy.
+If `FAILED` is non-empty, report every failed path together on stderr and do NOT write the success summary file. Return a failure marker line `ORCHESTRATOR_FAILED: wave=a1 reason=batch-gate` on stdout so the main session can detect the failure even when stderr is not piped back. Use `reason=dispatch` if the failure occurred before per-article gating (e.g. unable to enumerate articles or shard). Do not re-dispatch from inside the orchestrator; the main session owns retry policy.
 
-### 6. Return summary JSON
+### 6. Write summary JSON and return receipt line
 
-On success, emit a single JSON object as the FINAL content of your response. Nothing after it. The main session parses this text to confirm A1 succeeded:
+On success, write the summary file and emit ONLY the receipt line as the FINAL content of your response. Do NOT include any inline JSON in the returned text; the structural data lives in the file.
 
-```json
-{
-  "n_articles": 80,
-  "n_batches": 6,
-  "articles_per_agent": 15,
-  "dispatch_epoch": 1713500000
-}
+```bash
+mkdir -p "$STACK/dev/audit"
+jq -n \
+  --argjson n_articles "$N" \
+  --argjson n_batches "$N_BATCHES" \
+  --argjson articles_per_agent "$ARTICLES_PER_AGENT" \
+  --arg dispatch_epoch "$DISPATCH_EPOCH" \
+  '{
+    schema_version: 1,
+    wave: "a1",
+    status: "ok",
+    counts: {
+      n_articles: $n_articles,
+      n_batches: $n_batches,
+      articles_per_agent: $articles_per_agent
+    },
+    epochs: {
+      dispatch_epoch: $dispatch_epoch
+    }
+  }' > "$STACK/dev/audit/_a1-summary.json"
 ```
 
-Only `n_articles` is required by the main-session gate; the other three are informational (operator logging, debug on failure). A response missing `n_articles` or not shaped as JSON is treated as A1 failure.
+Then return on stdout, as the final content of the response:
+
+```
+ORCHESTRATOR_OK: wave=a1
+```
+
+The main-session gate matches that exact prefix and then reads `$STACK/dev/audit/_a1-summary.json` for structural fields. A response missing the receipt line, or a missing/malformed summary file, is treated as A1 failure.
 
 ## Example
 
-Stack has 80 articles. `N=80`, `N > 15`, so `ARTICLES_PER_AGENT = ceil(80/5) = 16`, capped at 15, giving `ARTICLES_PER_AGENT=15`. `N_BATCHES = ceil(80/15) = 6`. Six validator agents dispatch in parallel; the first five each handle 15 articles and the sixth handles 5. After fan-in, 80 per-article gates run. Summary: `{"n_articles": 80, "n_batches": 6, "articles_per_agent": 15, "dispatch_epoch": ...}`.
+Stack has 80 articles. `N=80`, `N > 15`, so `ARTICLES_PER_AGENT = ceil(80/5) = 16`, capped at 15, giving `ARTICLES_PER_AGENT=15`. `N_BATCHES = ceil(80/15) = 6`. Six validator agents dispatch in parallel; the first five each handle 15 articles and the sixth handles 5. After fan-in, 80 per-article gates run. Summary file written to `dev/audit/_a1-summary.json` with envelope `{schema_version:1, wave:"a1", status:"ok", counts:{n_articles:80, n_batches:6, articles_per_agent:15}, epochs:{dispatch_epoch:...}}`. Stdout receipt: `ORCHESTRATOR_OK: wave=a1`.
 
 ## Notes
 
