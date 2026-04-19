@@ -7,7 +7,7 @@
     {
       "id": 1,
       "subject": "#29 resolvable_by schema + A4 awk rewrite",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [],
       "description": "Add resolvable_by field to findings-item schema; rewrite A4 convergence awk to filter on resolvable_by == audit-stack AND non-terminal status; document intentional behavior change for research_question items; bump schema_version 2 -> 3. Convergence prose must be identical verbatim across findings-analyst.md (canonical), audit-stack/SKILL.md, and wave-engine.md.",
       "metadata": {
