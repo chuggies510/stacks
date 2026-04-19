@@ -293,7 +293,7 @@
     {
       "id": 14,
       "subject": "Bump to 0.9.0-alpha.3 + CHANGELOG (ships #21)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         9,
         13
