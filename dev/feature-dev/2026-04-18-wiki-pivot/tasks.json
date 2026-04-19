@@ -317,7 +317,7 @@
     {
       "id": 15,
       "subject": "Cutover: remove old skills/agents + repo-wide sweep + 0.9.0 + CHANGELOG (ships #22)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         14
       ],
