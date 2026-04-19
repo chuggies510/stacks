@@ -89,9 +89,15 @@ Per-wave `epochs` (for gate debug only, not read by main session):
 
 **Failure marker:** single convention `ORCHESTRATOR_FAILED: wave={wave} reason={short}` on stdout; failed paths/ids on stderr.
 
-**Main-session gate:** read the summary file, verify `schema_version == 1`, verify `status == "ok"`, type-check required `counts` fields. Orchestrator's returned text carries only a receipt line (`ORCHESTRATOR_OK: wave={wave}`) — no duplicate JSON. Current catalog-sources parses a returned-text JSON line AND the file; this collapses to file-only parse.
+**Main-session gate:** read the summary file, verify `schema_version == 1`, verify `status == "ok"`, type-check required `counts` fields at their nested paths. Orchestrator's returned text carries a receipt line (`ORCHESTRATOR_OK: wave={wave}`) — fast-fail signal before disk read; structural data lives in the file. Defense-in-depth per CLAUDE.md gotcha.
 
-**Migration:** validator-orchestrator's existing `A1_ORCHESTRATOR_FAILED:` marker is replaced by the unified form. concept-identifier-orchestrator's `CATALOG_ORCHESTRATOR_FAILED:` likewise. Both summary files renamed to the new convention.
+**Enumerated gate expression changes:**
+- `skills/audit-stack/SKILL.md` A1 gate (currently at line 122-130): replace flat `(.n_articles | type) == "number"` with nested path + envelope check: `jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH"`. Receipt parse changes from `grep -oE '\{[^{}]*"n_articles"[^{}]*\}'` to `grep -q '^ORCHESTRATOR_OK: wave=a1'`.
+- `skills/catalog-sources/SKILL.md` Step 6 gate (currently at lines 238-249): replace `grep -q '"status".*"ok"'` with `grep -q '^ORCHESTRATOR_OK: wave=w1-w2'`; file-check `jq -e` expression updates to `(.counts.n_articles_new | type) == "number" and (.counts.n_articles_updated | type) == "number" and (.counts.n_sources | type) == "number"`.
+
+**Summary paths:** validator-orchestrator writes `dev/audit/_a1-summary.json`. concept-identifier-orchestrator writes `dev/extractions/_w1-w2-summary.json` (renamed from `_orchestrator-summary.json`). New A2/A3 orchestrators (from #32) follow the same pattern: `dev/audit/_a2-summary.json`, `dev/audit/_a3-summary.json`.
+
+**Migration:** `A1_ORCHESTRATOR_FAILED:` and `CATALOG_ORCHESTRATOR_FAILED:` markers both replaced by the unified `ORCHESTRATOR_FAILED: wave={wave} reason={short}` form.
 
 ### #32 — A2 synthesizer-orchestrator + A3 findings-analyst-orchestrator
 
@@ -105,6 +111,7 @@ Per-wave `epochs` (for gate debug only, not read by main session):
   - Contradictions: dedup on `(article-a, article-b, topic)` triple.
 - Writes final `glossary.md`, `invariants.md`, `contradictions.md` at stack root.
 - Per-output gate via `assert-written.sh`; summary JSON.
+- **Glossary conflict resolution mechanism (resolved):** tier-hierarchy resolution for conflicting glossary definitions is done by a dedicated `synthesizer-merge` sub-agent dispatched after the shard fan-in. The merge agent reads all `_a2-partial-*.md` files + STACK.md and writes the three final stack-root files. This is one extra Claude dispatch, not bash parsing of STACK.md's tier list. Two-phase: shards fan out → one merge agent fans in. Glossary/invariant/contradiction logic that requires tier-awareness stays inside Claude, not in orchestrator bash.
 
 **A3 (`findings-analyst-orchestrator.md`):**
 - Shard 1: each `findings-analyst` agent over its article slice + prior findings.md + contradictions.md produces `dev/audit/_a3-partial-{batch_id}.md` — partial findings list with full item shapes (id + all fields).
@@ -115,7 +122,7 @@ Per-wave `epochs` (for gate debug only, not read by main session):
 - Writes final `dev/audit/findings.md` with correct `pass_counter` and schema v3 frontmatter.
 - Per-output gate; summary JSON.
 
-Both orchestrators: single-shard fast path when `N <= 15` — dispatch one agent, skip the reduce pass, use its output directly.
+Both orchestrators: **single-shard fast path when `N <= 15`** — dispatch one agent, skip the partials-file + merge pass entirely, write final outputs directly. This is the common case on current stacks (mep-stack ~50-100 articles runs as single shard; the reduce pass only fires at 250+). Keeps current-stack complexity identical to today while unblocking scale.
 
 ### #36 — Per-slug `_dedup-{slug}.md` split (ships before #35)
 
@@ -172,12 +179,14 @@ Each validator agent receives only `ARTICLE_SOURCES_FOR_BATCH[idx]` paths as its
 
 ### #37 — findings.md rotation
 
-**Decision.** Two-part change:
+**Decision.** Three-part change:
 
-1. **`findings-analyst.md` schema update (v3 → v4):** add `terminal_transitioned_on: YYYY-MM-DD` field. Set when the agent first writes the item in a terminal status, preserved on carry-forward. Items already terminal without this field get it set to the current `audit_date` at v3→v4 migration time (no hand-editing needed).
-2. **`scripts/rotate-findings.sh` (NEW):** called from `skills/audit-stack/SKILL.md` between A4 convergence decision and A5 archive (only when `converged=1`). Reads `dev/audit/findings.md`, for each terminal-status item computes distinct-audit-date cycles between `terminal_transitioned_on` and current `audit_date`. If ≥ `ROTATION_CYCLES` (default 3, parsed from `STACK.md` with same pattern as `MAX_AUDIT_PASSES`), the item moves to `dev/audit/findings-archive.md` (append-only, chronological, `## rotated_on: YYYY-MM-DD` headers grouping each batch). Items are removed from active `findings.md`.
+1. **`findings-analyst.md` schema update (v3 → v4):** add `terminal_transitioned_on: YYYY-MM-DD` field. Set when the agent first transitions an item into a terminal status. Preserved on carry-forward.
+2. **`findings-analyst.md` v3→v4 migration block** (same pattern as v2→v3 at line 113): "When reading a prior-pass item whose status is terminal (`applied`, `closed`, `deferred`, `stale`, `failed`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `rotate-findings.sh` then always sees the field populated." No hand-editing of existing findings.md files required; the migration fires automatically on the first A3 pass after the schema bump.
+3. **`scripts/rotate-findings.sh` (NEW):** called from `skills/audit-stack/SKILL.md` between A4 convergence decision and A5 archive (only when `converged=1`). Reads `dev/audit/findings.md`, for each terminal-status item computes distinct-audit-date cycles between `terminal_transitioned_on` and current `audit_date` by reading the archive file for prior audit_dates (or counting cycles since `terminal_transitioned_on` using audit_dates it has seen — simplest: the script takes the current `audit_date` as arg, treats missing `terminal_transitioned_on` as `audit_date` itself → cycles=0 → no rotation, safe first-run behavior). If ≥ `ROTATION_CYCLES` (default 3, parsed from `STACK.md` with the same pattern as `MAX_AUDIT_PASSES`), item moves to `dev/audit/findings-archive.md` (append-only, chronological, `## rotated_on: YYYY-MM-DD` headers grouping each batch). Items are removed from active `findings.md`.
+4. **Archive write-gate:** after `rotate-findings.sh` runs, if it reports ≥1 item rotated, `skills/audit-stack/SKILL.md` calls `assert-written.sh "$STACK/dev/audit/findings-archive.md" "$DISPATCH_EPOCH" "rotate-findings"` (epoch captured immediately before script invocation). Catches silent archival failure.
 
-Archive is operator-readable history; findings-analyst's carry-forward reads active file only. Schema_version bumps to v4 per the existing migration pattern.
+Archive is operator-readable history; findings-analyst's carry-forward reads active file only. `schema_version` in frontmatter bumps to v4.
 
 ## Constraints
 
@@ -196,7 +205,7 @@ Archive is operator-readable history; findings-analyst's carry-forward reads act
 - [ ] `#36` closed: W1b writes per-slug `_dedup-{slug}.md`; article-synthesizer Input updated; W2 dispatches per-slug paths.
 - [ ] `#35` closed: W2 dispatch capped at 25 per wave with loop; `n_w2_waves` in summary JSON.
 - [ ] `#34` closed: validator-orchestrator builds citation graph, each batch gets its union only; worked example documented.
-- [ ] `#37` closed: findings-analyst schema v4 adds `terminal_transitioned_on`; `scripts/rotate-findings.sh` runs between A4 and A5; `findings-archive.md` appears on eviction.
+- [ ] `#37` closed: findings-analyst schema v4 adds `terminal_transitioned_on`; carry-forward section contains v3→v4 migration rule; `scripts/rotate-findings.sh` runs between A4 and A5; `findings-archive.md` appears on eviction; archive write is gated by `assert-written.sh`.
 - [ ] `references/wave-engine.md` reflects all of the above.
 - [ ] `CHANGELOG.md` has a 0.13.0 section rolled up from alpha entries.
 - [ ] `.claude-plugin/plugin.json` + `marketplace.json` both at `0.13.0`; `sync-versions.sh` passes.
