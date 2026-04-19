@@ -213,7 +213,7 @@ The canonical findings.md schema definition (item shapes, status enum, resolvabl
 audit_date: YYYY-MM-DD
 stack_head: <git sha>
 pass_counter: <int>
-schema_version: 3
+schema_version: 4
 ---
 ```
 

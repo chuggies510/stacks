@@ -1,23 +1,39 @@
-## 0.13.0-alpha.5 (unreleased)
+## 0.13.0 — 2026-04-19
 
-- feat(findings-analyst, audit-stack): rotation policy for terminal-status items. Schema v3→v4 adds `terminal_transitioned_on: YYYY-MM-DD` field set when items first enter a terminal status; carry-forward migration block backfills it to current audit_date on first encounter (no hand-editing required). New `scripts/rotate-findings.sh` runs at new audit-stack Step 8.5 (between A4 convergence and A5 archive, only when converged). Terminal items older than `ROTATION_CYCLES` audit cycles (default 3, grepped from STACK.md) move to `dev/audit/findings-archive.md`. Archive write gated by `assert-written.sh` when rotation count > 0. Closes #37.
+Audit follow-ups epic (#38). Closes sub-issues #32, #33, #34, #35, #36, #37. Ships the unified orchestrator summary-JSON contract (schema_version=1 envelope), two new orchestrator wrappers for A2 and A3 (unblocking mep-stack scale), per-batch source sharding for A1, per-slug progressive disclosure + wave cap for W2, and a findings rotation policy that keeps `findings.md` bounded across audit cycles.
 
-## 0.13.0-alpha.4 (unreleased)
+- feat(orchestrators, audit-stack, catalog-sources): unified orchestrator summary-JSON contract. Both `validator-orchestrator` and `concept-identifier-orchestrator` write a `schema_version=1` envelope (`{schema_version, wave, status, counts, epochs}`) to `dev/audit/_a1-summary.json` and `dev/extractions/_w1-w2-summary.json`. Orchestrators return only an `ORCHESTRATOR_OK: wave=X` receipt line on stdout; structural data lives in the file. Failure markers unified to `ORCHESTRATOR_FAILED: wave={wave} reason={short}`. Main-session gates in audit-stack Step 4 and catalog-sources Step 6 / Step 10 use nested `.counts.FIELD` jq paths. Closes #33.
+- feat(validator-orchestrator): per-batch source union via pre-dispatch citation graph. `SOURCE_MAP` (slug to path) built from `sources/` and per-article `ARTICLE_SOURCES` from frontmatter `sources:` plus inline `[source-slug]` refs. Each validator receives only the union of its batch's cited sources. Full-tree fallback when a batch has zero resolvable citations. `validator.md` Input contract updated. Closes #34.
+- feat(concept-identifier-orchestrator, article-synthesizer): W1b writes per-slug `_dedup-{slug}.md` files; W2 dispatch passes the per-slug path; `article-synthesizer` reads only its own slug's block. `_dedup.md` preserved as aggregated audit-trail artifact. Progressive disclosure cuts per-agent tokens at large W2 fan-outs. Closes #36.
+- feat(concept-identifier-orchestrator): W2 dispatch capped at `W2_WAVE_CAP=25` parallel agents per wave with loop. Each wave captures its own `DISPATCH_EPOCH_W2_WAVE` for per-wave `assert-written.sh` gating. `counts.n_w2_waves` populated in the summary JSON. Prevents Task-tool parallel-dispatch saturation on large fresh catalog runs. Closes #35.
+- feat(audit-stack): new `agents/synthesizer-orchestrator.md` (A2) and `agents/findings-analyst-orchestrator.md` (A3) wrap the previously single-dispatch synthesizer and findings-analyst. Both use the schema-v1 envelope and a single-shard fast path (A2 cap `ARTICLES_PER_AGENT=30` since synthesizer reads articles only; A3 cap 15 matching A1). Above the cap, shard agents write `dev/audit/_a{2,3}-partial-{batch_id}.md`; A2 re-dispatches `synthesizer` with a merge task, A3 bash-merges by item id with terminal-wins precedence. `skills/audit-stack/SKILL.md` Steps 5 and 7 rewritten. Unblocks mep-stack (~250 articles). Closes #32.
+- feat(findings-analyst, audit-stack): rotation policy for terminal-status items. Schema v3 to v4 adds `terminal_transitioned_on: YYYY-MM-DD` set when items first enter a terminal status; carry-forward migration block backfills the field to current `audit_date` on first encounter (no hand-editing). New `scripts/rotate-findings.sh` runs at `audit-stack` Step 8.5 (between A4 convergence and A5 archive, only when converged). Terminal items older than `ROTATION_CYCLES` audit cycles (default 3, grepped from `STACK.md`) move to `dev/audit/findings-archive.md`. Archive write gated by `assert-written.sh` when rotation count > 0. Closes #37.
+- docs(references): `references/wave-engine.md` synced to reflect all six changes (summary-JSON contract subsection, A1 source-sharding, new A2/A3 orchestrator dispatch patterns, per-slug W1b + W2 wave cap, new A4.5 rotation step).
 
-- feat(audit-stack): new `agents/synthesizer-orchestrator.md` (A2) and `agents/findings-analyst-orchestrator.md` (A3) wrap the previously-unsharded synthesizer and findings-analyst dispatches. Both use the schema-v1 envelope and the single-shard fast-path pattern (A2 cap `ARTICLES_PER_AGENT=30` since synthesizer reads articles only; A3 cap 15 matching A1). Above the cap, shard agents write partials to `dev/audit/_a{2,3}-partial-{batch_id}.md`; A2 re-dispatches `synthesizer` with a merge task, A3 bash-merges by item id with terminal-wins precedence. `skills/audit-stack/SKILL.md` Steps 5 and 7 rewritten to dispatch the orchestrators. Unblocks mep-stack (~250 articles). Closes #32.
+### Alpha cuts consolidated into 0.13.0
 
-## 0.13.0-alpha.3 (unreleased)
+The five alpha entries below shipped progressively during epic #38 and roll up into the `## 0.13.0 — 2026-04-19` release header above. Per-alpha bullets preserved below for historical commit-to-change traceability.
 
-- feat(concept-identifier-orchestrator, article-synthesizer): W1b writes per-slug `_dedup-{slug}.md` files; W2 dispatch passes the per-slug path; article-synthesizer reads only its own slug's block. `_dedup.md` preserved as aggregated audit-trail artifact. Progressive disclosure cuts per-agent tokens at large W2 fan-outs. Closes #36.
-- feat(concept-identifier-orchestrator): W2 dispatch capped at `W2_WAVE_CAP=25` parallel agents per wave with loop. Each wave captures its own `DISPATCH_EPOCH_W2_WAVE` for per-wave assert-written gating. `counts.n_w2_waves` field populated in the summary JSON. Prevents Task-tool parallel-dispatch saturation on large fresh catalog runs. Closes #35.
+## 0.13.0-alpha.5 — 2026-04-19
 
-## 0.13.0-alpha.2 (unreleased)
+- feat(findings-analyst, audit-stack): rotation policy for terminal-status items (T5, closes #37).
 
-- feat(validator-orchestrator): per-batch source union via pre-dispatch citation graph. `validator-orchestrator` builds a `SOURCE_MAP` (slug → path) from `sources/` and a per-article `ARTICLE_SOURCES` map from frontmatter `sources:` + inline `[source-slug]` refs. Each per-batch validator receives only the union of its articles' cited sources instead of the full tree. Batches whose articles have zero resolvable citations fall back to the full tree as a safety net. `validator.md` Input contract updated. Closes #34.
+## 0.13.0-alpha.4 — 2026-04-19
 
-## 0.13.0-alpha.1 (unreleased)
+- feat(audit-stack): synthesizer-orchestrator + findings-analyst-orchestrator A2/A3 wrappers (T4, closes #32).
 
-- feat(orchestrators, audit-stack, catalog-sources): unified orchestrator summary-JSON contract. Both `validator-orchestrator` and `concept-identifier-orchestrator` now write a schema_version=1 envelope (`{schema_version, wave, status, counts, epochs}`) to `dev/audit/_a1-summary.json` and `dev/extractions/_w1-w2-summary.json` respectively. Orchestrators return only an `ORCHESTRATOR_OK: wave=X` receipt line on stdout; structural data lives in the file. Failure markers unified to `ORCHESTRATOR_FAILED: wave={wave} reason={short}`. Main-session gates in `skills/audit-stack/SKILL.md` Step 4 and `skills/catalog-sources/SKILL.md` Step 6 / Step 10 updated to nested `.counts.FIELD` jq paths. Closes #33.
+## 0.13.0-alpha.3 — 2026-04-19
+
+- feat(concept-identifier-orchestrator, article-synthesizer): per-slug `_dedup-{slug}.md` split (T3, closes #36).
+- feat(concept-identifier-orchestrator): W2 wave cap with loop (T3, closes #35).
+
+## 0.13.0-alpha.2 — 2026-04-19
+
+- feat(validator-orchestrator): per-batch source union citation graph (T2, closes #34).
+
+## 0.13.0-alpha.1 — 2026-04-19
+
+- feat(orchestrators, audit-stack, catalog-sources): unified orchestrator summary-JSON contract schema_version=1 (T1, closes #33).
 
 ## 0.12.1 — 2026-04-19
 

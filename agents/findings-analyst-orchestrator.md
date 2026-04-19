@@ -143,7 +143,7 @@ awk -F'\t' '
 ' "$TMP_ITEMS" > "$STACK/dev/audit/_a3-merged-deduped.tmp"
 ```
 
-Compose the final `findings.md` with fresh frontmatter (today's `audit_date`, current short git SHA as `stack_head`, `pass_counter: $NEW_PASS`, `schema_version: 3`) and the deduped item bodies grouped into the four sections required by the findings-analyst schema:
+Compose the final `findings.md` with fresh frontmatter (today's `audit_date`, current short git SHA as `stack_head`, `pass_counter: $NEW_PASS`, `schema_version: 4`) and the deduped item bodies grouped into the four sections required by the findings-analyst schema:
 
 - `action: fetch_source` -> New Acquisitions
 - `action: resynthesize` -> Articles to Re-Synthesize
@@ -152,7 +152,7 @@ Compose the final `findings.md` with fresh frontmatter (today's `audit_date`, cu
 
 ```bash
 {
-  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 3\n---\n\n# Findings (A3)\n\n## New Acquisitions\n\n' "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS"
+  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 4\n---\n\n# Findings (A3)\n\n## New Acquisitions\n\n' "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS"
   # awk-extract action: fetch_source items
   printf '\n## Articles to Re-Synthesize\n\n'
   # awk-extract action: resynthesize items
@@ -163,7 +163,7 @@ Compose the final `findings.md` with fresh frontmatter (today's `audit_date`, cu
 } > "$STACK/dev/audit/findings.md"
 ```
 
-Schema stays at `schema_version: 3`. T5 owns the v3->v4 bump.
+Schema is `schema_version: 4`; the `findings-analyst` shard agents apply the v3->v4 migration (set `terminal_transitioned_on` on terminal items that lack it) before emitting partials, so merged items already carry the v4 field.
 
 Gate the merged file:
 
