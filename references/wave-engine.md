@@ -133,43 +133,38 @@ Read `dev/audit/findings.md` (if present). Extract `extraction_hash` values from
 
 Gate: no write-or-fail check (bash read-only pass). Missing `findings.md` is a no-op; skip list is empty.
 
-### W1 — Concept identification (parallel)
+### W1 + W1b + W2 — Orchestrator dispatch
 
-Capture epoch, then dispatch `N_AGENTS` `concept-identifier` agents in parallel — one per batch, not one per source:
-
-```bash
-DISPATCH_EPOCH=$(date +%s)
-# dispatch concept-identifier agents in parallel via Task tool (one per batch)
-# after fan-in:
-for batch_id in "${BATCH_IDS[@]}"; do
-  scripts/assert-written.sh "dev/extractions/${batch_id}-concepts.md" "${DISPATCH_EPOCH}" "concept-identifier"
-done
-```
-
-Each agent receives N sources (N≥1) and a `batch_id`, reads its assigned source files, `STACK.md`, and the skip list. Output: one merged `dev/extractions/{batch_id}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `extraction_hash` (populated by W1b), `target_article`). When N>1 the agent dedups within-batch at the source level so a concept appearing in multiple assigned sources becomes one block with a multi-entry `source_paths:`.
-
-The batching rule (SOURCES_PER_AGENT=10 baseline, with a small-stack bypass of 1-per-agent when `N_SOURCES < 10`) lives in `skills/catalog-sources/SKILL.md`. `N_AGENTS = ceil(N_SOURCES / SOURCES_PER_AGENT)` bounds parallel dispatch regardless of source-set size.
-
-### W1b — Slug-collision dedup
-
-Bash pass reads all `dev/extractions/*-concepts.md` files. Groups concept blocks by `slug`. Merges `source_paths[]` for any duplicate slugs. Emits a unified concept list for W2 dispatch. Ensures one W2 dispatch per unique slug.
-
-After dedup, W1b computes `extraction_hash` for each unique slug via `scripts/compute-extraction-hash.sh`. Input format (keep byte-stable — changing it invalidates every stack's skip list): `{path1}|{path2}|...|{pathN}|{slug}`, where paths are the slug's merged `source_paths[]` sorted ascending and joined by `|`, followed by a trailing `|` and the slug. Piped to the script via `echo -n` so no trailing newline enters the digest. The hash anchors the catalog→audit→catalog skip-list flywheel: A5 terminal-status findings expose these hashes, and W0b on the next cycle skips any concept whose hash matches.
-
-### W2 — Article synthesis (parallel)
-
-Capture epoch, then dispatch one `article-synthesizer` agent per unique concept from W1b output:
+Main session dispatches ONE `concept-identifier-orchestrator` via the Task tool. The orchestrator owns all three waves: W1 concept-identifier fan-out (using the #26 batch math), W1b dedup awk + `scripts/compute-extraction-hash.sh` invocation, W2 article-synthesizer fan-out. It gates every expected output via `scripts/assert-written.sh` and writes `dev/extractions/_orchestrator-summary.json`.
 
 ```bash
-DISPATCH_EPOCH=$(date +%s)
-# dispatch article-synthesizer agents in parallel via Task tool
-# after fan-in:
-for slug in ${CONCEPT_SLUGS}; do
-  scripts/assert-written.sh "articles/${slug}.md" "${DISPATCH_EPOCH}" "article-synthesizer"
-done
+# Main session dispatches ONE orchestrator. The orchestrator runs internally:
+#   - W1 dispatch: N_AGENTS concept-identifier agents in parallel
+#       (SOURCES_PER_AGENT=10 baseline; 1-per-agent when N_SOURCES < 10)
+#   - W1 gate:     assert-written.sh per batch-{id}-concepts.md file
+#   - W1b:         awk dedup groups blocks by slug, merges source_paths[];
+#                  compute-extraction-hash.sh computes the hash per unique slug
+#                  using stable byte format `{path1}|{path2}|...|{pathN}|{slug}`
+#                  (paths sorted ascending, `|`-joined, echo -n piped so no
+#                  trailing newline enters the digest)
+#   - W2 dispatch: N_UNIQUE_CONCEPTS article-synthesizer agents in parallel
+#   - W2 gate:     assert-written.sh per articles/{slug}.md
+#
+# Orchestrator writes dev/extractions/_orchestrator-summary.json with:
+#   n_sources, n_batches_w1, n_concepts_input, n_unique_concepts,
+#   n_articles_new, n_articles_updated, new_slugs[], updated_slugs[]
+#
+# Orchestrator returns on stdout:
+#   {"status": "ok", "summary_path": "...", "n_articles_new": N, "n_articles_updated": M}
+# On failure emits `CATALOG_ORCHESTRATOR_FAILED:` marker on stdout and failed
+# batch-ids / slugs on stderr.
 ```
 
-Each agent receives one concept block, the existing article if `target_article` is set, and `STACK.md`. First-write frontmatter includes: `extraction_hash`, `last_verified=""`, `updated=today`, `sources[]`, `title`, `tags[]`. On re-synthesis, the agent strips prior-cycle inline marks (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) from the existing article body before writing the update.
+Each concept-identifier agent receives N sources (N≥1) and a `batch_id`, reads its assigned source files, `STACK.md`, and the skip list. Output: one merged `dev/extractions/{batch_id}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `target_article`). `extraction_hash` is populated by W1b, not by the concept-identifier. When N>1 the agent dedups within-batch at the source level so a concept appearing in multiple assigned sources becomes one block with a multi-entry `source_paths:`.
+
+Each article-synthesizer agent receives one concept block, the existing article if `target_article` is set, and `STACK.md`. First-write frontmatter includes: `extraction_hash`, `last_verified=""`, `updated=today`, `sources[]`, `title`, `tags[]`. On re-synthesis, the agent strips prior-cycle inline marks (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) from the existing article body before writing the update.
+
+The orchestrator wrapper pattern exists for the same reason as `validator-orchestrator` (see #30): it moves bash-array state and gate loops out of the main-session skill and into a single dispatch boundary. The summary JSON is what makes accurate end-of-pipeline counts possible; the previous inline pattern never populated `NEW_ARTICLE_SLUGS` / `UPDATED_ARTICLE_SLUGS`.
 
 ### W2b — Wikilink pass
 

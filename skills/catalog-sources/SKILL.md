@@ -86,7 +86,7 @@ else
 fi
 ```
 
-For the remainder of the skill (Steps 2-11), when `STACK_QUEUE` contains multiple stacks, treat each stack as an independent cataloging run: iterate through them sequentially, performing all steps for one stack before moving to the next. Commit per stack (Step 11) so a failure mid-queue still leaves prior stacks in a clean state.
+For the remainder of the skill (Steps 2-10), when `STACK_QUEUE` contains multiple stacks, treat each stack as an independent cataloging run: iterate through them sequentially, performing all steps for one stack before moving to the next. Commit per stack (Step 10) so a failure mid-queue still leaves prior stacks in a clean state.
 
 ## Step 1.5: Stage sources from --from path (if provided)
 
@@ -211,200 +211,47 @@ fi
 
 Missing `findings.md` is a no-op; skip list is empty on the first run.
 
-## Step 6: W1 — Concept identification (parallel)
+## Step 6: W1 + W1b + W2 — Orchestrator dispatch
 
-Create the extractions scratch directory:
+Dispatch a single `concept-identifier-orchestrator` agent via the Task tool. The orchestrator owns the W1 concept-identifier fan-out (using the #26 batch math), the W1b dedup awk + `compute-extraction-hash.sh` loop, and the W2 article-synthesizer fan-out. It gates every expected output via `assert-written.sh` and writes a summary JSON the main session reads at Step 10.
 
-```bash
-mkdir -p "$STACK/dev/extractions"
+Pass the orchestrator as task content:
+- `$STACK`: stack root path.
+- `$SCRIPTS_DIR`: for `assert-written.sh` and `compute-extraction-hash.sh`.
+- `$NEW_SOURCES`: newline-separated source paths (from Step 4).
+- `$SKIP_HASHES`: the W0b skip list (may be empty).
+
+The orchestrator writes `$STACK/dev/extractions/_orchestrator-summary.json` with the catalog-run counts (see its contract) and returns a final JSON line of the form:
+
+```json
+{"status": "ok", "summary_path": "dev/extractions/_orchestrator-summary.json", "n_articles_new": N, "n_articles_updated": M}
 ```
 
-Compute the dispatch plan deterministically from the `NEW_SOURCES` count. We batch to keep agent dispatch bounded regardless of source-set size: a 60-source run would otherwise fan out to 60 agents and exhaust the parallel-dispatch budget.
+The main session's gate parses the returned text for a valid summary-OK line AND confirms the summary file exists. Either signal missing = catalog-run failure. On failure the orchestrator emits a `CATALOG_ORCHESTRATOR_FAILED:` marker on stdout and reports failed batch ids / slugs on stderr.
 
 ```bash
-# Load NEW_SOURCES into a bash array (one path per element, blank lines stripped).
-NEW_SOURCES_ARR=()
-while IFS= read -r src; do
-  [[ -z "$src" ]] && continue
-  NEW_SOURCES_ARR+=("$src")
-done <<< "$NEW_SOURCES"
-N_SOURCES=${#NEW_SOURCES_ARR[@]}
-
-# Batching rule:
-#   - Baseline SOURCES_PER_AGENT=10.
-#   - Small-stack bypass: when N_SOURCES < 10, drop to 1-per-agent so a 3-source
-#     run still dispatches 3 agents in parallel (don't serialize tiny runs).
-if (( N_SOURCES < 10 )); then
-  SOURCES_PER_AGENT=1
-else
-  SOURCES_PER_AGENT=10
+# After orchestrator returns, confirm the returned text reports status:ok AND
+# the summary file exists AND the required fields are present with correct
+# types. Type-checks (not truthiness) because zero counts are valid on
+# incremental runs where every source is already in the skip list.
+SUMMARY_PATH="$STACK/dev/extractions/_orchestrator-summary.json"
+if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '"status".*"ok"'; then
+  echo "AGENT_WRITE_FAILURE: concept-identifier-orchestrator returned no status:ok line" >&2
+  exit 1
 fi
-
-# N_AGENTS = ceil(N_SOURCES / SOURCES_PER_AGENT)
-N_AGENTS=$(( (N_SOURCES + SOURCES_PER_AGENT - 1) / SOURCES_PER_AGENT ))
-
-# BATCH_IDS: stable `batch-{1..N}` ids (no zero-padding — order is deterministic
-# from NEW_SOURCES_ARR enumeration and the count is visible in the id itself).
-BATCH_IDS=()
-for ((i=1; i<=N_AGENTS; i++)); do
-  BATCH_IDS+=("batch-$i")
-done
-
-echo "W1 dispatch: $N_SOURCES sources → $N_AGENTS agents (SOURCES_PER_AGENT=$SOURCES_PER_AGENT)"
+if [[ ! -s "$SUMMARY_PATH" ]]; then
+  echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing" >&2
+  exit 1
+fi
+if ! jq -e '(.n_articles_new | type) == "number" and (.n_articles_updated | type) == "number" and (.new_slugs | type) == "array" and (.updated_slugs | type) == "array"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: _orchestrator-summary.json missing or wrong-typed required fields" >&2
+  exit 1
+fi
 ```
 
-Capture the dispatch epoch, then dispatch one `concept-identifier` agent per batch in parallel. For each `batch_id` at index `idx` (0-based) in `BATCH_IDS`, the agent receives sources at indices `idx*SOURCES_PER_AGENT` through `idx*SOURCES_PER_AGENT + SOURCES_PER_AGENT - 1` from `NEW_SOURCES_ARR` (clamped by `N_SOURCES`). Pass each agent:
-- Its assigned `batch_id` (e.g. `batch-3`) and that slice of `NEW_SOURCES_ARR`
-- `$STACK/STACK.md`
-- The skip list of `extraction_hash` values from W0b
-- The existing `$STACK/articles/` listing (for slug immutability checks)
+Downstream steps (W2b wikilink, W2b-post tag drift, W3 source filing, W4 MoC update) remain in this skill after the orchestrator returns successfully.
 
-The agent reads `$AGENTS_DIR/concept-identifier.md` for its full prompt and contract.
-
-```bash
-DISPATCH_EPOCH=$(date +%s)
-# Dispatch N_AGENTS concept-identifier agents in parallel via Task tool —
-# one per batch, NOT one per source. Each agent writes a single merged file:
-#   dev/extractions/{batch_id}-concepts.md  (batch_id already carries the `batch-N` prefix)
-# containing one concept block per unique concept across its assigned sources.
-```
-
-After all agents complete (fan-in), run the write-or-fail gate for each expected output:
-
-```bash
-for batch_id in "${BATCH_IDS[@]}"; do
-  "$SCRIPTS_DIR/assert-written.sh" \
-    "$STACK/dev/extractions/${batch_id}-concepts.md" \
-    "${DISPATCH_EPOCH}" \
-    "concept-identifier"
-done
-```
-
-On any `AGENT_WRITE_FAILURE`, halt and report all failures together before stopping.
-
-## Step 7: W1b — Slug-collision dedup
-
-Between W1 fan-in and W2 fan-out, run a bash pass to merge concept blocks that share a slug across multiple source extractions.
-
-Read all `$STACK/dev/extractions/*-concepts.md` files. For each concept block (delimited by `## Concept:` headings), parse the `slug:` field. Group blocks by slug. For any slug appearing in 2+ blocks:
-- Merge all `source_paths[]` entries into a single unified list
-- Retain other fields from the first occurrence (or highest-tier source per `STACK.md` hierarchy)
-- Write the unified block as a single entry
-
-The result is a deduplicated concept list where each unique slug appears exactly once with all contributing source paths. Write this to `$STACK/dev/extractions/_dedup.md` (a scratch file for W2 input).
-
-Concrete dedup (awk + bash). Parses every extraction file, groups concept blocks by slug, merges `source_paths[]` across duplicates, writes `_dedup.md`, and populates the `CONCEPT_SLUGS` bash array used by Step 8:
-
-```bash
-DEDUP="$STACK/dev/extractions/_dedup.md"
-: > "$DEDUP"
-
-awk '
-  BEGIN { FS = ":" }
-  /^## Concept:/ {
-    if (slug != "") {
-      for (p in sp[slug]) { } # no-op; just ensures indexing
-    }
-    in_block = 1; slug = ""; title = ""; in_paths = 0; body = ""; header = $0
-    next
-  }
-  in_block && /^slug:/ { gsub(/^slug:[[:space:]]*/, "", $0); slug = $0; slugs[slug] = 1; if (!(slug in first_title)) first_title[slug] = title; if (!(slug in first_header)) first_header[slug] = header; next }
-  in_block && /^title:/ { gsub(/^title:[[:space:]]*/, "", $0); title = $0; if (slug != "") first_title[slug] = (slug in first_title) ? first_title[slug] : title; next }
-  in_block && /^source_paths:/ { in_paths = 1; next }
-  in_paths && /^[[:space:]]*-[[:space:]]*/ { gsub(/^[[:space:]]*-[[:space:]]*/, "", $0); sp[slug][$0] = 1; next }
-  in_paths && !/^[[:space:]]*-/ { in_paths = 0 }
-  in_block && !/^## Concept:/ && slug != "" && !/^source_paths:/ && !/^slug:/ && !/^title:/ { body_of[slug] = (slug in body_of ? body_of[slug] : "") $0 "\n" }
-  END {
-    for (s in slugs) {
-      print (s in first_header ? first_header[s] : "## Concept: " (s in first_title ? first_title[s] : s))
-      print "slug: " s
-      print "title: " (s in first_title ? first_title[s] : s)
-      print "source_paths:"
-      for (p in sp[s]) print "  - " p
-      if (s in body_of) print body_of[s]
-      print ""
-    }
-  }
-' "$STACK"/dev/extractions/*-concepts.md > "$DEDUP" 2>/dev/null
-
-# Populate the CONCEPT_SLUGS bash array from the deduped file (one slug per block).
-mapfile -t CONCEPT_SLUGS < <(grep -oP '(?<=^slug:\s).+' "$DEDUP" | awk '!seen[$0]++')
-N_UNIQUE_CONCEPTS=${#CONCEPT_SLUGS[@]}
-INPUT_BLOCKS=$(grep -c '^## Concept:' "$STACK"/dev/extractions/*-concepts.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
-COLLAPSED=$((INPUT_BLOCKS - N_UNIQUE_CONCEPTS))
-echo "W1b: $INPUT_BLOCKS concept blocks collapsed to $N_UNIQUE_CONCEPTS unique slugs ($COLLAPSED merged)."
-
-# Compute extraction_hash per unique slug and write it into the dedup block.
-# Hash input format (keep stable — changing this invalidates every stack's skip list):
-#   {path1}|{path2}|...|{pathN}|{slug}      (paths sorted ascending, `|`-joined)
-# Uniform `|` separator so the byte sequence is unambiguous. `echo -n` suppresses
-# the trailing newline that would otherwise drift the hash.
-for slug in "${CONCEPT_SLUGS[@]}"; do
-  # Collect source_paths for this slug's block in _dedup.md. Awk reads from the
-  # block opened by `slug: $slug` up to the next blank line / next Concept header.
-  sorted_paths=$(awk -v want="$slug" '
-    /^slug:[[:space:]]/ { cur=$2; in_block = (cur == want); in_paths = 0; next }
-    in_block && /^source_paths:/ { in_paths = 1; next }
-    in_block && in_paths && /^[[:space:]]*-[[:space:]]*/ {
-      gsub(/^[[:space:]]*-[[:space:]]*/, "", $0); print $0; next
-    }
-    in_block && in_paths && !/^[[:space:]]*-/ { in_paths = 0 }
-  ' "$DEDUP" | sort -u | tr '\n' '|')
-  # sorted_paths now ends in `|` (or is empty). Append the slug to complete the format.
-  hash_input="${sorted_paths}${slug}"
-  ehash=$(echo -n "$hash_input" | "$SCRIPTS_DIR/compute-extraction-hash.sh")
-  # Insert (or replace) `extraction_hash:` line in this slug's block.
-  # We append it immediately after the `slug:` line of the matching block and
-  # strip any other `extraction_hash:` line that appears in the same block
-  # (anywhere before the next `## Concept:` header), defending against blocks
-  # with a non-canonical field order.
-  awk -v want="$slug" -v h="$ehash" '
-    BEGIN { in_match = 0 }
-    /^## Concept:/ { in_match = 0; print; next }
-    /^slug:[[:space:]]/ {
-      cur=$2
-      print
-      if (cur == want) { print "extraction_hash: " h; in_match = 1 }
-      next
-    }
-    in_match && /^extraction_hash:/ { next }
-    { print }
-  ' "$DEDUP" > "$DEDUP.tmp" && mv "$DEDUP.tmp" "$DEDUP"
-done
-echo "W1b: wrote extraction_hash for $N_UNIQUE_CONCEPTS unique concept slugs."
-```
-
-Note: awk's support for nested arrays (`sp[slug][path]`) requires gawk (GNU awk), which is standard on Linux. If the target environment uses mawk, substitute a python fallback. The logic is identical.
-
-## Step 8: W2 — Article synthesis (parallel)
-
-Read the unique concept list from `$STACK/dev/extractions/_dedup.md`. For each unique slug, collect:
-- The merged concept block
-- The existing article at `$STACK/articles/{slug}.md` if `target_article` is set
-- `$STACK/STACK.md`
-
-Capture the dispatch epoch, then dispatch one `article-synthesizer` agent per unique concept in parallel. The agent reads `$AGENTS_DIR/article-synthesizer.md` for its full contract (frontmatter schema, strip-on-rewrite rule, 300-800 word body, no wikilinks, no audit marks).
-
-```bash
-DISPATCH_EPOCH=$(date +%s)
-# Dispatch article-synthesizer agents in parallel via Task tool (one per unique concept slug).
-# Each agent writes: articles/{slug}.md
-```
-
-After all agents complete (fan-in), run the write-or-fail gate for each expected output:
-
-```bash
-for slug in "${CONCEPT_SLUGS[@]}"; do
-  "$SCRIPTS_DIR/assert-written.sh" \
-    "$STACK/articles/${slug}.md" \
-    "${DISPATCH_EPOCH}" \
-    "article-synthesizer"
-done
-```
-
-On any `AGENT_WRITE_FAILURE`, halt and report all failures together. Articles that were not written are skipped at W3 (their sources remain in `incoming/` for the next run).
-
-## Step 9: W2b — Wikilink pass
+## Step 7: W2b — Wikilink pass
 
 After all W2 assert-written gates pass, run the deterministic wikilink pass:
 
@@ -416,7 +263,7 @@ When `$STACK/glossary.md` does not exist (first catalog run before any audit pas
 
 The script reads bold terms from `glossary.md` and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded (when the article's own slug matches the term slug).
 
-## Step 9.5: Tag drift check
+## Step 7.5: Tag drift check
 
 After the wikilink pass, enforce the tag vocabulary declared in `STACK.md`. The check reads `allowed_tags:` from the stack root and halts the pipeline if any article carries an out-of-vocabulary tag. No auto-rewrite — drift is a surfaced defect the operator resolves by editing either the offending article or the vocabulary list.
 
@@ -426,7 +273,7 @@ After the wikilink pass, enforce the tag vocabulary declared in `STACK.md`. The 
 
 On non-zero exit, halt the catalog pipeline and surface the `TAG_DRIFT:` stderr lines to the user. Do not proceed to W3 (source filing) — sources for drifted articles stay in `incoming/` so the next run retries after the operator fixes the tags. When `allowed_tags:` is absent or empty, the script emits a `normalize-tags: allowed_tags not declared, skipping drift check` warning to stderr and exits 0 (backward-compat for stacks that haven't migrated).
 
-## Step 10: W3 — Source filing
+## Step 8: W3 — Source filing
 
 Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 assert-written gates. Failed articles block their sources' filing at W3 below.
 
@@ -450,7 +297,7 @@ mv "$src_file" "$dest_dir/"
 
 Partial failure is acceptable: unmoved sources remain in `incoming/` and are picked up on the next `/stacks:catalog-sources` run. Sources for failed concepts stay in `incoming/` and are picked up on the next run. No rollback.
 
-## Step 11: W4 — MoC update
+## Step 9: W4 — MoC update
 
 Regenerate `$STACK/index.md` from article frontmatter. The generator reads the existing `index.md`, preserves any `## Reading Paths` section verbatim, and rewrites all other sections.
 
@@ -502,14 +349,15 @@ done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' | sort)
 
 The `## Reading Paths` section is preserved verbatim. Any user-curated reading path content in that section survives across catalog runs unchanged. All other sections (title, generated article groupings by `tags[0]`) are rewritten.
 
-## Step 12: Log + commit
+## Step 10: Log + commit
 
 Prepend an entry to `$STACK/log.md`:
 
 ```bash
-N_SOURCES=$(echo "$NEW_SOURCES" | grep -c . || echo 0)
-N_ARTICLES_NEW=$(echo "${NEW_ARTICLE_SLUGS[@]}" | wc -w | tr -d ' ')
-N_ARTICLES_UPDATED=$(echo "${UPDATED_ARTICLE_SLUGS[@]}" | wc -w | tr -d ' ')
+SUMMARY_PATH="$STACK/dev/extractions/_orchestrator-summary.json"
+N_SOURCES=$(jq -r '.n_sources' "$SUMMARY_PATH")
+N_ARTICLES_NEW=$(jq -r '.n_articles_new' "$SUMMARY_PATH")
+N_ARTICLES_UPDATED=$(jq -r '.n_articles_updated' "$SUMMARY_PATH")
 
 NEW_ENTRY="## [$(date +%Y-%m-%d)] catalog | $N_SOURCES new sources, $N_ARTICLES_NEW articles created, $N_ARTICLES_UPDATED articles updated
 Sources processed: $N_SOURCES. New articles: $N_ARTICLES_NEW. Updated articles: $N_ARTICLES_UPDATED."
