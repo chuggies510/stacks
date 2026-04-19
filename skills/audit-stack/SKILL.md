@@ -317,7 +317,29 @@ else
 fi
 ```
 
-If `converged=0` and the budget has not been reached, loop back to Step 4 (next pass begins at A1). If `converged=1`, proceed to Step 9.
+If `converged=0` and the budget has not been reached, loop back to Step 4 (next pass begins at A1). If `converged=1`, proceed to Step 8.5.
+
+## Step 8.5: Rotate stale terminal findings
+
+This step runs only when `converged=1` (per the A4 decision above). It runs before A5 archive so the archive snapshot reflects the post-rotation active file.
+
+Items in a terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) for ≥ `ROTATION_CYCLES` distinct audit cycles (default 3, parsed from `STACK.md`) are moved from the active `dev/audit/findings.md` to `dev/audit/findings-archive.md`. The archive is append-only, chronological, and operator-readable. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set.
+
+```bash
+audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/dev/null | head -1)
+if [[ -z "$audit_date" ]]; then
+  audit_date=$(date +%Y-%m-%d)
+fi
+DISPATCH_EPOCH=$(date +%s)
+ROTATION_OUTPUT=$(bash "$SCRIPTS_DIR/rotate-findings.sh" "$STACK" "$audit_date")
+echo "$ROTATION_OUTPUT"
+rotated_count=$(echo "$ROTATION_OUTPUT" | grep -oP '(?<=rotated_items=)\d+' || echo "0")
+if [[ "$rotated_count" -gt 0 ]]; then
+  "$SCRIPTS_DIR/assert-written.sh" "$STACK/dev/audit/findings-archive.md" "${DISPATCH_EPOCH}" "rotate-findings"
+fi
+```
+
+The assert-written gate fires only when the script reports a non-zero rotation, so zero-rotation runs (common during the stack's first terminal accumulation years) are no-ops.
 
 ## Step 9: A5 — Archive on convergence
 

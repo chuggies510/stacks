@@ -29,7 +29,7 @@ Write `dev/audit/findings.md` with this locked schema.
 audit_date: YYYY-MM-DD
 stack_head: <git sha>
 pass_counter: <int, reset to 0 on new audit_date, incremented by findings-analyst each pass>
-schema_version: 3
+schema_version: 4
 ---
 ```
 
@@ -61,6 +61,7 @@ Items the operator has moved to `status: deferred`.
   action: <fetch_source|resynthesize|noop>
   resolvable_by: <audit-stack|catalog-sources|external>
   status: <open|applied|closed|deferred|stale|failed>
+  terminal_transitioned_on: <YYYY-MM-DD, required for any item currently in a terminal status; empty/unset for open items>
   note: <optional>
 ```
 
@@ -73,6 +74,7 @@ Items the operator has moved to `status: deferred`.
   action: research_question
   resolvable_by: external
   status: <open|applied|closed|deferred|stale|failed>
+  terminal_transitioned_on: <YYYY-MM-DD, required for any item currently in a terminal status; empty/unset for open items>
   note: <optional — what a satisfying answer would look like>
 ```
 
@@ -111,6 +113,10 @@ Read the prior `dev/audit/findings.md` before writing. For each item ID that alr
 New IDs not present in the prior findings default to `open`.
 
 When a prior-pass item lacks `resolvable_by` (schema v2), populate it using the emit-time defaults below before writing the v3 item: `fetch_source → catalog-sources`, `resynthesize → audit-stack`, `research_question → external`, `noop → audit-stack`. This is the only v2→v3 migration; no hand-editing of findings.md files is required.
+
+**v3→v4 migration (schema_version bump):** When reading a prior-pass item whose `status` is terminal (`applied`, `closed`, `deferred`, `stale`, `failed`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `scripts/rotate-findings.sh` then always sees the field populated on any terminal item it encounters. No hand-editing of existing files is required; the migration fires automatically on the first A3 pass after the schema bump.
+
+On any fresh transition from `open` into a terminal status during the current pass, record today's `audit_date` as `terminal_transitioned_on`. On carry-forward of an already-terminal item, preserve the existing `terminal_transitioned_on` value.
 
 ## Convergence
 
@@ -207,10 +213,11 @@ Prior `dev/audit/findings.md` contains:
   action: fetch_source
   resolvable_by: catalog-sources
   status: applied
+  terminal_transitioned_on: 2026-02-14
 ```
 
 A new source was ingested and the article was re-synthesized since the last pass. The new validation pass shows the claim is now `[VERIFIED]`. The prior status is `applied`.
 
-Carry-forward: this item's status is already `applied` (terminal). Carry it forward as-is. Do not reset to `open`. Do not create a duplicate new item.
+Carry-forward: this item's status is already `applied` (terminal). Carry it forward as-is, preserving `terminal_transitioned_on: 2026-02-14`. Do not reset to `open`. Do not overwrite `terminal_transitioned_on` with the current `audit_date`. Do not create a duplicate new item.
 
 The new `[VERIFIED]` mark on the claim means no action item is generated for this claim in the current pass — VERIFIED claims generate `action: noop` items only if you need to record them; typically they are omitted from findings.md entirely unless the operator requests a full audit trail.

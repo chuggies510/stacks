@@ -1,3 +1,7 @@
+## 0.13.0-alpha.5 (unreleased)
+
+- feat(findings-analyst, audit-stack): rotation policy for terminal-status items. Schema v3→v4 adds `terminal_transitioned_on: YYYY-MM-DD` field set when items first enter a terminal status; carry-forward migration block backfills it to current audit_date on first encounter (no hand-editing required). New `scripts/rotate-findings.sh` runs at new audit-stack Step 8.5 (between A4 convergence and A5 archive, only when converged). Terminal items older than `ROTATION_CYCLES` audit cycles (default 3, grepped from STACK.md) move to `dev/audit/findings-archive.md`. Archive write gated by `assert-written.sh` when rotation count > 0. Closes #37.
+
 ## 0.13.0-alpha.4 (unreleased)
 
 - feat(audit-stack): new `agents/synthesizer-orchestrator.md` (A2) and `agents/findings-analyst-orchestrator.md` (A3) wrap the previously-unsharded synthesizer and findings-analyst dispatches. Both use the schema-v1 envelope and the single-shard fast-path pattern (A2 cap `ARTICLES_PER_AGENT=30` since synthesizer reads articles only; A3 cap 15 matching A1). Above the cap, shard agents write partials to `dev/audit/_a{2,3}-partial-{batch_id}.md`; A2 re-dispatches `synthesizer` with a merge task, A3 bash-merges by item id with terminal-wins precedence. `skills/audit-stack/SKILL.md` Steps 5 and 7 rewritten to dispatch the orchestrators. Unblocks mep-stack (~250 articles). Closes #32.
