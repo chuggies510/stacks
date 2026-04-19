@@ -1,3 +1,8 @@
+## 0.9.0-alpha.2 — 2026-04-18
+
+- feat(ask): article-mode branch in Step 5. When the queried stack has `articles/*.md` files, reads articles; otherwise falls back to `topics/*/guide.md` (legacy guide mode). Detection uses `test -d {stack}/articles && find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .` — no STACK.md field required. Addresses stacks#20.
+- feat(ask): Step 4 now extracts any user-authored `## Reading Paths` section from `{stack}/index.md` as additional retrieval context, augmenting the existing Topics-table matching.
+
 ## 0.9.0-alpha.1 — 2026-04-18
 
 - feat(catalog-sources): new ingestion skill producing article-per-concept wiki entries. Waves W0 (enumerate incoming/) → W0b (prior-findings skip list) → W1 (concept-identifier, parallel per source) → W1b (bash slug-collision dedup) → W2 (article-synthesizer, parallel per unique concept) → W2b (deterministic wikilink pass) → W3 (source filing) → W4 (MoC regeneration preserving ## Reading Paths). Ships alongside the existing ingest-sources pipeline during transition; #22 removes the old skill. Addresses stacks#19.
