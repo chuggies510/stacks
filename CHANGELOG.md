@@ -1,3 +1,7 @@
+## 0.9.1 — 2026-04-18
+
+- feat(templates): add `templates/stack/.gitignore` with `sources/incoming/`. New stacks scaffolded via `/stacks:new-stack` ignore the incoming staging directory, matching the library-level `/inbox/` pattern. Closes #4.
+
 ## 0.9.0 — 2026-04-18
 
 BREAKING: `ingest-sources` and `refine-stack` removed. `catalog-sources` and `audit-stack` are the replacements. No migration path for existing `topics/*/guide.md` files — rebuild from source with `/stacks:catalog-sources`. Closes #22.
