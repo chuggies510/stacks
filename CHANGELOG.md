@@ -1,3 +1,7 @@
+## 0.13.0-alpha.4 (unreleased)
+
+- feat(audit-stack): new `agents/synthesizer-orchestrator.md` (A2) and `agents/findings-analyst-orchestrator.md` (A3) wrap the previously-unsharded synthesizer and findings-analyst dispatches. Both use the schema-v1 envelope and the single-shard fast-path pattern (A2 cap `ARTICLES_PER_AGENT=30` since synthesizer reads articles only; A3 cap 15 matching A1). Above the cap, shard agents write partials to `dev/audit/_a{2,3}-partial-{batch_id}.md`; A2 re-dispatches `synthesizer` with a merge task, A3 bash-merges by item id with terminal-wins precedence. `skills/audit-stack/SKILL.md` Steps 5 and 7 rewritten to dispatch the orchestrators. Unblocks mep-stack (~250 articles). Closes #32.
+
 ## 0.13.0-alpha.3 (unreleased)
 
 - feat(concept-identifier-orchestrator, article-synthesizer): W1b writes per-slug `_dedup-{slug}.md` files; W2 dispatch passes the per-slug path; article-synthesizer reads only its own slug's block. `_dedup.md` preserved as aggregated audit-trail artifact. Progressive disclosure cuts per-agent tokens at large W2 fan-outs. Closes #36.

@@ -144,30 +144,51 @@ fi
 
 If any of the three checks fails, treat A1 as failed and halt the audit loop. On failure the orchestrator also reports every failed article path on stderr and emits an `ORCHESTRATOR_FAILED: wave=a1 reason={short}` marker line on stdout. Either signal halts the audit loop.
 
-## Step 5: A2 — Synthesizer dispatch
+## Step 5: A2 — Synthesizer-orchestrator dispatch
 
-```bash
-DISPATCH_EPOCH=$(date +%s)
+Dispatch a single `synthesizer-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `synthesizer` agents (cap of 30 articles per agent; higher than A1 because synthesizer reads article text only, no sources tree) and, when sharded, dispatches the same `synthesizer` agent type a second time as a merge pass that resolves dedup, independent-corroboration, and tier-hierarchy rules across shards. The orchestrator owns per-output `assert-written.sh` gating for both the shard partials (`dev/audit/_a2-partial-{batch_id}.md`) and the three final stack-root files.
+
+Pass the orchestrator:
+- `$STACK`: stack root.
+- `$SCRIPTS_DIR`: for `assert-written.sh`.
+
+The main session's A2 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a2` on stdout and writes the structural data to `$STACK/dev/audit/_a2-summary.json` with the schema-versioned envelope:
+
+```json
+{
+  "schema_version": 1,
+  "wave": "a2",
+  "status": "ok",
+  "counts": {
+    "n_articles": 80,
+    "n_batches": 5,
+    "glossary_terms": 142,
+    "invariants": 17,
+    "contradictions": 4
+  },
+  "epochs": {
+    "dispatch_epoch": 1713500000
+  }
+}
 ```
 
-Dispatch the `synthesizer` agent (read `$AGENTS_DIR/synthesizer.md` for the full prompt). Provide:
-- All articles: `$STACK/articles/*.md`
-- `$STACK/STACK.md`
-
-The synthesizer reads all articles and writes three files at the stack root:
-- `$STACK/glossary.md` — alphabetical term definitions
-- `$STACK/invariants.md` — numbered rules with independent corroboration
-- `$STACK/contradictions.md` — conflicting claims between articles
-
-After the agent returns, gate each output:
-
 ```bash
-"$SCRIPTS_DIR/assert-written.sh" "$STACK/glossary.md" "${DISPATCH_EPOCH}" "synthesizer"
-"$SCRIPTS_DIR/assert-written.sh" "$STACK/invariants.md" "${DISPATCH_EPOCH}" "synthesizer"
-"$SCRIPTS_DIR/assert-written.sh" "$STACK/contradictions.md" "${DISPATCH_EPOCH}" "synthesizer"
+SUMMARY_PATH="$STACK/dev/audit/_a2-summary.json"
+if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a2'; then
+  echo "AGENT_WRITE_FAILURE: A2 receipt line missing" >&2
+  exit 1
+fi
+if [[ ! -s "$SUMMARY_PATH" ]]; then
+  echo "AGENT_WRITE_FAILURE: _a2-summary.json missing" >&2
+  exit 1
+fi
+if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: _a2-summary.json malformed" >&2
+  exit 1
+fi
 ```
 
-Halt on any gate failure before proceeding to A2b.
+If any of the three checks fails, treat A2 as failed and halt the audit loop. On failure the orchestrator also reports failed paths on stderr and emits an `ORCHESTRATOR_FAILED: wave=a2 reason={short}` marker line on stdout. Either signal halts the audit loop. After A2 succeeds the three stack-root files (`glossary.md`, `invariants.md`, `contradictions.md`) are present and gated; proceed to A2b.
 
 ## Step 6: A2b — Wikilink pass
 
@@ -177,19 +198,16 @@ Halt on any gate failure before proceeding to A2b.
 
 This is the same shared helper used by catalog-sources at W2b. It reads glossary bold terms and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded. The pass is a no-op if `glossary.md` is absent, but at this point in the pipeline `glossary.md` was just written by A2.
 
-## Step 7: A3 — Findings-analyst dispatch
+## Step 7: A3 — Findings-analyst-orchestrator dispatch
 
-```bash
-DISPATCH_EPOCH=$(date +%s)
-mkdir -p "$STACK/dev/audit"
-```
+Dispatch a single `findings-analyst-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `findings-analyst` agents (cap of 15 articles per agent, matching A1) and then bash-merges per-shard partials into a single `dev/audit/findings.md` by item `id`, applying terminal-wins precedence so carried-forward terminal statuses never regress. The orchestrator owns per-output `assert-written.sh` gating for the partials (`dev/audit/_a3-partial-{batch_id}.md`) and the merged active findings.md.
 
-Dispatch the `findings-analyst` agent (read `$AGENTS_DIR/findings-analyst.md` for the full prompt). Provide:
-- All articles: `$STACK/articles/*.md` (inline marks from A1 are the data source)
-- `$STACK/contradictions.md`
-- `$STACK/dev/audit/findings.md` (prior pass; may not exist on first run; agent handles gracefully)
+Pass the orchestrator:
+- `$STACK`: stack root.
+- `$SCRIPTS_DIR`: for `assert-written.sh`.
 
-The agent writes `dev/audit/findings.md` with this locked frontmatter:
+The canonical findings.md schema definition (item shapes, status enum, resolvable_by enum, emit-time rules, and carry-forward behavior) lives in `agents/findings-analyst.md`. The findings.md frontmatter remains:
+
 ```yaml
 ---
 audit_date: YYYY-MM-DD
@@ -199,15 +217,45 @@ schema_version: 3
 ---
 ```
 
-The canonical schema definition (item shapes, status enum, resolvable_by enum, emit-time rules, and carry-forward behavior) lives in `agents/findings-analyst.md` — do not duplicate it here.
+The main session's A3 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a3` on stdout and writes the structural data to `$STACK/dev/audit/_a3-summary.json` with the schema-versioned envelope:
 
-After the agent returns, gate the output:
-
-```bash
-"$SCRIPTS_DIR/assert-written.sh" "$STACK/dev/audit/findings.md" "${DISPATCH_EPOCH}" "findings-analyst"
+```json
+{
+  "schema_version": 1,
+  "wave": "a3",
+  "status": "ok",
+  "counts": {
+    "n_articles": 80,
+    "n_batches": 6,
+    "new_items": 12,
+    "carried_items": 48,
+    "rotated_items": 0
+  },
+  "epochs": {
+    "dispatch_epoch": 1713500000
+  }
+}
 ```
 
-Read `pass_counter` from the written file for the loop controller:
+```bash
+SUMMARY_PATH="$STACK/dev/audit/_a3-summary.json"
+if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a3'; then
+  echo "AGENT_WRITE_FAILURE: A3 receipt line missing" >&2
+  exit 1
+fi
+if [[ ! -s "$SUMMARY_PATH" ]]; then
+  echo "AGENT_WRITE_FAILURE: _a3-summary.json missing" >&2
+  exit 1
+fi
+if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: _a3-summary.json malformed" >&2
+  exit 1
+fi
+```
+
+If any of the three checks fails, treat A3 as failed and halt the audit loop. On failure the orchestrator also emits an `ORCHESTRATOR_FAILED: wave=a3 reason={short}` marker line on stdout. Either signal halts the audit loop.
+
+After A3 succeeds, read `pass_counter` from the written `findings.md` for the loop controller (A4 reads it too):
 
 ```bash
 pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md" 2>/dev/null || echo "0")
