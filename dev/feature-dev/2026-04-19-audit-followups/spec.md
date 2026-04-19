@@ -46,7 +46,7 @@ scripts/
 
 Helper scripts identified for new work:
 - `scripts/rotate-findings.sh` (NEW, #37): bash pass between A4 and A5.
-- Citation-graph builder lives inline in `validator-orchestrator.md` bash (#34) — no new script file (small enough to stay in the agent prompt).
+- Citation-graph builder lives inline in `validator-orchestrator.md` bash (#34). no new script file (small enough to stay in the agent prompt).
 
 ## Research findings
 
@@ -61,7 +61,7 @@ Step 8.5 auto-skip (a) fired: every sub-issue has explicit Done When with mechan
 
 Single design per sub-issue. No design alternatives dispatched (auto-skip 8.5).
 
-### #33 — Unified summary-JSON contract (foundation; ships first)
+### #33. Unified summary-JSON contract (foundation; ships first)
 
 **Decision.** Every orchestrator writes `$STACK/dev/extractions/_{wave}-summary.json` OR `$STACK/dev/audit/_{wave}-summary.json` (per its pipeline sub-tree) as the single authoritative output. Inline-JSON return text reduced to a minimal receipt line. Every summary JSON uses a uniform envelope:
 
@@ -89,7 +89,7 @@ Per-wave `epochs` (for gate debug only, not read by main session):
 
 **Failure marker:** single convention `ORCHESTRATOR_FAILED: wave={wave} reason={short}` on stdout; failed paths/ids on stderr.
 
-**Main-session gate:** read the summary file, verify `schema_version == 1`, verify `status == "ok"`, type-check required `counts` fields at their nested paths. Orchestrator's returned text carries a receipt line (`ORCHESTRATOR_OK: wave={wave}`) — fast-fail signal before disk read; structural data lives in the file. Defense-in-depth per CLAUDE.md gotcha.
+**Main-session gate:** read the summary file, verify `schema_version == 1`, verify `status == "ok"`, type-check required `counts` fields at their nested paths. Orchestrator's returned text carries a receipt line (`ORCHESTRATOR_OK: wave={wave}`). fast-fail signal before disk read; structural data lives in the file. Defense-in-depth per CLAUDE.md gotcha.
 
 **Enumerated gate expression changes:**
 - `skills/audit-stack/SKILL.md` A1 gate (currently at line 122-130): replace flat `(.n_articles | type) == "number"` with nested path + envelope check: `jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH"`. Receipt parse changes from `grep -oE '\{[^{}]*"n_articles"[^{}]*\}'` to `grep -q '^ORCHESTRATOR_OK: wave=a1'`.
@@ -99,22 +99,22 @@ Per-wave `epochs` (for gate debug only, not read by main session):
 
 **Migration:** `A1_ORCHESTRATOR_FAILED:` and `CATALOG_ORCHESTRATOR_FAILED:` markers both replaced by the unified `ORCHESTRATOR_FAILED: wave={wave} reason={short}` form.
 
-### #32 — A2 synthesizer-orchestrator + A3 findings-analyst-orchestrator
+### #32. A2 synthesizer-orchestrator + A3 findings-analyst-orchestrator
 
 **Decision.** Two new orchestrator agents, same sharding pattern as validator-orchestrator (cap `ARTICLES_PER_AGENT=15`, shard math `ceil(N/5)` capped at 15). Both use the two-phase reduce pattern because A2 and A3 have cross-article logic that can't be fully sharded.
 
 **A2 (`synthesizer-orchestrator.md`):**
-- Shard 1: each `synthesizer` agent over its article slice produces `dev/audit/_a2-partial-{batch_id}.md` — YAML block with three lists: candidate glossary entries (term + definition + source), candidate invariant rules (rule + article-slug + cited source), candidate contradictions (topic + articles + claims).
+- Shard 1: each `synthesizer` agent over its article slice produces `dev/audit/_a2-partial-{batch_id}.md`. YAML block with three lists: candidate glossary entries (term + definition + source), candidate invariant rules (rule + article-slug + cited source), candidate contradictions (topic + articles + claims).
 - Reduce: orchestrator bash pass merges partials:
   - Glossary: dedup on term, STACK.md tier-hierarchy wins for conflicts.
   - Invariants: promote only if rule appears in 2+ articles citing 2+ distinct sources (independence check preserved across shards).
   - Contradictions: dedup on `(article-a, article-b, topic)` triple.
 - Writes final `glossary.md`, `invariants.md`, `contradictions.md` at stack root.
 - Per-output gate via `assert-written.sh`; summary JSON.
-- **Glossary conflict resolution mechanism (resolved):** tier-hierarchy resolution for conflicting glossary definitions is done by a dedicated `synthesizer-merge` sub-agent dispatched after the shard fan-in. The merge agent reads all `_a2-partial-*.md` files + STACK.md and writes the three final stack-root files. This is one extra Claude dispatch, not bash parsing of STACK.md's tier list. Two-phase: shards fan out → one merge agent fans in. Glossary/invariant/contradiction logic that requires tier-awareness stays inside Claude, not in orchestrator bash.
+- **Glossary conflict resolution mechanism (resolved):** tier-hierarchy resolution is done by dispatching the existing `synthesizer` agent a second time with task content set to "merge these partials," reading all `_a2-partial-*.md` files plus STACK.md and writing the three final stack-root files. No new agent type. Two-phase: shards fan out, one re-dispatch of the same agent fans in.
 
 **A3 (`findings-analyst-orchestrator.md`):**
-- Shard 1: each `findings-analyst` agent over its article slice + prior findings.md + contradictions.md produces `dev/audit/_a3-partial-{batch_id}.md` — partial findings list with full item shapes (id + all fields).
+- Shard 1: each `findings-analyst` agent over its article slice + prior findings.md + contradictions.md produces `dev/audit/_a3-partial-{batch_id}.md`. partial findings list with full item shapes (id + all fields).
 - Reduce: orchestrator bash pass merges partials:
   - Dedup on `id` (sha256 already stable across shards).
   - Preserve carry-forward: prior findings.md consulted by each shard; merge conflicts on same-id resolved by status-precedence (terminal > open, never regresses).
@@ -122,17 +122,17 @@ Per-wave `epochs` (for gate debug only, not read by main session):
 - Writes final `dev/audit/findings.md` with correct `pass_counter` and schema v3 frontmatter.
 - Per-output gate; summary JSON.
 
-Both orchestrators: **single-shard fast path when `N <= 15`** — dispatch one agent, skip the partials-file + merge pass entirely, write final outputs directly. This is the common case on current stacks (mep-stack ~50-100 articles runs as single shard; the reduce pass only fires at 250+). Keeps current-stack complexity identical to today while unblocking scale.
+**Fast-path thresholds.** A3 uses `ARTICLES_PER_AGENT=15`, matching A1 (findings-analyst carries state across articles and hits a similar ceiling). A2 uses `ARTICLES_PER_AGENT=30` because synthesizer reads article text only (no sources tree), so its ceiling is higher. Both orchestrators skip the partials-merge pass when `N` fits in one shard and write final outputs directly. On current stacks this means A2 runs as single-shard up to 30 articles, A3 up to 15.
 
-### #36 — Per-slug `_dedup-{slug}.md` split (ships before #35)
+### #36. Per-slug `_dedup-{slug}.md` split (ships before #35)
 
 **Decision.** W1b inside `concept-identifier-orchestrator` writes two artifacts:
-1. `dev/extractions/_dedup.md` — single merged file (audit trail, operator-readable). Unchanged from today.
-2. `dev/extractions/_dedup-{slug}.md` — one file per unique slug containing that slug's merged concept block. New.
+1. `dev/extractions/_dedup.md`. single merged file (audit trail, operator-readable). Unchanged from today.
+2. `dev/extractions/_dedup-{slug}.md`. one file per unique slug containing that slug's merged concept block. New.
 
 W2 dispatch passes the per-slug file path as the task content; `article-synthesizer` Input section updated to "Read your assigned `_dedup-{slug}.md` file" (one small file, not a 250-block aggregate).
 
-### #35 — W2 wave cap (ships after #36 so waves iterate over per-slug files)
+### #35. W2 wave cap (ships after #36 so waves iterate over per-slug files)
 
 **Decision.** Add constant `W2_WAVE_CAP=25` in `concept-identifier-orchestrator.md`. Wrap W2 dispatch in a wave loop:
 
@@ -152,7 +152,7 @@ done
 
 Each wave captures its own epoch. Per-article `assert-written.sh` gate runs per wave against that wave's epoch (stale pre-existing files from prior waves still pass correctly because this wave's articles were all written after `DISPATCH_EPOCH_W2_WAVE`). Summary JSON adds `n_w2_waves` (informational).
 
-### #34 — Validator per-batch source union
+### #34. Validator per-batch source union
 
 **Decision.** `validator-orchestrator.md` pre-dispatch bash builds a citation graph:
 
@@ -177,13 +177,13 @@ done
 
 Each validator agent receives only `ARTICLE_SOURCES_FOR_BATCH[idx]` paths as its sources, not the full tree. Falls back to full-tree if any article has zero resolvable citations (defense: articles with pure `[UNSOURCED]` marks have no explicit cites; the validator must still see enough context to verify other marks, so include the full tree for those batches). Worked example added to `validator-orchestrator.md`.
 
-### #37 — findings.md rotation
+### #37. findings.md rotation
 
 **Decision.** Three-part change:
 
 1. **`findings-analyst.md` schema update (v3 → v4):** add `terminal_transitioned_on: YYYY-MM-DD` field. Set when the agent first transitions an item into a terminal status. Preserved on carry-forward.
 2. **`findings-analyst.md` v3→v4 migration block** (same pattern as v2→v3 at line 113): "When reading a prior-pass item whose status is terminal (`applied`, `closed`, `deferred`, `stale`, `failed`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `rotate-findings.sh` then always sees the field populated." No hand-editing of existing findings.md files required; the migration fires automatically on the first A3 pass after the schema bump.
-3. **`scripts/rotate-findings.sh` (NEW):** called from `skills/audit-stack/SKILL.md` between A4 convergence decision and A5 archive (only when `converged=1`). Reads `dev/audit/findings.md`, for each terminal-status item computes distinct-audit-date cycles between `terminal_transitioned_on` and current `audit_date` by reading the archive file for prior audit_dates (or counting cycles since `terminal_transitioned_on` using audit_dates it has seen — simplest: the script takes the current `audit_date` as arg, treats missing `terminal_transitioned_on` as `audit_date` itself → cycles=0 → no rotation, safe first-run behavior). If ≥ `ROTATION_CYCLES` (default 3, parsed from `STACK.md` with the same pattern as `MAX_AUDIT_PASSES`), item moves to `dev/audit/findings-archive.md` (append-only, chronological, `## rotated_on: YYYY-MM-DD` headers grouping each batch). Items are removed from active `findings.md`.
+3. **`scripts/rotate-findings.sh` (NEW):** called from `skills/audit-stack/SKILL.md` between A4 convergence decision and A5 archive (only when `converged=1`). Reads `dev/audit/findings.md`, for each terminal-status item computes distinct-audit-date cycles between `terminal_transitioned_on` and current `audit_date` by reading the archive file for prior audit_dates (or counting cycles since `terminal_transitioned_on` using audit_dates it has seen. simplest: the script takes the current `audit_date` as arg, treats missing `terminal_transitioned_on` as `audit_date` itself → cycles=0 → no rotation, safe first-run behavior). If ≥ `ROTATION_CYCLES` (default 3, parsed from `STACK.md` with the same pattern as `MAX_AUDIT_PASSES`), item moves to `dev/audit/findings-archive.md` (append-only, chronological, `## rotated_on: YYYY-MM-DD` headers grouping each batch). Items are removed from active `findings.md`.
 4. **Archive write-gate:** after `rotate-findings.sh` runs, if it reports ≥1 item rotated, `skills/audit-stack/SKILL.md` calls `assert-written.sh "$STACK/dev/audit/findings-archive.md" "$DISPATCH_EPOCH" "rotate-findings"` (epoch captured immediately before script invocation). Catches silent archival failure.
 
 Archive is operator-readable history; findings-analyst's carry-forward reads active file only. `schema_version` in frontmatter bumps to v4.
@@ -196,7 +196,7 @@ Archive is operator-readable history; findings-analyst's carry-forward reads act
 - Ship order: **#33 → #32 → #36 → #35 → #34 → #37**. #33 first so all new/edited orchestrators adopt the schema-versioned envelope. #36 before #35 so wave iteration uses per-slug files. #34 independent (validator). #37 independent, final.
 - Every agent dispatched by an orchestrator still loads its system prompt from frontmatter. Orchestrators never attempt to inject prompt text. (Existing CLAUDE.md gotcha.)
 - Summary JSON is the success observable per CLAUDE.md gotcha ("subagent success observable as returned text, not exit codes"). Keep both file-presence + field type-check defense-in-depth at main-session gates.
-- Do not use `jq -e` with `and` over counts (existing CLAUDE.md gotcha — `0` is falsy). All type-check gates use `(.foo | type) == "number"` form.
+- Do not use `jq -e` with `and` over counts (existing CLAUDE.md gotcha. `0` is falsy). All type-check gates use `(.foo | type) == "number"` form.
 
 ## Done When
 

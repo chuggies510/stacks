@@ -5,10 +5,11 @@
     "title": "audit follow-ups: orchestrator contract, A2/A3 wrappers, wave caps, source sharding, progressive disclosure, findings rotation",
     "targetVersion": "0.13.0"
   },
+  "commitOrderNote": "Within a parallel wave, main session commits in T-ID order (T2 before T3 before T4) regardless of agent-return order. Alpha versions assigned by T-ID, not by completion time.",
   "waves": [
     { "id": "W1", "tasks": ["T1"] },
     { "id": "W2", "tasks": ["T2", "T3", "T4"], "parallel": true },
-    { "id": "W3", "tasks": ["T5", "T6"], "parallel": true }
+    { "id": "W3", "tasks": ["T5"] }
   ],
   "tasks": [
     {
@@ -40,22 +41,23 @@
           "agents/validator-orchestrator.md",
           "agents/validator.md"
         ],
-        "verifyCommand": "grep -q 'SOURCE_MAP' agents/validator-orchestrator.md && grep -q 'citation' agents/validator-orchestrator.md && ! grep -q 'FULL \\$STACK/sources/ tree' agents/validator-orchestrator.md"
+        "verifyCommand": "grep -q 'SOURCE_MAP' agents/validator-orchestrator.md && grep -q 'citation' agents/validator-orchestrator.md && grep -qE 'zero (resolvable )?citations|UNSOURCED' agents/validator-orchestrator.md"
       }
     },
     {
       "id": "T3",
-      "subject": "#36 per-slug _dedup-{slug}.md split",
+      "subject": "#36 per-slug _dedup + #35 W2 wave cap (bundled)",
       "status": "pending",
       "blockedBy": ["T1"],
       "metadata": {
         "issue": 36,
+        "alsoCloses": [35],
         "shipVersion": "0.13.0-alpha.3",
         "files": [
           "agents/concept-identifier-orchestrator.md",
           "agents/article-synthesizer.md"
         ],
-        "verifyCommand": "grep -qE '_dedup-(\\{slug\\}|\\$\\{slug\\}|\\$slug)\\.md' agents/concept-identifier-orchestrator.md && grep -qE '_dedup-(\\{slug\\}|\\$\\{slug\\}|\\$slug)\\.md' agents/article-synthesizer.md"
+        "verifyCommand": "grep -qE '_dedup-(\\{slug\\}|\\$\\{slug\\}|\\$slug)\\.md' agents/concept-identifier-orchestrator.md && grep -qE '_dedup-(\\{slug\\}|\\$\\{slug\\}|\\$slug)\\.md' agents/article-synthesizer.md && grep -q 'W2_WAVE_CAP=25' agents/concept-identifier-orchestrator.md && grep -q 'n_w2_waves' agents/concept-identifier-orchestrator.md && grep -q 'DISPATCH_EPOCH_W2_WAVE' agents/concept-identifier-orchestrator.md"
       }
     },
     {
@@ -71,36 +73,23 @@
           "agents/findings-analyst-orchestrator.md",
           "skills/audit-stack/SKILL.md"
         ],
-        "verifyCommand": "test -f agents/synthesizer-orchestrator.md && test -f agents/findings-analyst-orchestrator.md && grep -q 'synthesizer-orchestrator' skills/audit-stack/SKILL.md && grep -q 'findings-analyst-orchestrator' skills/audit-stack/SKILL.md && grep -q 'schema_version' agents/synthesizer-orchestrator.md && grep -q 'schema_version' agents/findings-analyst-orchestrator.md"
+        "verifyCommand": "test -f agents/synthesizer-orchestrator.md && test -f agents/findings-analyst-orchestrator.md && grep -q '^tools:' agents/synthesizer-orchestrator.md && grep -q '^tools:' agents/findings-analyst-orchestrator.md && grep -q '^model:' agents/synthesizer-orchestrator.md && grep -q '^model:' agents/findings-analyst-orchestrator.md && [ $(grep -c '^## Example' agents/synthesizer-orchestrator.md) -ge 3 ] && [ $(grep -c '^## Example' agents/findings-analyst-orchestrator.md) -ge 3 ] && grep -q 'synthesizer-orchestrator' skills/audit-stack/SKILL.md && grep -q 'findings-analyst-orchestrator' skills/audit-stack/SKILL.md && grep -q 'schema_version' agents/synthesizer-orchestrator.md && grep -q 'schema_version' agents/findings-analyst-orchestrator.md"
       }
     },
     {
       "id": "T5",
-      "subject": "#35 W2 wave cap (default 25) with loop",
-      "status": "pending",
-      "blockedBy": ["T3"],
-      "metadata": {
-        "issue": 35,
-        "shipVersion": "0.13.0-alpha.5",
-        "files": [
-          "agents/concept-identifier-orchestrator.md"
-        ],
-        "verifyCommand": "grep -q 'W2_WAVE_CAP=25' agents/concept-identifier-orchestrator.md && grep -q 'n_w2_waves' agents/concept-identifier-orchestrator.md && grep -q 'DISPATCH_EPOCH_W2_WAVE' agents/concept-identifier-orchestrator.md"
-      }
-    },
-    {
-      "id": "T6",
       "subject": "#37 findings-analyst schema v4 + rotate-findings.sh",
       "status": "pending",
       "blockedBy": ["T4"],
       "metadata": {
         "issue": 37,
-        "shipVersion": "0.13.0-alpha.6",
+        "shipVersion": "0.13.0-alpha.5",
         "files": [
           "agents/findings-analyst.md",
           "scripts/rotate-findings.sh",
           "skills/audit-stack/SKILL.md"
         ],
+        "chmodTargets": ["scripts/rotate-findings.sh"],
         "verifyCommand": "test -x scripts/rotate-findings.sh && grep -q 'schema_version: 4' agents/findings-analyst.md && grep -q 'terminal_transitioned_on' agents/findings-analyst.md && grep -q 'rotate-findings' skills/audit-stack/SKILL.md && bash -n scripts/rotate-findings.sh"
       }
     }
