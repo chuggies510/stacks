@@ -105,7 +105,7 @@
     {
       "id": "T5",
       "subject": "#37 findings-analyst schema v4 + rotate-findings.sh",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         "T4"
       ],
