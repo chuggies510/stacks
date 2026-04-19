@@ -1,3 +1,9 @@
+## 0.9.0-alpha.3 — 2026-04-18
+
+- feat(audit-stack): new validation skill. Waves A1 (validator inline-marks articles with [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE], strips prior-cycle marks first, updates last_verified) → A2 (synthesizer produces glossary.md / invariants.md / contradictions.md at stack root) → A2b (shared wikilink pass) → A3 (findings-analyst writes dev/audit/findings.md per locked schema) → A4 (bash convergence: 2 consecutive empty passes OR MAX_AUDIT_PASSES cap, default 3) → A5 (archive copy to dev/audit/closed/{audit_date}-findings.md on convergence). Per-article A1 gate loop (directory mtime does not advance on in-place file edits). Addresses stacks#21.
+- feat(agents): reshape validator, synthesizer, findings-analyst prompts. Validator writes inline marks, strips prior cycle, sets last_verified. Synthesizer produces three stack-root artifacts with independent-corroboration rule. Findings-analyst writes locked schema (id = full SHA256 of {article-slug}|{finding_type}|{claim}, status enum including terminal `failed`, carry-forward from prior pass, three sections).
+- feat(loop-closure): catalog-sources W0b reads prior findings.md to skip already-synthesized extraction_hash values. audit-stack A5 uses cp so findings.md persists for the next catalog cycle.
+
 ## 0.9.0-alpha.2 — 2026-04-18
 
 - feat(ask): article-mode branch in Step 5. When the queried stack has `articles/*.md` files, reads articles; otherwise falls back to `topics/*/guide.md` (legacy guide mode). Detection uses `test -d {stack}/articles && find {stack}/articles -maxdepth 1 -name '*.md' | head -1 | grep -q .` — no STACK.md field required. Addresses stacks#20.
