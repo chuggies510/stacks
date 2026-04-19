@@ -13,9 +13,9 @@ This repo is the **stacks tool**. It is NOT a knowledge library. Do not store kn
 **This plugin** (stacks:*):
 - `/stacks:init-library` — Scaffold a new library repo + private GitHub repo
 - `/stacks:new-stack` — Create a new knowledge stack in a library
-- `/stacks:ingest-sources` — Process sources/incoming/ into topic guides
+- `/stacks:catalog-sources` — Process sources/incoming/ into article-per-concept wiki entries
 - `/stacks:process-inbox` — Route inbox/*.md files to matching stacks
-- `/stacks:refine-stack` — Cross-reference, validate, synthesize glossary/invariants
+- `/stacks:audit-stack` — Validate articles, synthesize glossary/invariants, identify gaps
 - `/stacks:ask` — Look up knowledge from the configured library
 
 ## Plugin Structure
@@ -25,7 +25,7 @@ stacks/
 ├── .claude-plugin/
 │   ├── plugin.json            # Plugin identity and version
 │   └── marketplace.json       # Single-plugin marketplace descriptor
-├── skills/{name}/SKILL.md     # User-invocable skills (init, new, ingest, lookup, refine, process-inbox)
+├── skills/{name}/SKILL.md     # User-invocable skills (init, new, catalog-sources, ask, audit-stack, process-inbox)
 ├── agents/                    # 7 subagent definitions (YAML frontmatter + prompt)
 ├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
 ├── templates/
@@ -40,8 +40,8 @@ Skill files live at `skills/{name}/SKILL.md`. Frontmatter uses only `name` and `
 
 ```yaml
 ---
-name: ingest
-description: Use when the user wants to ingest new sources into a stack...
+name: catalog-sources
+description: Use when the user wants to catalog sources into a stack...
 ---
 ```
 
@@ -77,7 +77,7 @@ bash scripts/install.sh
 /stacks:init-library ~/tmp/test-library
 # open session in ~/tmp/test-library
 /stacks:new-stack test-stack
-/stacks:ingest-sources test-stack
+/stacks:catalog-sources test-stack
 /stacks:ask some question
 # clean up
 rm -rf ~/tmp/test-library

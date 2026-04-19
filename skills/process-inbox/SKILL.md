@@ -164,9 +164,9 @@ Split — routed with off-topic sub-topic flagged (N):
   {filename} → {winning-stack}/sources/incoming/  (off-topic sub-topics: "{heading}" belongs to {other-stack})
 
 Next steps:
-  /stacks:ingest-sources {stack}    (for each stack that received files)
+  /stacks:catalog-sources {stack}    (for each stack that received files)
 ```
 
 If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section. If no files were routed as splits, omit the Split section.
 
-Note at the bottom: "process-inbox routes files to incoming/. Run /stacks:ingest-sources {stack} per affected stack to synthesize topic guides."
+Note at the bottom: "process-inbox routes files to incoming/. Run /stacks:catalog-sources {stack} per affected stack to build article-per-concept wiki entries."

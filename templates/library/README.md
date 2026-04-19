@@ -9,6 +9,6 @@ See [catalog.md](catalog.md) for the full index.
 ## Usage
 
 - Drop sources in `{stack}/sources/incoming/`
-- Run `/stacks:ingest-sources {stack}` to process them
-- Run `/stacks:refine-stack {stack}` to check coverage and find gaps
+- Run `/stacks:catalog-sources {stack}` to process them into article-per-concept wiki entries
+- Run `/stacks:audit-stack {stack}` to validate articles, find gaps, suggest research
 - Run `/stacks:ask "your question"` from any repo to query

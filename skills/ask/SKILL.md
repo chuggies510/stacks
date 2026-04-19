@@ -72,11 +72,11 @@ Read `$LIBRARY/{stack}/index.md`. It has two sections:
 - **Topics**: list of topic guides with descriptions
 - **Sources**: list of ingested sources
 
-If `$LIBRARY/{stack}/index.md` does not exist, tell the user: "Stack `{stack}` has no index yet — it may be newly created. Run /stacks:ingest-sources {stack} from your library repo to populate it." Then stop.
+If `$LIBRARY/{stack}/index.md` does not exist, tell the user: "Stack `{stack}` has no index yet — it may be newly created. Run /stacks:catalog-sources {stack} from your library repo to populate it." Then stop.
 
 Match the query against topic names and descriptions to identify the 1-3 most relevant topics. Use this preference order: (1) exact keyword match against topic names first, (2) keyword match against topic descriptions, (3) semantic reasoning when no exact matches exist. When multiple topics score similarly, prefer narrower topics over broad overview topics.
 
-If the index is empty (no topics yet), tell the user: "Stack '{stack}' has no topics yet. Run /stacks:ingest-sources {stack} from your library repo first."
+If the index is empty (no topics yet), tell the user: "Stack '{stack}' has no topics yet. Run /stacks:catalog-sources {stack} from your library repo first."
 
 Also check the index for a `## Reading Paths` section. If present, capture its full content as additional retrieval context. Reading Paths group articles (or topics) that commonly go together for a given concept or workflow. In article mode this context helps match a query to a coherent set of articles rather than isolated entries; in guide mode it may not be present but is used the same way if found.
 
@@ -128,7 +128,7 @@ Format the response as:
 **Stack**: {stack name}
 ```
 
-If no relevant topics are found: "No matching topics found in {stack}. The stack covers: {list topic names from index.md}. Consider adding sources and running /stacks:ingest-sources {stack}."
+If no relevant topics are found: "No matching topics found in {stack}. The stack covers: {list topic names from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
 
 ## Step 7: File result back (Karpathy loop)
 

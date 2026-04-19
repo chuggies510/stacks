@@ -80,7 +80,7 @@ sed -i "s/{Stack Name}/$DISPLAY_NAME/g" "$STACK_NAME/STACK.md" "$STACK_NAME/inde
 
 ## Step 5: Guide STACK.md setup
 
-Tell the user: "Stack '$STACK_NAME' scaffolded at $STACK_NAME/. Edit $STACK_NAME/STACK.md to define your scope, source hierarchy, topic template, and filing rules before running /stacks:ingest-sources."
+Tell the user: "Stack '$STACK_NAME' scaffolded at $STACK_NAME/. Edit $STACK_NAME/STACK.md to define your scope, source hierarchy, topic template, and filing rules before running /stacks:catalog-sources."
 
 Read `$STACK_NAME/STACK.md` and show the user the placeholder sections.
 
@@ -109,4 +109,4 @@ git add "$STACK_NAME/" catalog.md
 git commit -m "feat: create $STACK_NAME stack"
 ```
 
-Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:ingest-sources $STACK_NAME to build topic guides."
+Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:catalog-sources $STACK_NAME to build article-per-concept wiki entries."

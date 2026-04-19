@@ -1,3 +1,13 @@
+## 0.9.0 — 2026-04-18
+
+BREAKING: `ingest-sources` and `refine-stack` removed. `catalog-sources` and `audit-stack` are the replacements. No migration path for existing `topics/*/guide.md` files — rebuild from source with `/stacks:catalog-sources`. Closes #22.
+
+- breaking(skills): remove `skills/ingest-sources/` and `skills/refine-stack/` — superseded by `catalog-sources` and `audit-stack`
+- breaking(agents): remove `agents/topic-clusterer.md`, `agents/topic-extractor.md`, `agents/topic-synthesizer.md`, `agents/cross-referencer.md` — old pipeline agents no longer needed
+- breaking(templates): remove `templates/stack/dev/curate/` subtree; add `templates/stack/dev/audit/` and `templates/stack/dev/extractions/`
+- refactor(sweep): all cross-repo references updated — `ingest-sources` → `catalog-sources`, `refine-stack` → `audit-stack` across CLAUDE.md, README.md, all skill files, refresh-procedure.md, templates/library/CLAUDE.md, templates/library/README.md
+- bump: `0.9.0-alpha.3` → `0.9.0` (resolves pre-existing 0.8.3/0.8.0 plugin.json/marketplace.json mismatch as side effect)
+
 ## 0.9.0-alpha.3 — 2026-04-18
 
 - feat(audit-stack): new validation skill. Waves A1 (validator inline-marks articles with [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE], strips prior-cycle marks first, updates last_verified) → A2 (synthesizer produces glossary.md / invariants.md / contradictions.md at stack root) → A2b (shared wikilink pass) → A3 (findings-analyst writes dev/audit/findings.md per locked schema) → A4 (bash convergence: 2 consecutive empty passes OR MAX_AUDIT_PASSES cap, default 3) → A5 (archive copy to dev/audit/closed/{audit_date}-findings.md on convergence). Per-article A1 gate loop (directory mtime does not advance on in-place file edits). Addresses stacks#21.

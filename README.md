@@ -28,8 +28,8 @@ This is [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:init-library, :new-stack, :ingest-sources, :ask, :refine-stack
-  agents/        ← 7 LLM workers (extractors, synthesizers, validators)
+  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :ask, :audit-stack
+  agents/        ← 5 LLM workers (concept identification, synthesis, validation, findings)
   scripts/       ← install.sh, init.sh, update.sh
 
 ~/my-library/    ← your repo. the content. private. the tool touches this.
@@ -66,7 +66,7 @@ Open a session in your new library:
 /stacks:new-stack rust-async               # scaffold a stack
 # edit rust-async/STACK.md — define source hierarchy, topic template, filing rules
 # drop sources into rust-async/sources/incoming/
-/stacks:ingest-sources rust-async            # process sources into topic guides
+/stacks:catalog-sources rust-async           # process sources into article-per-concept wiki entries
 ```
 
 Query from anywhere:
@@ -83,48 +83,45 @@ Query from anywhere:
 |-------|-------------|
 | `/stacks:init-library {path}` | create a knowledge library with private GitHub repo |
 | `/stacks:new-stack {name}` | scaffold a new stack from templates |
-| `/stacks:ingest-sources {stack}` | detect new sources, classify, extract, synthesize into topic guides |
-| `/stacks:ask {query}` | answer a question from your curated guides (works from any repo) |
-| `/stacks:refine-stack {stack}` | cross-reference, validate, synthesize glossary, find gaps |
+| `/stacks:catalog-sources {stack}` | identify concepts in new sources, write article-per-concept wiki entries |
+| `/stacks:ask {query}` | answer a question from your curated articles (works from any repo) |
+| `/stacks:audit-stack {stack}` | validate articles against sources, synthesize glossary/invariants, find gaps |
 
 ---
 
 ## the pipeline
 
-**ingest** (run when you add sources):
+**catalog-sources** (run when you add sources):
 
 ```
-sources/incoming/  →  [topic-clusterer]  →  plan.md
+sources/incoming/  →  [concept-identifier × N]  →  dev/extractions/
                               ↓
-              [topic-extractor × N]  →  dev/curate/extractions/
+              [article-synthesizer × N]  →  articles/{slug}.md
                               ↓
-              [topic-synthesizer × N]  →  topics/{name}/guide.md
+              wikilink pass  →  cross-article links resolved
 ```
 
-**refine** (run when you want quality):
+**audit-stack** (run when you want quality):
 
 ```
-topic guides  →  [cross-referencer]  →  contradictions
-              →  [validator]         →  drift from sources
-              →  [synthesizer]       →  glossary + invariants
-              →  [findings-analyst]  →  gaps + research direction
+articles/  →  [validator]         →  inline [VERIFIED]/[DRIFT]/[UNSOURCED] marks
+           →  [synthesizer]       →  glossary.md + invariants.md + contradictions.md
+           →  [findings-analyst]  →  dev/audit/findings.md (gaps + research direction)
 ```
 
 ---
 
 ## agents
 
-Seven specialized agents power the pipeline:
+Five specialized agents power the pipeline:
 
 | agent | role | used by |
 |-------|------|---------|
-| topic-clusterer | group sources into topic clusters, produce plan.md | ingest |
-| topic-extractor | extract claims and data from sources for one topic group | ingest |
-| topic-synthesizer | write/update a topic guide from extracted knowledge | ingest |
-| cross-referencer | find contradictions and gaps across topic guides | refine |
-| validator | verify topic guide claims against source material | refine |
-| synthesizer | produce cross-domain artifacts (glossary, invariants) | refine |
-| findings-analyst | identify gaps, suggest research direction | refine |
+| concept-identifier | identify concepts and extract claims from one source | catalog-sources |
+| article-synthesizer | write/update an article-per-concept wiki entry | catalog-sources |
+| validator | verify article claims against source material, apply inline marks | audit-stack |
+| synthesizer | produce glossary.md, invariants.md, contradictions.md | audit-stack |
+| findings-analyst | identify gaps, write findings.md, suggest research direction | audit-stack |
 
 ---
 
