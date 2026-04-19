@@ -1,3 +1,10 @@
+## 0.9.0-alpha.1 — 2026-04-18
+
+- feat(catalog-sources): new ingestion skill producing article-per-concept wiki entries. Waves W0 (enumerate incoming/) → W0b (prior-findings skip list) → W1 (concept-identifier, parallel per source) → W1b (bash slug-collision dedup) → W2 (article-synthesizer, parallel per unique concept) → W2b (deterministic wikilink pass) → W3 (source filing) → W4 (MoC regeneration preserving ## Reading Paths). Ships alongside the existing ingest-sources pipeline during transition; #22 removes the old skill. Addresses stacks#19.
+- feat(agents): add `concept-identifier` (single-pass concept identification + claim extraction, slug immutability on existing articles) and `article-synthesizer` (writes articles/{slug}.md with extraction_hash frontmatter, strip-on-rewrite rule for prior-cycle audit marks, 300-800 word body, inline [source-slug] citations). 3+ worked examples each per plugin convention.
+- feat(scripts): add `scripts/assert-written.sh` write-or-fail gate (test -s + mtime > dispatch_epoch, Linux-only via `stat -c %Y`, fixed AGENT_WRITE_FAILURE error string) and `scripts/wikilink-pass.sh` deterministic linker (bold-term extraction from glossary, first-occurrence per-article substitution, self-link exclusion, skip-if-already-wrapped).
+- feat(references): rewrite wave-engine.md to document catalog-sources (W0-W4) and audit-stack (A1-A5) wave tables, write-or-fail gate contract, slug immutability, W1b dedup, feedback flywheel. Old W0-W6 content removed.
+
 ## 0.8.3 — 2026-04-17
 
 - feat(ingest-sources): auto-pick target stack(s) when invoked with no argument. Scans all stacks for `sources/incoming/` files and ingests each one sequentially, largest batch first. Explicit stack argument and `--from` still win. Removes the "ERROR: Specify a stack name" dead-end when the user's intent is obvious from library state.
