@@ -99,7 +99,7 @@
     {
       "id": 4,
       "subject": "#26 W1 batch math + batch-{id}-concepts.md output naming",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         3
       ],
@@ -122,7 +122,7 @@
           "plugin.json and marketplace.json at 0.12.0-alpha.4",
           "CHANGELOG has ## 0.12.0-alpha.4 entry"
         ],
-        "verifyCommand": "grep -q 'SOURCES_PER_AGENT' skills/catalog-sources/SKILL.md && grep -q 'BATCH_IDS' skills/catalog-sources/SKILL.md && grep -qE 'batch-.+-concepts\\.md' skills/catalog-sources/SKILL.md && grep -qE 'batch-.+-concepts\\.md' agents/concept-identifier.md && grep -qE 'batch-.+-concepts\\.md' references/wave-engine.md && ! grep -qE '\\{source-slug\\}-concepts\\.md' agents/concept-identifier.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.4\" ] && grep -q '^## 0.12.0-alpha.4' CHANGELOG.md",
+        "verifyCommand": "grep -q 'SOURCES_PER_AGENT' skills/catalog-sources/SKILL.md && grep -q 'BATCH_IDS' skills/catalog-sources/SKILL.md && grep -qE '\\$\\{batch_id\\}-concepts\\.md' skills/catalog-sources/SKILL.md && grep -qE '\\{batch_id\\}-concepts\\.md' agents/concept-identifier.md && grep -qE '\\{batch_id\\}-concepts\\.md' references/wave-engine.md && ! grep -qE '\\{source-slug\\}-concepts\\.md' agents/concept-identifier.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.4\" ] && grep -q '^## 0.12.0-alpha.4' CHANGELOG.md",
         "issue": 26
       }
     },
