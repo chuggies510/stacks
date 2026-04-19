@@ -177,11 +177,11 @@ The agent writes `dev/audit/findings.md` with this locked frontmatter:
 audit_date: YYYY-MM-DD
 stack_head: <git sha>
 pass_counter: <int>
-schema_version: 2
+schema_version: 3
 ---
 ```
 
-Schema 2 adds a **Research Questions** section alongside New Acquisitions / Articles to Re-Synthesize / Deferred. See `$AGENTS_DIR/findings-analyst.md` for the question-item shape and generation rules.
+The canonical schema definition (item shapes, status enum, resolvable_by enum, emit-time rules, and carry-forward behavior) lives in `agents/findings-analyst.md` — do not duplicate it here.
 
 After the agent returns, gate the output:
 
@@ -205,23 +205,17 @@ FINDINGS="$STACK/dev/audit/findings.md"
 # Count items with status: open
 open_count=$(grep -c '^\s*status:\s*open\s*$' "$FINDINGS" 2>/dev/null || echo "0")
 
-# Count fetch_source + research_question items that are NOT in a terminal status.
-# awk parses item blocks (each item starts with "- id:"). At every new item
-# boundary, first tally the PRIOR item's state, then reset. The count rule
-# must fire before the reset rule on the same `- id:` line: awk runs matching
-# rules in document order for each input line, so we do the tally-then-reset
-# inside a single combined rule to avoid the reset-before-count race.
+# Count items resolvable within audit-stack's own scope (resynthesize, noop) that are still open. Items with resolvable_by: catalog-sources (fetch_source) or resolvable_by: external (research_question) are out of audit-stack's domain and do not block convergence.
 generative_open=$(awk '
   /^- id:/ {
-    if (in_item && (action == "fetch_source" || action == "research_question") && status != "terminal") count++
-    in_item=1; action=""; status=""
+    if (in_item && resolvable_by == "audit-stack" && status != "terminal") count++
+    in_item=1; resolvable_by=""; status=""
     next
   }
-  in_item && /action: fetch_source/ { action="fetch_source" }
-  in_item && /action: research_question/ { action="research_question" }
+  in_item && /resolvable_by: audit-stack/ { resolvable_by="audit-stack" }
   in_item && /status: (applied|closed|deferred|stale|failed)/ { status="terminal" }
   END {
-    if (in_item && (action == "fetch_source" || action == "research_question") && status != "terminal") count++
+    if (in_item && resolvable_by == "audit-stack" && status != "terminal") count++
     print count+0
   }
 ' "$FINDINGS" 2>/dev/null || echo "0")

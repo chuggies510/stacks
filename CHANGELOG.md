@@ -1,3 +1,7 @@
+## 0.12.0-alpha.1 — 2026-04-19
+
+- feat(findings-analyst, audit-stack): add resolvable_by field to findings items (schema v3). A4 convergence now filters on resolvable_by == audit-stack; fetch_source and research_question items are reported but no longer block convergence — they belong to catalog-sources and external resolution respectively. Carry-forward rule auto-populates resolvable_by from action on v2→v3 migration. Closes #29.
+
 ## 0.11.1 — 2026-04-19
 
 - fix(catalog-sources, audit-stack): SCRIPTS_DIR/STACKS_ROOT detection now prefers `installLocation` from `~/.claude/plugins/known_marketplaces.json` over scanning `~/.claude/plugins/cache/`. Directory-source installs have an authoritative path in `known_marketplaces.json`; cache scans could return a stale pre-pivot version (e.g. 0.8.3) and dispatch removed agents or skip newer scripts. Cache scan is now the fallback for registry-style installs. Closes #24.

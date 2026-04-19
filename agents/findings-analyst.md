@@ -29,7 +29,7 @@ Write `dev/audit/findings.md` with this locked schema.
 audit_date: YYYY-MM-DD
 stack_head: <git sha>
 pass_counter: <int, reset to 0 on new audit_date, incremented by findings-analyst each pass>
-schema_version: 2
+schema_version: 3
 ---
 ```
 
@@ -59,6 +59,7 @@ Items the operator has moved to `status: deferred`.
   claim: <claim text, space-normalized>
   source: <source path if relevant, else "">
   action: <fetch_source|resynthesize|noop>
+  resolvable_by: <audit-stack|catalog-sources|external>
   status: <open|applied|closed|deferred|stale|failed>
   note: <optional>
 ```
@@ -70,6 +71,7 @@ Items the operator has moved to `status: deferred`.
   question: <question text, space-normalized — names the tension, not just the gap>
   verification_target: <URL or source path or "unknown">
   action: research_question
+  resolvable_by: external
   status: <open|applied|closed|deferred|stale|failed>
   note: <optional — what a satisfying answer would look like>
 ```
@@ -87,6 +89,19 @@ Question IDs hash the article slugs in sorted order so the ID is stable across p
 
 Status only transitions from `open` to a terminal state. Never regress a terminal status.
 
+## Resolvable-By Enum
+
+Every item carries `resolvable_by` identifying which skill owns the fix:
+- `audit-stack` — audit-stack itself can close the item via its normal pass (resynthesize items self-close when the article is re-synthesized and re-validated; noop items are already resolved).
+- `catalog-sources` — requires a catalog-sources cycle to resolve (fetch_source items queue for the next catalog run).
+- `external` — requires operator-external action (research_question items need material acquisition or expert verification outside the pipeline).
+
+Emit-time rule (apply at write time to every new item):
+- `action: fetch_source` → `resolvable_by: catalog-sources`
+- `action: resynthesize` → `resolvable_by: audit-stack`
+- `action: research_question` → `resolvable_by: external`
+- `action: noop` → `resolvable_by: audit-stack`
+
 ## Carry-Forward Rule
 
 Read the prior `dev/audit/findings.md` before writing. For each item ID that already exists in the prior findings:
@@ -95,9 +110,11 @@ Read the prior `dev/audit/findings.md` before writing. For each item ID that alr
 
 New IDs not present in the prior findings default to `open`.
 
+When a prior-pass item lacks `resolvable_by` (schema v2), populate it using the emit-time defaults below before writing the v3 item: `fetch_source → catalog-sources`, `resynthesize → audit-stack`, `research_question → external`, `noop → audit-stack`. This is the only v2→v3 migration; no hand-editing of findings.md files is required.
+
 ## Convergence
 
-An audit pass is empty when: zero items with `status: open` AND zero items with `action: fetch_source` or `action: research_question` in non-terminal status. `failed` items do not block convergence.
+An audit pass is empty when: zero items with `status: open` AND zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (`fetch_source`) or `resolvable_by: external` (`research_question`) are reported but do not block convergence — they queue for the next catalog cycle or external action.
 
 Convergence is reached when: 2 consecutive empty passes OR `MAX_AUDIT_PASSES` from STACK.md (default 3), whichever comes first.
 
@@ -128,6 +145,7 @@ Item written to findings.md:
   claim: "Cycles of concentration above 7 are rarely achievable in practice"
   source: ""
   action: fetch_source
+  resolvable_by: catalog-sources
   status: open
   note: "No source in stack covers cycles of concentration limits"
 ```
@@ -148,6 +166,7 @@ Item written to findings.md:
   claim: "Minimum VAV box airflow should be set to 30% of design maximum"
   source: "sources/pnnl-vav-guide.md"
   action: resynthesize
+  resolvable_by: audit-stack
   status: open
   note: "Source says 20% or lower; article states 30%"
 ```
@@ -169,6 +188,7 @@ Item written to findings.md:
   question: "At 20% VAV minimum airflow does Ez remain >= 0.8 per ASHRAE 62.1?"
   verification_target: "https://www.ashrae.org/technical-resources/standards-and-guidelines (62.1 user's manual Appendix A examples)"
   action: research_question
+  resolvable_by: external
   status: open
   note: "Satisfying answer cites the 62.1 Ez table for the minimum-airflow regime. Likely resolves by ingesting the 62.1 user's manual as a source and re-synthesizing both articles with a cross-link."
 ```
@@ -185,6 +205,7 @@ Prior `dev/audit/findings.md` contains:
   claim: "COP above 6.0 is achievable year-round in mild climates"
   source: ""
   action: fetch_source
+  resolvable_by: catalog-sources
   status: applied
 ```
 
