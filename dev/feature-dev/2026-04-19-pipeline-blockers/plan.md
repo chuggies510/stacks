@@ -13,24 +13,27 @@ Task 1 (#29 resolvable_by)      → alpha.1
 Task 2 (#23 extraction_hash)    → alpha.2
 Task 3 (#25 tag vocabulary)     → alpha.3   (depends on 2: article-synthesizer.md)
 Task 4 (#26 batch math)         → alpha.4
-Task 5 (#30 validator orchestrator) → alpha.5  (proves wrapper pattern)
-Task 6 (#27 catalog orchestrator)   → alpha.6  (applies pattern; uses #23 hash script + #26 batch math)
-Task 7 (clean 0.12.0 release)   → 0.12.0
+Task 5 (#30 validator orchestrator) → alpha.5  (proves wrapper pattern; independent of #26 but sequenced for operator sanity)
+Task 6 (#27 catalog orchestrator)   → 0.12.0 (clean release — last functional change + consolidated CHANGELOG in one commit)
 ```
 
 ## Cross-task conventions
 
-**Script authoring.** Every new script opens with `set -euo pipefail`. Error messages go to stderr with a fixed prefix matching the existing `AGENT_WRITE_FAILURE:` convention in `scripts/assert-written.sh:9`. New scripts: `compute-extraction-hash.sh` (prefix `COMPUTE_EXTRACTION_HASH:`), `normalize-tags.sh` (prefix `TAG_DRIFT:`).
+**Script authoring.** New scripts follow the existing `scripts/` pattern (`set -euo pipefail`, stderr errors via `>&2`). Error-prefix naming: `COMPUTE_EXTRACTION_HASH:` and `TAG_DRIFT:` match the `AGENT_WRITE_FAILURE:` pattern in `scripts/assert-written.sh:9` for grep-ability.
 
-**Per-task commit.** Each task commits its own files (via `git add {listed files}`, not `git add -A`), bumps plugin.json + marketplace.json to the task's alpha version, and appends a CHANGELOG entry under the alpha header. Commit message format:
+**Per-task commit.** Each task commits its own files (via `git add {listed files}`, not `git add -A`), bumps `plugin.json` + `marketplace.json` to the task's alpha version, and appends a CHANGELOG entry under the alpha header. Commit messages follow the stacks git-log precedent: use `feat({scope}):` for combined implementation-plus-version-bump commits (matches `2a1b68d feat(ask + obsidian docs): ... (0.11.0, closes #9)` from S4). Format:
 
 ```
-feat({scope}): {short description} (#31, task {N}, closes #{sub-issue})
+feat({scope}): {short description} ({alpha-version}, #31, task {N}, closes #{sub-issue})
 
 {2-3 line rationale}
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
+
+Task 6 (the final task) uses the same `feat({scope}):` prefix with `(0.12.0, closes #27)` to match S3's `2a0abb0 feat!: 0.9.0 rename cutover (#17, task 15, closes #22)` precedent.
+
+**CHANGELOG bullet format.** Each alpha entry uses the repo's established bullet style: `- {type}({scope}): {description}. Closes #{sub-issue}.` Matches the existing CHANGELOG pattern (see `## 0.11.1 — 2026-04-19` entry). The final `## 0.12.0` header in Task 6's commit consolidates the six alpha bullets.
 
 **Convergence three-file sync.** Task 1 (#29) touches three files that must stay synchronized for any future change: `agents/findings-analyst.md`, `skills/audit-stack/SKILL.md`, `references/wave-engine.md`. After Task 1 lands, the canonical definition lives in `agents/findings-analyst.md`; the other two reference it. Future tasks that touch convergence must grep all three.
 
@@ -80,9 +83,11 @@ test -f agents/findings-analyst.md && \
 grep -q 'resolvable_by:' agents/findings-analyst.md && \
 grep -q 'schema_version: 3' agents/findings-analyst.md && \
 grep -q 'resolvable_by == "audit-stack"' skills/audit-stack/SKILL.md && \
-grep -qc 'resolvable_by: audit-stack' references/wave-engine.md && \
-! grep -qE 'fetch_source or research_question' skills/audit-stack/SKILL.md
+grep -q 'resolvable_by: audit-stack' references/wave-engine.md && \
+! grep -qE 'action == .fetch_source.*action == .research_question' skills/audit-stack/SKILL.md
 ```
+
+Negation pattern matches the current SKILL.md lines 216 and 224 — fails now, passes after rewrite. Do NOT use `'fetch_source or research_question'` (that literal phrase never existed in SKILL.md).
 
 **Version bump.** plugin.json + marketplace.json to `0.12.0-alpha.1`. CHANGELOG entry under `## 0.12.0-alpha.1 — 2026-04-19`.
 
@@ -94,7 +99,7 @@ grep -qc 'resolvable_by: audit-stack' references/wave-engine.md && \
 
 **Files.**
 
-- `scripts/compute-extraction-hash.sh` (new) — reads a string from stdin, emits sha256sum; opens with `set -euo pipefail`; stderr prefix `COMPUTE_EXTRACTION_HASH:` on error
+- `scripts/compute-extraction-hash.sh` (new) — reads a string from stdin, pipes through `sha256sum | awk '{print $1}'` so the output is exactly the 64-hex-char digest plus trailing newline (no filename suffix); opens with `set -euo pipefail`; stderr prefix `COMPUTE_EXTRACTION_HASH:` on error. W1b callers must pipe input with `echo -n "{sorted-paths}|{slug}"` (no extra newline) so hash values are stable across callers.
 - `agents/concept-identifier.md` — edit line 29 (strike "computed downstream"), lines 45-47, 72-74, 101-103 (remove `hash_inputs:` blocks from the three worked examples)
 - `agents/article-synthesizer.md` — edit line 16 (rewrite input description; strike "already computed")
 - `skills/catalog-sources/SKILL.md` — extend the W1b bash block at lines 260-310 (after the awk block, loop over each unique slug, compute sha256 of sorted-source-paths + slug, Edit the `extraction_hash: {value}` line into the appropriate concept block in `_dedup.md`)
@@ -112,7 +117,7 @@ grep -qc 'resolvable_by: audit-stack' references/wave-engine.md && \
 
 ```bash
 test -x scripts/compute-extraction-hash.sh && \
-[ "$(echo -n "test|slug" | scripts/compute-extraction-hash.sh | wc -c | tr -d ' ')" = "65" ] && \
+echo -n "test|slug" | scripts/compute-extraction-hash.sh | grep -qE '^[0-9a-f]{64}$' && \
 ! grep -q 'hash_inputs' agents/concept-identifier.md && \
 ! grep -q 'already computed' agents/article-synthesizer.md && \
 grep -q 'compute-extraction-hash.sh' skills/catalog-sources/SKILL.md && \
@@ -120,7 +125,7 @@ grep -q 'extraction_hash' references/wave-engine.md && \
 ! grep -q 'hash_inputs' references/wave-engine.md
 ```
 
-(Note: `wc -c` on sha256 output is 65 — 64 hex chars plus newline.)
+(Hex-pattern check is robust to trailing-newline variance and fails correctly if the script emits `sha256sum`'s full `{hash}  -` suffix.)
 
 **Version bump.** plugin.json + marketplace.json to `0.12.0-alpha.2`. CHANGELOG entry.
 
@@ -200,7 +205,7 @@ grep -qE 'batch-\{batch_id\}-concepts\.md' references/wave-engine.md && \
 
 **Files.**
 
-- `agents/validator-orchestrator.md` (new) — frontmatter `tools: Task, Bash, Glob, Read`, `model: sonnet`, description starting with "Use when..."; body describes dispatch math (mirror #26 shape, ARTICLES_PER_AGENT capped at 15), per-batch validator Task dispatches, per-article assert-written gate loop, summary JSON return
+- `agents/validator-orchestrator.md` (new) — frontmatter `tools: Task, Bash, Glob, Read`, `model: sonnet`, `description:` is imperative (matching the 4-of-5 existing agent convention; not "Use when..."); body describes dispatch math (mirror #26 shape, ARTICLES_PER_AGENT capped at 15), per-batch validator Task dispatches, per-article assert-written gate loop, summary JSON return
 - `skills/audit-stack/SKILL.md` — rewrite Step 4 (lines 103-127): replace the inline single-validator dispatch with an orchestrator dispatch. Main session dispatches one validator-orchestrator; orchestrator owns the assert-written gate loop (per-article) and returns a JSON summary; main session verifies orchestrator successful exit as implicit gate.
 - `references/wave-engine.md` — rewrite A1 section at lines 192-210 to describe orchestrator wrapper pattern.
 
@@ -226,23 +231,28 @@ grep -q 'validator-orchestrator' references/wave-engine.md
 
 ---
 
-## Task 6 — #27 concept-identifier-orchestrator wrapper
+## Task 6 — #27 concept-identifier-orchestrator wrapper + clean 0.12.0 release
 
-**Goal.** Introduce `agents/concept-identifier-orchestrator.md`; replace main-session W1/W1b/W2 blocks with a single orchestrator dispatch; plumb summary JSON back for commit-step counts.
+**Goal.** Introduce `agents/concept-identifier-orchestrator.md`; replace main-session W1/W1b/W2 blocks with a single orchestrator dispatch; plumb summary JSON back for commit-step counts. This is the last task — also bumps to clean `0.12.0` and consolidates the CHANGELOG.
 
 **Files.**
 
-- `agents/concept-identifier-orchestrator.md` (new) — frontmatter `tools: Task, Bash, Glob, Grep, Read, Write`, `model: sonnet`, description starting with "Use when..."; body describes dispatch math (reuses #26 rule), W1b dedup awk + compute-extraction-hash.sh invocation, W2 dispatch, summary JSON write to `$STACK/dev/extractions/_orchestrator-summary.json`
+- `agents/concept-identifier-orchestrator.md` (new) — frontmatter `tools: Task, Bash, Glob, Grep, Read, Write`, `model: sonnet`, `description:` is imperative (matching the 4-of-5 existing agent convention; not "Use when..."); body describes dispatch math (reuses #26 rule), W1b dedup awk + compute-extraction-hash.sh invocation, W2 dispatch, summary JSON write to `$STACK/dev/extractions/_orchestrator-summary.json`
 - `skills/catalog-sources/SKILL.md` — replace Step 6 (W1 dispatch + gate loop), Step 7 (W1b dedup block), Step 8 (W2 dispatch + gate loop) with a single orchestrator dispatch. Rewrite Step 12 (commit): read counts via `jq -r '.n_articles_new' $STACK/dev/extractions/_orchestrator-summary.json` instead of bash-array dereferences at lines 437-438.
 - `references/wave-engine.md` — rewrite W1+W1b+W2 execution prose at lines 136-165 to describe orchestrator wrapper pattern.
+- `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` — bump to clean `0.12.0`
+- `CHANGELOG.md` — insert new `## 0.12.0 — 2026-04-19` header above the alpha entries with a consolidated bullet list covering all 6 sub-issue fixes. Alpha entries preserved below the release header.
 
 **Acceptance criteria.**
 
-1. `agents/concept-identifier-orchestrator.md` exists with correct 4-field frontmatter.
+1. `agents/concept-identifier-orchestrator.md` exists with correct 4-field frontmatter; description is imperative (not "Use when...").
 2. catalog-sources Steps 6-8 replaced by orchestrator dispatch.
 3. Orchestrator writes `_orchestrator-summary.json` with required fields.
 4. Step 12 reads counts via jq from the summary file (not from NEW_ARTICLE_SLUGS bash array).
 5. Orchestrator prompt references compute-extraction-hash.sh (from Task 2) and #26 batch math.
+6. Summary JSON file is structurally valid (`jq -e '.n_articles_new | numbers'` passes).
+7. plugin.json and marketplace.json both at `0.12.0` (no `-alpha`).
+8. CHANGELOG has `## 0.12.0 — 2026-04-19` header with bullets for all 6 sub-issues; alpha.1 through alpha.5 entries preserved below.
 
 **Verify command.**
 
@@ -251,46 +261,23 @@ test -f agents/concept-identifier-orchestrator.md && \
 head -6 agents/concept-identifier-orchestrator.md | grep -q '^name: concept-identifier-orchestrator' && \
 grep -q 'concept-identifier-orchestrator' skills/catalog-sources/SKILL.md && \
 grep -q '_orchestrator-summary.json' skills/catalog-sources/SKILL.md && \
-grep -q 'jq -r .n_articles_new\|jq -r ".n_articles_new"' skills/catalog-sources/SKILL.md && \
-! grep -q '\${NEW_ARTICLE_SLUGS\[@\]}' skills/catalog-sources/SKILL.md && \
-grep -q 'compute-extraction-hash.sh' agents/concept-identifier-orchestrator.md
-```
-
-**Version bump.** plugin.json + marketplace.json to `0.12.0-alpha.6`. CHANGELOG entry.
-
----
-
-## Task 7 — Clean 0.12.0 release
-
-**Goal.** Promote to clean `0.12.0`. Roll alpha CHANGELOG entries into a single release-notes block.
-
-**Files.**
-
-- `.claude-plugin/plugin.json` — version `0.12.0`
-- `.claude-plugin/marketplace.json` — version `0.12.0` (in plugins[0].version)
-- `CHANGELOG.md` — insert new `## 0.12.0 — 2026-04-19` header above the alpha entries; write a consolidated release-notes block summarizing all 6 sub-issue fixes. Keep the alpha entries intact for historical record per existing CHANGELOG convention.
-
-**Acceptance criteria.**
-
-1. Both plugin.json and marketplace.json read `0.12.0` (no `-alpha` suffix).
-2. CHANGELOG has `## 0.12.0 — 2026-04-19` header with bullet list covering #23, #25, #26, #27, #29, #30.
-3. Alpha entries preserved below the release header.
-
-**Verify command.**
-
-```bash
+grep -qE "jq -r ['\"]\\.n_articles_new['\"]" skills/catalog-sources/SKILL.md && \
+! grep -q 'NEW_ARTICLE_SLUGS\[@\]' skills/catalog-sources/SKILL.md && \
+grep -q 'compute-extraction-hash.sh' agents/concept-identifier-orchestrator.md && \
 [ "$(jq -r '.version' .claude-plugin/plugin.json)" = "0.12.0" ] && \
 [ "$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)" = "0.12.0" ] && \
 grep -q '^## 0.12.0 — 2026-04-19' CHANGELOG.md && \
-grep -qE '^## 0.12.0-alpha\.[1-6]' CHANGELOG.md
+grep -qE '^## 0.12.0-alpha\.[1-5]' CHANGELOG.md
 ```
 
-**Version bump.** plugin.json + marketplace.json to `0.12.0`. This task's commit IS the version bump.
+The jq regex requires a literal dot inside quotes (matches `jq -r '.n_articles_new'` or `jq -r ".n_articles_new"`), rejecting dotless typos.
+
+**Version bump.** plugin.json + marketplace.json to `0.12.0` (no `-alpha` suffix). CHANGELOG gets the new `## 0.12.0 — 2026-04-19` header above the alpha entries with consolidated bullets for all 6 sub-issues. Alpha entries (alpha.1 through alpha.5) preserved below the release header per S3 precedent (CHANGELOG.md:29-50).
 
 ---
 
 ## Closure notes
 
-After Task 7, epic #31 closes via `workspace-toolkit/references/issue-close-protocol.md`. Each sub-issue (#23, #25, #26, #27, #29, #30) closes on its own task's commit SHA during execution; epic #31 closes on Task 7's SHA with a comment summarizing the 6 closed sub-issues.
+After Task 6, epic #31 closes via `workspace-toolkit/references/issue-close-protocol.md`. Each sub-issue (#23, #25, #26, #27, #29, #30) closes on its own task's commit SHA during execution; epic #31 closes on Task 6's SHA with a comment summarizing the 6 closed sub-issues.
 
 Per CLAUDE.md: stacks is a directory-source plugin, so no `claude plugin update` cycle. A `git push` from this repo makes the new version active immediately on the next session start.

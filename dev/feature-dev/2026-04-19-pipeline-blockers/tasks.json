@@ -9,7 +9,7 @@
       "subject": "#29 resolvable_by schema + A4 awk rewrite",
       "status": "pending",
       "blockedBy": [],
-      "description": "Add resolvable_by field to findings-item schema; rewrite A4 convergence awk to filter on resolvable_by == audit-stack; document intentional behavior change for research_question items; bump schema_version 2 -> 3. Convergence prose must be identical verbatim across findings-analyst.md, audit-stack/SKILL.md reference, and wave-engine.md. findings-analyst.md is canonical.",
+      "description": "Add resolvable_by field to findings-item schema; rewrite A4 convergence awk to filter on resolvable_by == audit-stack AND non-terminal status; document intentional behavior change for research_question items; bump schema_version 2 -> 3. Convergence prose must be identical verbatim across findings-analyst.md (canonical), audit-stack/SKILL.md, and wave-engine.md.",
       "metadata": {
         "files": [
           "agents/findings-analyst.md",
@@ -21,14 +21,14 @@
         ],
         "acceptanceCriteria": [
           "resolvable_by present in both claim-keyed and question-keyed item shapes in findings-analyst.md",
-          "A4 awk filters on 'resolvable_by == audit-stack' AND status != terminal",
+          "A4 awk filters on 'resolvable_by == audit-stack' AND status != terminal (not the dead fetch_source OR research_question filter)",
           "Convergence prose identical across findings-analyst.md, audit-stack/SKILL.md, wave-engine.md",
           "schema_version: 3 in findings-analyst.md frontmatter template",
           "Carry-forward rule explicitly handles v2->v3 field promotion",
           "plugin.json and marketplace.json both at 0.12.0-alpha.1",
-          "CHANGELOG has ## 0.12.0-alpha.1 entry"
+          "CHANGELOG has ## 0.12.0-alpha.1 entry with bullet format '- {type}({scope}): {description}. Closes #29.'"
         ],
-        "verifyCommand": "test -f agents/findings-analyst.md && grep -q 'resolvable_by:' agents/findings-analyst.md && grep -q 'schema_version: 3' agents/findings-analyst.md && grep -q 'resolvable_by == \"audit-stack\"' skills/audit-stack/SKILL.md && grep -q 'resolvable_by: audit-stack' references/wave-engine.md && ! grep -qE 'fetch_source or research_question' skills/audit-stack/SKILL.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.1\" ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = \"0.12.0-alpha.1\" ] && grep -q '^## 0.12.0-alpha.1' CHANGELOG.md",
+        "verifyCommand": "test -f agents/findings-analyst.md && grep -q 'resolvable_by:' agents/findings-analyst.md && grep -q 'schema_version: 3' agents/findings-analyst.md && grep -q 'resolvable_by == \"audit-stack\"' skills/audit-stack/SKILL.md && grep -q 'resolvable_by: audit-stack' references/wave-engine.md && ! grep -qE 'action == .fetch_source.*action == .research_question' skills/audit-stack/SKILL.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.1\" ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = \"0.12.0-alpha.1\" ] && grep -q '^## 0.12.0-alpha.1' CHANGELOG.md",
         "issue": 29
       }
     },
@@ -37,7 +37,7 @@
       "subject": "#23 extraction_hash helper script + W1b integration",
       "status": "pending",
       "blockedBy": [1],
-      "description": "Create scripts/compute-extraction-hash.sh; extend W1b in catalog-sources/SKILL.md to compute and inject extraction_hash per unique slug; remove hash_inputs from concept-identifier agent prose and examples; update article-synthesizer input description; update wave-engine.md W1 output field list. Script opens with set -euo pipefail; stderr errors prefixed COMPUTE_EXTRACTION_HASH:.",
+      "description": "Create scripts/compute-extraction-hash.sh (pipes stdin through sha256sum | awk '{print $1}' so output is exactly the 64-hex digest plus newline, no filename suffix); extend W1b in catalog-sources/SKILL.md to compute and inject extraction_hash per unique slug; remove hash_inputs from concept-identifier agent prose and the three worked examples; update article-synthesizer input description; update wave-engine.md W1 output field list. Script opens with set -euo pipefail; stderr errors prefixed COMPUTE_EXTRACTION_HASH:.",
       "metadata": {
         "files": [
           "scripts/compute-extraction-hash.sh",
@@ -51,15 +51,15 @@
         ],
         "acceptanceCriteria": [
           "scripts/compute-extraction-hash.sh exists and is executable",
-          "Script emits 64-hex-char sha256 for a test input",
+          "Script emits exactly 64-hex-char sha256 digest (no sha256sum filename suffix)",
           "agents/concept-identifier.md has zero hash_inputs occurrences",
-          "agents/article-synthesizer.md line 16 no longer says 'already computed'",
+          "agents/article-synthesizer.md no longer says 'already computed'",
           "catalog-sources/SKILL.md W1b invokes compute-extraction-hash.sh",
-          "wave-engine.md line 148 lists extraction_hash, not hash_inputs",
+          "wave-engine.md lists extraction_hash, not hash_inputs",
           "plugin.json and marketplace.json at 0.12.0-alpha.2",
-          "CHANGELOG has ## 0.12.0-alpha.2 entry"
+          "CHANGELOG has ## 0.12.0-alpha.2 entry with bullet format"
         ],
-        "verifyCommand": "test -x scripts/compute-extraction-hash.sh && [ \"$(echo -n 'test|slug' | scripts/compute-extraction-hash.sh | wc -c | tr -d ' ')\" = \"65\" ] && ! grep -q 'hash_inputs' agents/concept-identifier.md && ! grep -q 'already computed' agents/article-synthesizer.md && grep -q 'compute-extraction-hash.sh' skills/catalog-sources/SKILL.md && grep -q 'extraction_hash' references/wave-engine.md && ! grep -q 'hash_inputs' references/wave-engine.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.2\" ] && grep -q '^## 0.12.0-alpha.2' CHANGELOG.md",
+        "verifyCommand": "test -x scripts/compute-extraction-hash.sh && echo -n 'test|slug' | scripts/compute-extraction-hash.sh | grep -qE '^[0-9a-f]{64}$' && ! grep -q 'hash_inputs' agents/concept-identifier.md && ! grep -q 'already computed' agents/article-synthesizer.md && grep -q 'compute-extraction-hash.sh' skills/catalog-sources/SKILL.md && grep -q 'extraction_hash' references/wave-engine.md && ! grep -q 'hash_inputs' references/wave-engine.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.2\" ] && grep -q '^## 0.12.0-alpha.2' CHANGELOG.md",
         "issue": 23
       }
     },
@@ -124,8 +124,8 @@
       "id": 5,
       "subject": "#30 validator-orchestrator wrapper (sharded A1)",
       "status": "pending",
-      "blockedBy": [4],
-      "description": "Create agents/validator-orchestrator.md with frontmatter (name, tools: Task+Bash+Glob+Read, model: sonnet, description starting 'Use when...'). Body describes dispatch math mirroring #26 (ARTICLES_PER_AGENT capped 15), per-batch validator Task dispatches over shards, full sources dir passed to each, per-article assert-written gate, summary JSON return. Replace audit-stack/SKILL.md Step 4 inline validator dispatch with orchestrator dispatch. Update wave-engine.md A1 section.",
+      "blockedBy": [3],
+      "description": "Create agents/validator-orchestrator.md with frontmatter (name, tools: Task+Bash+Glob+Read, model: sonnet, description imperative matching existing agent convention). Body describes dispatch math mirroring #26 (ARTICLES_PER_AGENT capped 15), per-batch validator Task dispatches over shards, full sources dir passed to each, per-article assert-written gate, summary JSON return. Replace audit-stack/SKILL.md Step 4 inline validator dispatch with orchestrator dispatch. Update wave-engine.md A1 section. Independent of Task 4 batch-math changes — blockedBy reflects article-synthesizer.md serialization order only.",
       "metadata": {
         "files": [
           "agents/validator-orchestrator.md",
@@ -137,6 +137,7 @@
         ],
         "acceptanceCriteria": [
           "agents/validator-orchestrator.md exists with 4-field frontmatter (name, tools, model, description)",
+          "description is imperative (does NOT start with 'Use when...' — matches 4-of-5 existing agent convention)",
           "tools line includes Task and Bash",
           "ARTICLES_PER_AGENT and dispatch math present in orchestrator body",
           "audit-stack Step 4 dispatches validator-orchestrator, not validator directly",
@@ -145,16 +146,16 @@
           "plugin.json and marketplace.json at 0.12.0-alpha.5",
           "CHANGELOG has ## 0.12.0-alpha.5 entry"
         ],
-        "verifyCommand": "test -f agents/validator-orchestrator.md && head -6 agents/validator-orchestrator.md | grep -q '^name: validator-orchestrator' && head -6 agents/validator-orchestrator.md | grep -qE '^tools:.*Task' && grep -q 'validator-orchestrator' skills/audit-stack/SKILL.md && grep -q 'ARTICLES_PER_AGENT' agents/validator-orchestrator.md && grep -q 'validator-orchestrator' references/wave-engine.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.5\" ] && grep -q '^## 0.12.0-alpha.5' CHANGELOG.md",
+        "verifyCommand": "test -f agents/validator-orchestrator.md && head -6 agents/validator-orchestrator.md | grep -q '^name: validator-orchestrator' && head -6 agents/validator-orchestrator.md | grep -qE '^tools:.*Task' && ! head -6 agents/validator-orchestrator.md | grep -q '^description: Use when' && grep -q 'validator-orchestrator' skills/audit-stack/SKILL.md && grep -q 'ARTICLES_PER_AGENT' agents/validator-orchestrator.md && grep -q 'validator-orchestrator' references/wave-engine.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.5\" ] && grep -q '^## 0.12.0-alpha.5' CHANGELOG.md",
         "issue": 30
       }
     },
     {
       "id": 6,
-      "subject": "#27 concept-identifier-orchestrator wrapper (W1+W1b+W2)",
+      "subject": "#27 concept-identifier-orchestrator wrapper + clean 0.12.0 release",
       "status": "pending",
       "blockedBy": [5],
-      "description": "Create agents/concept-identifier-orchestrator.md with frontmatter (name, tools: Task+Bash+Glob+Grep+Read+Write, model: sonnet, description starting 'Use when...'). Body describes #26 dispatch math + W1b dedup + compute-extraction-hash.sh invocation + W2 article-synthesizer dispatch + summary JSON write to $STACK/dev/extractions/_orchestrator-summary.json. Replace catalog-sources/SKILL.md Steps 6-8 with single orchestrator dispatch. Rewrite commit Step 12 to read counts via jq from the summary file instead of NEW_ARTICLE_SLUGS bash arrays. Update wave-engine.md W1+W1b+W2 execution prose.",
+      "description": "Create agents/concept-identifier-orchestrator.md with frontmatter (tools: Task+Bash+Glob+Grep+Read+Write, model: sonnet, imperative description). Body describes #26 dispatch math + W1b dedup + compute-extraction-hash.sh invocation + W2 article-synthesizer dispatch + summary JSON write to $STACK/dev/extractions/_orchestrator-summary.json. Replace catalog-sources/SKILL.md Steps 6-8 with single orchestrator dispatch. Rewrite commit Step 12 to read counts via jq from the summary file instead of NEW_ARTICLE_SLUGS bash arrays. Update wave-engine.md W1+W1b+W2 execution prose. This is the final task — also bumps plugin.json and marketplace.json to clean 0.12.0 and adds the consolidated ## 0.12.0 CHANGELOG header above the alpha entries.",
       "metadata": {
         "files": [
           "agents/concept-identifier-orchestrator.md",
@@ -166,39 +167,19 @@
         ],
         "acceptanceCriteria": [
           "agents/concept-identifier-orchestrator.md exists with 4-field frontmatter",
+          "description is imperative (does NOT start with 'Use when...')",
           "Tools list includes Task, Bash, and Write",
           "catalog-sources Steps 6-8 replaced with orchestrator dispatch",
           "Orchestrator writes _orchestrator-summary.json",
-          "Step 12 commit reads counts via jq from summary file",
+          "Step 12 commit reads counts via jq with literal dot-key from summary file",
           "No ${NEW_ARTICLE_SLUGS[@]} bash-array dereferences remain",
           "Orchestrator prompt references compute-extraction-hash.sh and #26 batch math",
-          "plugin.json and marketplace.json at 0.12.0-alpha.6",
-          "CHANGELOG has ## 0.12.0-alpha.6 entry"
-        ],
-        "verifyCommand": "test -f agents/concept-identifier-orchestrator.md && head -6 agents/concept-identifier-orchestrator.md | grep -q '^name: concept-identifier-orchestrator' && grep -q 'concept-identifier-orchestrator' skills/catalog-sources/SKILL.md && grep -q '_orchestrator-summary.json' skills/catalog-sources/SKILL.md && grep -qE 'jq -r .+n_articles_new' skills/catalog-sources/SKILL.md && ! grep -q 'NEW_ARTICLE_SLUGS\\[@\\]' skills/catalog-sources/SKILL.md && grep -q 'compute-extraction-hash.sh' agents/concept-identifier-orchestrator.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0-alpha.6\" ] && grep -q '^## 0.12.0-alpha.6' CHANGELOG.md",
-        "issue": 27
-      }
-    },
-    {
-      "id": 7,
-      "subject": "Clean 0.12.0 release + consolidated CHANGELOG",
-      "status": "pending",
-      "blockedBy": [6],
-      "description": "Promote plugin.json and marketplace.json to clean 0.12.0 (no -alpha suffix). Insert new ## 0.12.0 — 2026-04-19 section in CHANGELOG above the alpha entries, summarizing all 6 sub-issue fixes as bullets. Preserve alpha entries as historical record per existing CHANGELOG convention.",
-      "metadata": {
-        "files": [
-          ".claude-plugin/plugin.json",
-          ".claude-plugin/marketplace.json",
-          "CHANGELOG.md"
-        ],
-        "acceptanceCriteria": [
-          "plugin.json version is 0.12.0 (no -alpha)",
-          "marketplace.json plugins[0].version is 0.12.0",
+          "plugin.json and marketplace.json at 0.12.0 (no -alpha suffix)",
           "CHANGELOG has ## 0.12.0 — 2026-04-19 header with bullets for all 6 sub-issues",
-          "Alpha entries (alpha.1 through alpha.6) preserved below the release header"
+          "Alpha entries (alpha.1 through alpha.5) preserved below the release header"
         ],
-        "verifyCommand": "[ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0\" ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = \"0.12.0\" ] && grep -q '^## 0.12.0 — 2026-04-19' CHANGELOG.md && grep -qE '^## 0.12.0-alpha\\.[1-6]' CHANGELOG.md",
-        "issue": null
+        "verifyCommand": "test -f agents/concept-identifier-orchestrator.md && head -6 agents/concept-identifier-orchestrator.md | grep -q '^name: concept-identifier-orchestrator' && ! head -6 agents/concept-identifier-orchestrator.md | grep -q '^description: Use when' && grep -q 'concept-identifier-orchestrator' skills/catalog-sources/SKILL.md && grep -q '_orchestrator-summary.json' skills/catalog-sources/SKILL.md && grep -qE \"jq -r ['\\\"]\\\\.n_articles_new['\\\"]\" skills/catalog-sources/SKILL.md && ! grep -q 'NEW_ARTICLE_SLUGS\\[@\\]' skills/catalog-sources/SKILL.md && grep -q 'compute-extraction-hash.sh' agents/concept-identifier-orchestrator.md && [ \"$(jq -r '.version' .claude-plugin/plugin.json)\" = \"0.12.0\" ] && [ \"$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)\" = \"0.12.0\" ] && grep -q '^## 0.12.0 — 2026-04-19' CHANGELOG.md && grep -qE '^## 0.12.0-alpha\\.[1-5]' CHANGELOG.md",
+        "issue": 27
       }
     }
   ]
