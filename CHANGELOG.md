@@ -1,3 +1,8 @@
+## 0.13.0-alpha.3 (unreleased)
+
+- feat(concept-identifier-orchestrator, article-synthesizer): W1b writes per-slug `_dedup-{slug}.md` files; W2 dispatch passes the per-slug path; article-synthesizer reads only its own slug's block. `_dedup.md` preserved as aggregated audit-trail artifact. Progressive disclosure cuts per-agent tokens at large W2 fan-outs. Closes #36.
+- feat(concept-identifier-orchestrator): W2 dispatch capped at `W2_WAVE_CAP=25` parallel agents per wave with loop. Each wave captures its own `DISPATCH_EPOCH_W2_WAVE` for per-wave assert-written gating. `counts.n_w2_waves` field populated in the summary JSON. Prevents Task-tool parallel-dispatch saturation on large fresh catalog runs. Closes #35.
+
 ## 0.13.0-alpha.2 (unreleased)
 
 - feat(validator-orchestrator): per-batch source union via pre-dispatch citation graph. `validator-orchestrator` builds a `SOURCE_MAP` (slug → path) from `sources/` and a per-article `ARTICLE_SOURCES` map from frontmatter `sources:` + inline `[source-slug]` refs. Each per-batch validator receives only the union of its articles' cited sources instead of the full tree. Batches whose articles have zero resolvable citations fall back to the full tree as a safety net. `validator.md` Input contract updated. Closes #34.

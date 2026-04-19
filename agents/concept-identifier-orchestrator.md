@@ -103,30 +103,64 @@ for slug in "${CONCEPT_SLUGS[@]}"; do
 done
 ```
 
-### 4. W2: dispatch article-synthesizer agents
+After `CONCEPT_SLUGS` is populated and `_dedup.md` is fully written, write a per-slug file containing only that slug's merged concept block. The aggregated `_dedup.md` is preserved as the audit trail; the per-slug files are what W2 agents read.
 
-Capture a fresh dispatch epoch and dispatch one `article-synthesizer` agent per unique concept slug via the Task tool. All `N_UNIQUE_CONCEPTS` agents in one Task-tool message.
+```bash
+for slug in "${CONCEPT_SLUGS[@]}"; do
+  per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
+  awk -v want="$slug" '
+    /^slug:[[:space:]]/ {
+      if (in_block && block) { print block }
+      cur=$2
+      in_block=(cur==want)
+      block=""
+      if (in_block) { block = $0 "\n" }
+      next
+    }
+    in_block { block = block $0 "\n" }
+    END { if (in_block && block) print block }
+  ' "$STACK/dev/extractions/_dedup.md" > "$per_slug_path"
+done
+```
+
+The awk above captures the `slug:` line itself plus every subsequent line until the next `slug:` boundary, so each per-slug file is self-contained and an operator can read it standalone.
+
+### 4. W2: dispatch article-synthesizer agents (wave-capped per #35)
+
+Cap each W2 dispatch wave at `W2_WAVE_CAP=25` agents. Each wave captures its own dispatch epoch and runs the per-article gate against THAT wave's epoch (so stale pre-existing files from earlier waves still pass correctly: the wave's articles were all written after its own epoch).
 
 Per-agent task content:
-- The merged concept block for that slug (copied from `$STACK/dev/extractions/_dedup.md`).
+- The absolute path `$STACK/dev/extractions/_dedup-${slug}.md` for that slug's concept block.
 - The existing `$STACK/articles/{slug}.md` if the slug is in `UPDATED_SLUGS`.
 - `$STACK/STACK.md` path.
 
 ```bash
-DISPATCH_EPOCH_W2=$(date +%s)
-```
-
-After fan-in, gate per slug:
-
-```bash
+W2_WAVE_CAP=25
+n_w2_waves=0
+i=0
+n=${#CONCEPT_SLUGS[@]}
 W2_FAILED=()
-for slug in "${CONCEPT_SLUGS[@]}"; do
-  if ! "$SCRIPTS_DIR/assert-written.sh" \
-      "$STACK/articles/${slug}.md" \
-      "${DISPATCH_EPOCH_W2}" \
-      "article-synthesizer"; then
-    W2_FAILED+=("$slug")
+DISPATCH_EPOCH_W2_FIRST=""
+while (( i < n )); do
+  WAVE_SLICE=( "${CONCEPT_SLUGS[@]:i:W2_WAVE_CAP}" )
+  DISPATCH_EPOCH_W2_WAVE=$(date +%s)
+  if [[ -z "$DISPATCH_EPOCH_W2_FIRST" ]]; then
+    DISPATCH_EPOCH_W2_FIRST="$DISPATCH_EPOCH_W2_WAVE"
   fi
+  # Dispatch one article-synthesizer per slug in WAVE_SLICE in a single Task-tool message.
+  # Each agent receives the absolute path `$STACK/dev/extractions/_dedup-${slug}.md`,
+  # the existing `$STACK/articles/${slug}.md` if slug is in UPDATED_SLUGS, and `$STACK/STACK.md`.
+  # After fan-in, gate each article in this wave against this wave's epoch:
+  for slug in "${WAVE_SLICE[@]}"; do
+    if ! "$SCRIPTS_DIR/assert-written.sh" \
+        "$STACK/articles/${slug}.md" \
+        "${DISPATCH_EPOCH_W2_WAVE}" \
+        "article-synthesizer"; then
+      W2_FAILED+=("$slug")
+    fi
+  done
+  ((i += W2_WAVE_CAP))
+  ((n_w2_waves++))
 done
 if (( ${#W2_FAILED[@]} > 0 )); then
   printf 'W2_FAILED: %s\n' "${W2_FAILED[@]}" >&2
@@ -147,8 +181,9 @@ jq -n \
   --argjson n_unique_concepts "$N_UNIQUE_CONCEPTS" \
   --argjson n_articles_new "${#NEW_SLUGS[@]}" \
   --argjson n_articles_updated "${#UPDATED_SLUGS[@]}" \
+  --argjson n_w2_waves "$n_w2_waves" \
   --arg dispatch_epoch_w1 "$DISPATCH_EPOCH_W1" \
-  --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2" \
+  --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2_FIRST" \
   '{
     schema_version: 1,
     wave: "w1-w2",
@@ -160,7 +195,7 @@ jq -n \
       n_unique_concepts: $n_unique_concepts,
       n_articles_new: $n_articles_new,
       n_articles_updated: $n_articles_updated,
-      n_w2_waves: 0
+      n_w2_waves: $n_w2_waves
     },
     epochs: {
       dispatch_epoch_w1: $dispatch_epoch_w1,
@@ -169,7 +204,7 @@ jq -n \
   }' > "$STACK/dev/extractions/_w1-w2-summary.json"
 ```
 
-`n_w2_waves` is a placeholder of `0` here. T3 (W2 wave cap, #35) will populate it with the real loop count once W2 dispatch is wrapped in a wave loop.
+`epochs.dispatch_epoch_w2` records the FIRST W2 wave's epoch (audit trail; the per-wave epochs are not reconstructable post-hoc, so the first-wave value is the most useful single anchor). `n_w2_waves` is the real wave count produced by the W2 loop above.
 
 ### 6. Return receipt line
 
@@ -184,5 +219,5 @@ The main-session gate matches that exact prefix and then reads `$STACK/dev/extra
 ## Notes
 
 - You do NOT run W2b (wikilink pass), W2b-post (tag drift), W3 (source filing), or W4 (MoC update). Those remain in the main skill after your successful return.
-- Separate `DISPATCH_EPOCH_W1` and `DISPATCH_EPOCH_W2` are required because the W1b dedup pass mutates `_dedup.md` between dispatches; the W2 gate must compare against a later epoch.
+- Separate `DISPATCH_EPOCH_W1` and per-wave `DISPATCH_EPOCH_W2_WAVE` values are required because the W1b dedup pass mutates `_dedup.md` between dispatches and each W2 wave runs its own dispatch; each gate must compare against the epoch captured immediately before its corresponding dispatch.
 - Every validator, concept-identifier, and article-synthesizer agent loads its own system prompt from frontmatter. Do not attempt to inject, extend, or forward their prompts. You pass task-content only.
