@@ -19,6 +19,7 @@ The loop closes because `audit-stack` produces `dev/audit/findings.md` and `cata
 | W1b | bash slug-collision dedup | all W1 outputs | unified concept list with `source_paths[]` merged for shared slugs |
 | W2 | `article-synthesizer` (parallel per unique concept) | concept block, existing article if present, `STACK.md` | `articles/{slug}.md` |
 | W2b | bash wikilink pass | all articles + `glossary.md` (if present) | articles mutated in-place |
+| W2b-post | bash tag drift check | all articles + `STACK.md` `allowed_tags:` | halt pipeline on out-of-vocab tag; exit 0 if `allowed_tags:` absent |
 | W3 | bash source filing | `sources/incoming/*` | `sources/{publisher}/*` |
 | W4 | bash MoC update | all article frontmatter + `index.md` existing `## Reading Paths` block | `{stack}/index.md` |
 
@@ -175,6 +176,14 @@ scripts/wikilink-pass.sh {stack}/articles/ {stack}/glossary.md
 ```
 
 No-op when `glossary.md` is absent. Runs after all W2 assert-written checks pass.
+
+### W2b-post — Tag drift check
+
+```bash
+scripts/normalize-tags.sh {stack}
+```
+
+Reads `allowed_tags:` (block-list YAML) from `{stack}/STACK.md` and compares every `{stack}/articles/*.md` frontmatter `tags:` against it. Halts with `TAG_DRIFT: {slug}: {tag}` on stderr per offender and non-zero exit; `incoming/` stays untouched so the next run retries after the operator fixes the article or extends the vocabulary. When `allowed_tags:` is absent or empty, exits 0 with a backward-compat warning — drift check is opt-in per stack.
 
 ### W3 — Source filing
 

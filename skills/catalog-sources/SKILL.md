@@ -391,6 +391,16 @@ When `$STACK/glossary.md` does not exist (first catalog run before any audit pas
 
 The script reads bold terms from `glossary.md` and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded (when the article's own slug matches the term slug).
 
+## Step 9.5: Tag drift check
+
+After the wikilink pass, enforce the tag vocabulary declared in `STACK.md`. The check reads `allowed_tags:` from the stack root and halts the pipeline if any article carries an out-of-vocabulary tag. No auto-rewrite — drift is a surfaced defect the operator resolves by editing either the offending article or the vocabulary list.
+
+```bash
+"$SCRIPTS_DIR/normalize-tags.sh" "$STACK"
+```
+
+On non-zero exit, halt the catalog pipeline and surface the `TAG_DRIFT:` stderr lines to the user. Do not proceed to W3 (source filing) — sources for drifted articles stay in `incoming/` so the next run retries after the operator fixes the tags. When `allowed_tags:` is absent or empty, the script emits a `normalize-tags: allowed_tags not declared, skipping drift check` warning to stderr and exits 0 (backward-compat for stacks that haven't migrated).
+
 ## Step 10: W3 — Source filing
 
 Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 assert-written gates. Failed articles block their sources' filing at W3 below.

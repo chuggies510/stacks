@@ -32,6 +32,15 @@ Sections that every topic guide in this stack should follow.
 *How to decide where new knowledge goes. For example: "File by system served,
 not by engineering concept" or "File by protocol layer, not by vendor."*
 
+## Tag Vocabulary
+
+Declare the canonical tag vocabulary for this stack here. Article-synthesizer picks tags from this list; a post-W2 drift check halts if any article acquires an out-of-vocabulary tag.
+
+```yaml
+allowed_tags:
+  # - example-tag
+```
+
 ## Frontmatter Convention
 
 Topic guides use this YAML frontmatter:

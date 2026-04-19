@@ -1,3 +1,7 @@
+## 0.12.0-alpha.3 — 2026-04-19
+
+- feat(article-synthesizer, catalog-sources): declare canonical tag vocabulary per stack via new `## Tag Vocabulary` section in `templates/stack/STACK.md` (`allowed_tags:` YAML list). article-synthesizer now picks tags from that list and emits a `tag-vocabulary not declared` stdout warning for unmigrated stacks. New `scripts/normalize-tags.sh` runs post-W2b and halts the catalog pipeline with `TAG_DRIFT: {slug}: {tag}` on stderr if any article acquires an out-of-vocabulary tag. No auto-rewrite — operator resolves drift by editing the article or extending the vocabulary. Backward-compat: stacks without `allowed_tags:` skip the check. Closes #25.
+
 ## 0.12.0-alpha.2 — 2026-04-19
 
 - feat(catalog-sources, concept-identifier, article-synthesizer): compute `extraction_hash` deterministically during W1b via new `scripts/compute-extraction-hash.sh` (sha256 of sorted source paths + `|` + slug). concept-identifier no longer emits the vestigial `hash_inputs` field; article-synthesizer copies the W1b-populated hash verbatim into article frontmatter. Restores the skip-list flywheel so already-synthesized content can be detected across catalog cycles. Closes #23.

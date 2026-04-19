@@ -37,6 +37,8 @@ tags:
 ---
 ```
 
+**Tag values** MUST be chosen from the `allowed_tags:` list in `STACK.md`. Read that list before writing frontmatter and pick only from it. If `allowed_tags:` is absent or the list is empty, include the literal line `[tag-vocabulary not declared]` at the top of your return text (agents have no separate stdout channel, so the caller surfaces this marker) and proceed with free-form tags — backward-compat for stacks that haven't migrated. A post-W2 drift check (`scripts/normalize-tags.sh`) halts the catalog pipeline if any article carries an out-of-vocabulary tag.
+
 **Body:** 300-800 words (soft cap 1200). Use inline `[source-slug]` citations. Do not add `[[wikilinks]]` — a separate linker pass adds those. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — those are audit-cycle marks added by the validator, not by this agent.
 
 ## Strip-on-Rewrite Rule
