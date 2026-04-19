@@ -204,23 +204,28 @@ Bash reads `tags[0]` from all `articles/*.md` frontmatter and regenerates `index
 
 ### A1 — Validation (inline marks)
 
-Capture epoch, then dispatch `validator` agent:
+Dispatch one `validator-orchestrator` agent. The orchestrator owns dispatch math, per-batch `validator` dispatches, and the per-article assert-written gate loop. The main session's A1 gate is a parse of the orchestrator's returned text for a valid summary JSON.
 
 ```bash
-DISPATCH_EPOCH=$(date +%s)
-# Enumerate expected output files before dispatch. The validator edits every
-# article in place (strips prior-cycle marks, adds new marks, updates
-# last_verified), so each article file's mtime advances past DISPATCH_EPOCH.
-# A directory-path check would not work: editing files inside a directory
-# does not update the directory's own mtime on Linux.
-EXPECTED_ARTICLES=( "{stack}"/articles/*.md )
-# dispatch validator agent
-for article in "${EXPECTED_ARTICLES[@]}"; do
-  scripts/assert-written.sh "$article" "${DISPATCH_EPOCH}" "validator"
-done
+# Main session dispatches ONE orchestrator via the Task tool. The orchestrator
+# shards articles across N_BATCHES parallel `validator` agents (cap 15
+# articles per batch), captures its own DISPATCH_EPOCH, and runs
+# scripts/assert-written.sh per article before returning.
+#   - N <= 15   : 1 batch (ARTICLES_PER_AGENT = N)
+#   - N  > 15   : ARTICLES_PER_AGENT = min(ceil(N/5), 15)
+# Each per-batch validator receives its article slice plus the FULL sources
+# tree. Sources are the reference surface, not shardable.
+#
+# Orchestrator returns (as the final content of its response):
+#   {"n_articles": N, "n_batches": B, "articles_per_agent": K, "dispatch_epoch": ...}
+# A response missing any of those four fields is treated as A1 failure.
+# On failure, the orchestrator also emits an A1_ORCHESTRATOR_FAILED: marker
+# on stdout and reports all failed paths on stderr.
 ```
 
-The validator reads all articles and all sources. Before running, it strips any prior-cycle marks from article bodies. Output: articles mutated in-place with inline `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` marks appended to claims. No separate validation scratch file. Findings-analyst reads these marks directly from articles at A3.
+Per-batch validators read their assigned articles and the full sources tree. Before marking, each strips any prior-cycle marks from its article bodies. Output: articles mutated in-place with inline `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` marks appended to claims. No separate validation scratch file. Findings-analyst reads these marks directly from articles at A3.
+
+Sharding exists because the single-agent validator hit the "Prompt is too long" ceiling at ~75 articles (see #30). The per-article gate (rather than a directory check) is required because editing files inside a directory does not advance the directory's mtime on Linux.
 
 ### A2 — Stack-root artifact synthesis
 

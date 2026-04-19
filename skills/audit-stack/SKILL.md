@@ -100,31 +100,35 @@ pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md"
 
 The pass loop continues through Steps 4-8 below. At A4 (Step 8), the loop either: sets `converged=1` and breaks, or increments `prev_empty` accordingly and checks whether `pass_counter >= MAX_AUDIT_PASSES`. If the budget cap is reached without convergence, set `converged=1` and break (budget-cap convergence; findings are still archived at A5).
 
-## Step 4: A1 — Validator dispatch
+## Step 4: A1 — Validator-orchestrator dispatch
 
-```bash
-DISPATCH_EPOCH=$(date +%s)
-EXPECTED_ARTICLES=( "$STACK"/articles/*.md )
+Dispatch a single `validator-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `validator` agents (each validator still sees the full `$STACK/sources/` tree) and owns the per-article `assert-written.sh` gate loop. This pattern exists because the single-agent validator hit the "Prompt is too long" ceiling at ~75 articles (see #30); sharding caps per-agent article count at 15.
+
+Pass the orchestrator:
+- `$STACK`: stack root.
+- `$SCRIPTS_DIR`: for `assert-written.sh`.
+
+The main session's A1 gate is a parse of the orchestrator's returned text. Look for a final JSON object with all four required fields:
+
+```json
+{
+  "n_articles": 80,
+  "n_batches": 6,
+  "articles_per_agent": 15,
+  "dispatch_epoch": 1713500000
+}
 ```
 
-Dispatch the `validator` agent (read `$AGENTS_DIR/validator.md` for the full prompt). Provide:
-- All articles: `$STACK/articles/*.md`
-- All source files: `$STACK/sources/` recursively, excluding `sources/incoming/` and `sources/trash/`
-- `$STACK/STACK.md` (source hierarchy for conflict resolution)
-
-The validator reads each article, strips prior-cycle marks (`[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]`), marks each substantive claim inline, and updates the `last_verified` frontmatter field. It edits article files in place.
-
-After the agent returns, gate every article with a per-article loop:
-
 ```bash
-for article in "${EXPECTED_ARTICLES[@]}"; do
-  "$SCRIPTS_DIR/assert-written.sh" "$article" "${DISPATCH_EPOCH}" "validator"
-done
+# Pipe the orchestrator response text through jq to validate shape.
+ORCH_JSON=$(printf '%s\n' "$ORCH_RESPONSE" | grep -oE '\{[^{}]*"n_articles"[^{}]*\}' | tail -1)
+if [[ -z "$ORCH_JSON" ]] || ! jq -e '.n_articles and .n_batches and .articles_per_agent and .dispatch_epoch' <<< "$ORCH_JSON" >/dev/null 2>&1; then
+  echo "AGENT_WRITE_FAILURE: validator-orchestrator returned no/invalid summary JSON" >&2
+  exit 1
+fi
 ```
 
-Do NOT pass the directory path to `assert-written.sh`. Editing files inside a directory does not update the directory's own mtime on Linux; only the individual file mtimes advance.
-
-If any gate fails, halt with the `AGENT_WRITE_FAILURE` error and report which articles were not written.
+If the JSON is missing or malformed, treat A1 as failed and halt the audit loop. On failure the orchestrator also reports every failed article path on stderr and emits an `A1_ORCHESTRATOR_FAILED:` marker line on stdout. Either signal halts the audit loop.
 
 ## Step 5: A2 — Synthesizer dispatch
 
