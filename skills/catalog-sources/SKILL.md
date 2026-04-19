@@ -308,6 +308,45 @@ N_UNIQUE_CONCEPTS=${#CONCEPT_SLUGS[@]}
 INPUT_BLOCKS=$(grep -c '^## Concept:' "$STACK"/dev/extractions/*-concepts.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
 COLLAPSED=$((INPUT_BLOCKS - N_UNIQUE_CONCEPTS))
 echo "W1b: $INPUT_BLOCKS concept blocks collapsed to $N_UNIQUE_CONCEPTS unique slugs ($COLLAPSED merged)."
+
+# Compute extraction_hash per unique slug and write it into the dedup block.
+# Hash input format (keep stable — changing this invalidates every stack's skip list):
+#   {path1}|{path2}|...|{pathN}|{slug}      (paths sorted ascending, `|`-joined)
+# Uniform `|` separator so the byte sequence is unambiguous. `echo -n` suppresses
+# the trailing newline that would otherwise drift the hash.
+for slug in "${CONCEPT_SLUGS[@]}"; do
+  # Collect source_paths for this slug's block in _dedup.md. Awk reads from the
+  # block opened by `slug: $slug` up to the next blank line / next Concept header.
+  sorted_paths=$(awk -v want="$slug" '
+    /^slug:[[:space:]]/ { cur=$2; in_block = (cur == want); in_paths = 0; next }
+    in_block && /^source_paths:/ { in_paths = 1; next }
+    in_block && in_paths && /^[[:space:]]*-[[:space:]]*/ {
+      gsub(/^[[:space:]]*-[[:space:]]*/, "", $0); print $0; next
+    }
+    in_block && in_paths && !/^[[:space:]]*-/ { in_paths = 0 }
+  ' "$DEDUP" | sort -u | tr '\n' '|')
+  # sorted_paths now ends in `|` (or is empty). Append the slug to complete the format.
+  hash_input="${sorted_paths}${slug}"
+  ehash=$(echo -n "$hash_input" | "$SCRIPTS_DIR/compute-extraction-hash.sh")
+  # Insert (or replace) `extraction_hash:` line in this slug's block.
+  # We append it immediately after the `slug:` line of the matching block and
+  # strip any other `extraction_hash:` line that appears in the same block
+  # (anywhere before the next `## Concept:` header), defending against blocks
+  # with a non-canonical field order.
+  awk -v want="$slug" -v h="$ehash" '
+    BEGIN { in_match = 0 }
+    /^## Concept:/ { in_match = 0; print; next }
+    /^slug:[[:space:]]/ {
+      cur=$2
+      print
+      if (cur == want) { print "extraction_hash: " h; in_match = 1 }
+      next
+    }
+    in_match && /^extraction_hash:/ { next }
+    { print }
+  ' "$DEDUP" > "$DEDUP.tmp" && mv "$DEDUP.tmp" "$DEDUP"
+done
+echo "W1b: wrote extraction_hash for $N_UNIQUE_CONCEPTS unique concept slugs."
 ```
 
 Note: awk's support for nested arrays (`sp[slug][path]`) requires gawk (GNU awk), which is standard on Linux. If the target environment uses mawk, substitute a python fallback. The logic is identical.

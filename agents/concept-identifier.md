@@ -26,8 +26,7 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 4. For each candidate concept, check the existing `articles/` listing. Slug immutability is a hard constraint here.
    - If a concept matches an existing article (by claim overlap with the article body or frontmatter topic): use the existing article's slug as both `slug` and `target_article`. Do not propose a renamed slug. If you believe an existing slug is wrong, note it in a comment field; do not change the slug.
    - If no match: assign a new slug (kebab-case, descriptive, unique). Leave `target_article` empty.
-5. Populate `hash_inputs` for each concept block. The hash is computed downstream; you list the inputs: the source file path and the concept slug, concatenated.
-6. Write one extraction file per source to `dev/extractions/{source-slug}-concepts.md`.
+5. Write one extraction file per source to `dev/extractions/{source-slug}-concepts.md`. Do not emit an `extraction_hash` field — W1b computes it deterministically via `scripts/compute-extraction-hash.sh` after dedup merges `source_paths[]` across all contributing sources.
 
 ## Output Format
 
@@ -42,9 +41,6 @@ slug: {kebab-case-slug}
 title: {human-readable title}
 source_paths:
   - {path/to/source.md}
-hash_inputs:
-  - {path/to/source.md}
-  - {concept-slug}
 target_article: {existing-slug-if-updating | ""}
 tier: {1|2|3|4}
 
@@ -69,9 +65,6 @@ slug: chilled-water-primary-secondary
 title: Primary-Secondary Chilled Water Pumping
 source_paths:
   - sources/ashrae-guideline-36.md
-hash_inputs:
-  - sources/ashrae-guideline-36.md
-  - chilled-water-primary-secondary
 target_article: ""
 tier: 1
 
@@ -98,9 +91,6 @@ slug: chilled-water-primary-secondary
 title: Primary-Secondary Chilled Water Pumping
 source_paths:
   - sources/taylor-primary-pumping.md
-hash_inputs:
-  - sources/taylor-primary-pumping.md
-  - chilled-water-primary-secondary
 target_article: chilled-water-primary-secondary
 tier: 2
 

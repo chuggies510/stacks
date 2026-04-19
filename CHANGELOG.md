@@ -1,3 +1,7 @@
+## 0.12.0-alpha.2 — 2026-04-19
+
+- feat(catalog-sources, concept-identifier, article-synthesizer): compute `extraction_hash` deterministically during W1b via new `scripts/compute-extraction-hash.sh` (sha256 of sorted source paths + `|` + slug). concept-identifier no longer emits the vestigial `hash_inputs` field; article-synthesizer copies the W1b-populated hash verbatim into article frontmatter. Restores the skip-list flywheel so already-synthesized content can be detected across catalog cycles. Closes #23.
+
 ## 0.12.0-alpha.1 — 2026-04-19
 
 - feat(findings-analyst, audit-stack): add resolvable_by field to findings items (schema v3). A4 convergence now filters on resolvable_by == audit-stack; fetch_source and research_question items are reported but no longer block convergence — they belong to catalog-sources and external resolution respectively. Carry-forward rule auto-populates resolvable_by from action on v2→v3 migration. Closes #29.

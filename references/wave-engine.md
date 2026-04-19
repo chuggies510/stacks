@@ -145,11 +145,13 @@ for slug in ${SOURCE_SLUGS}; do
 done
 ```
 
-Each agent reads its source files, `STACK.md`, and the skip list. Output: `dev/extractions/{source-slug}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `hash_inputs`, `target_article`).
+Each agent reads its source files, `STACK.md`, and the skip list. Output: `dev/extractions/{source-slug}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `extraction_hash` (populated by W1b), `target_article`).
 
 ### W1b — Slug-collision dedup
 
 Bash pass reads all `dev/extractions/*-concepts.md` files. Groups concept blocks by `slug`. Merges `source_paths[]` for any duplicate slugs. Emits a unified concept list for W2 dispatch. Ensures one W2 dispatch per unique slug.
+
+After dedup, W1b computes `extraction_hash` for each unique slug via `scripts/compute-extraction-hash.sh`. Input format (keep byte-stable — changing it invalidates every stack's skip list): `{path1}|{path2}|...|{pathN}|{slug}`, where paths are the slug's merged `source_paths[]` sorted ascending and joined by `|`, followed by a trailing `|` and the slug. Piped to the script via `echo -n` so no trailing newline enters the digest. The hash anchors the catalog→audit→catalog skip-list flywheel: A5 terminal-status findings expose these hashes, and W0b on the next cycle skips any concept whose hash matches.
 
 ### W2 — Article synthesis (parallel)
 
