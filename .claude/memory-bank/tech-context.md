@@ -6,7 +6,7 @@
 |----------------|---------|
 | `.claude-plugin/plugin.json` | Plugin identity and version |
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
-| `agents/` | 5 subagent definitions (concept-identifier, article-synthesizer, validator, synthesizer, findings-analyst) |
+| `agents/` | 7 subagent definitions: 5 workers (concept-identifier, article-synthesizer, validator, synthesizer, findings-analyst) and 2 orchestrators (validator-orchestrator, concept-identifier-orchestrator) that shard worker dispatch via the Task tool |
 | `skills/{name}/SKILL.md` | User-invocable skills: ask, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
 | `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh) plus pipeline helpers (assert-written.sh, wikilink-pass.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |

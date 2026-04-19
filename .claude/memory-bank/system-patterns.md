@@ -5,7 +5,7 @@
 Three-layer plugin:
 
 1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a SKILL.md with a procedural walkthrough.
-2. **Agents** (workers): 5 subagents invoked by skills — `concept-identifier`, `article-synthesizer`, `validator`, `synthesizer`, `findings-analyst`.
+2. **Agents**: 5 workers (`concept-identifier`, `article-synthesizer`, `validator`, `synthesizer`, `findings-analyst`) plus 2 orchestrators (`validator-orchestrator`, `concept-identifier-orchestrator`) that shard worker dispatch via the Task tool.
 3. **Templates** (scaffolding): `templates/library/` and `templates/stack/` are copied into user repos to bootstrap structure.
 
 The plugin itself holds no knowledge. It manipulates user-owned library repos.
@@ -33,6 +33,10 @@ Catalog reads findings.md at W0b (skip list from terminal statuses; driving acqu
 ### Lookup
 `/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + indexes → detect article-mode vs guide-mode via `articles/` directory presence → extract `## Reading Paths` context from `index.md` → load up to 3 matching articles (article mode) or topic guides (guide mode) → synthesize answer → optional Step 7 file-result-back branches on the same MODE flag (article mode writes `articles/{slug}.md` with `extraction_hash: ""`; guide mode writes `topics/{topic}/guide.md`).
 
+## Orchestrator wrapper pattern
+
+Both scale-sensitive dispatches (audit A1, catalog W1/W1b/W2) run through an orchestrator agent rather than inline in the main-session skill. The orchestrator owns dispatch math (shard the work set across N sub-agents), the per-output `assert-written.sh` gate loop, and a summary JSON the main session parses as the success signal. Two rationales: (1) sub-agents hit the single-agent "Prompt is too long" ceiling when they receive N articles × M sources; sharding with a per-batch cap (15 for validator, 10-source SOURCES_PER_AGENT for concept-identifier) keeps each sub-agent's prompt bounded. (2) Main-session state (bash arrays populated inside agent dispatches) does not persist across dispatch boundaries; collapsing W1+W1b+W2 into one orchestrator lets the orchestrator hold cross-wave state in its own shell and emit it as a file at the end. Task-tool agents return text, not exit codes, so main-session gates parse the orchestrator's returned JSON or a summary file on disk. See `agents/{validator,concept-identifier}-orchestrator.md` and `references/wave-engine.md` A1 + W1/W1b/W2 sections.
+
 ## Write-or-fail gate
 
 Every agent-producing wave pairs `test -s` with `stat -c %Y > dispatch_epoch` via `scripts/assert-written.sh`. Caller captures `DISPATCH_EPOCH=$(date +%s)` immediately before dispatch. Both checks needed: size alone misses stale pre-existing files, mtime alone misses empty writes. Gate enumerates expected file paths; never a directory path (dir mtime does not advance on in-place file edits).
@@ -52,8 +56,11 @@ This mirrors the ChuggiesMart pattern — same mechanism, single-plugin variant.
 
 ## Known Weak Spots
 
-- W1b dedup and W4 MoC generator depend on gawk (nested arrays); mawk fallback is noted in catalog-sources SKILL.md but not implemented.
+- W1b dedup and W4 MoC generator depend on gawk (nested arrays); mawk fallback noted in catalog-sources SKILL.md but not implemented.
 - Audit-stack outer pass loop re-enters Steps 4-8 textually; not all model variants will execute the loop deterministically without the operator re-invoking.
 - Cross-stack retrieval in `/stacks:ask` is stub (one-stack scope only); blocks on-demand guide synthesis (#5, #18).
-- **A1 validator scale wall.** audit-stack validator hits "Prompt is too long" at ~75 articles mid-edit; still open pending the validator-orchestrator wrapper (#30). Catalog-side batching (#26, closed) and orchestration wrapper for catalog (#27, open) are the paired fixes; #30 proves the wrapper pattern on the smallest surface before extending it to #27.
-- **Orchestration loop still lives in main session on the catalog side.** concept-identifier-orchestrator wrapper pending (#27). A catalog run on 75+ sources exhausts main-session context via accumulated agent summaries.
+- **A2 synthesizer and A3 findings-analyst hit the same prompt ceiling that broke A1.** Same single-agent-reads-all-articles shape. Wrapper pattern generalizes but is not yet applied (#32).
+- **Validator batches still receive the full sources tree.** Fine at ≤50 sources; at mep-stack ~100+ sources × 17 batches the per-agent prompt reproduces the ceiling along a different axis. Citation-graph source sharding needed (#34).
+- **W2 article-synthesizer dispatch has no parallel-wave cap.** 250 unique concepts → 250 simultaneous Task calls (#35).
+- **Orchestrator summary-JSON contract is not versioned.** Two orchestrators ship two delivery shapes (inline text vs file) with no `schema_version` field; future drift is silent (#33).
+- **`findings.md` grows unbounded.** A5 archives by `cp`; carry-forward preserves terminal-status items forever. No rotation policy (#37).
