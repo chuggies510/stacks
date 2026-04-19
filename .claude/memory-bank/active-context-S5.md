@@ -40,7 +40,12 @@ One filing-path bug from 0.9.0 cutover fixed in 0.11.0:
 
 ### Chat
 
-(filled in Phase 8)
+S4-stacks-backlog-triage-0.11.0-polish
+
+### Session Rating
+
+**Rating**: 4/5
+**Note**: (none)
 
 ### Changes Made
 
