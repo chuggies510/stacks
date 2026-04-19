@@ -1,2 +1,4 @@
-sources/incoming/
-sources/trash/
+sources/incoming/*
+sources/trash/*
+!sources/incoming/.gitkeep
+!sources/trash/.gitkeep
