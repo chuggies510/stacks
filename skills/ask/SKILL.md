@@ -78,7 +78,31 @@ Match the query against topic names and descriptions to identify the 1-3 most re
 
 If the index is empty (no topics yet), tell the user: "Stack '{stack}' has no topics yet. Run /stacks:ingest-sources {stack} from your library repo first."
 
+Also check the index for a `## Reading Paths` section. If present, capture its full content as additional retrieval context. Reading Paths group articles (or topics) that commonly go together for a given concept or workflow. In article mode this context helps match a query to a coherent set of articles rather than isolated entries; in guide mode it may not be present but is used the same way if found.
+
 ## Step 5: Read topic guides
+
+Check whether the stack is in article mode or guide mode:
+
+```bash
+if test -d "$LIBRARY/$STACK/articles" && find "$LIBRARY/$STACK/articles" -maxdepth 1 -name '*.md' | head -1 | grep -q .; then
+  MODE=article
+else
+  MODE=guide
+fi
+```
+
+**Article mode** (`articles/` directory exists and contains at least one `.md` file):
+
+Match the query against articles in `$LIBRARY/{stack}/articles/`. Weight matches in this order:
+1. Article `title` frontmatter field — highest weight
+2. Article `tags[]` frontmatter field — high weight
+3. Article slug (filename without `.md`) — medium weight
+4. Reading Paths context extracted in Step 4 — contextual aid: articles grouped in the same Reading Path are considered related and should be preferred together
+
+Read up to 3 matching `$LIBRARY/{stack}/articles/{slug}.md` files. If only one matches, read just that one. If more than 3 match, pick the 3 with the closest relevance to the query.
+
+**Guide mode** (no `articles/` directory, or directory is empty) — existing behavior:
 
 Read the matched topic guide files at `$LIBRARY/{stack}/topics/{topic}/guide.md`.
 
