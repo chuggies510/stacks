@@ -100,95 +100,124 @@ pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md"
 
 The pass loop continues through Steps 4-8 below. At A4 (Step 8), the loop either: sets `converged=1` and breaks, or increments `prev_empty` accordingly and checks whether `pass_counter >= MAX_AUDIT_PASSES`. If the budget cap is reached without convergence, set `converged=1` and break (budget-cap convergence; findings are still archived at A5).
 
-## Step 4: A1 — Validator-orchestrator dispatch
+## Step 4: A1 — Parent-side parallel validator dispatch
 
-Dispatch a single `validator-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `validator` agents (each validator still sees the full `$STACK/sources/` tree) and owns the per-article `assert-written.sh` gate loop. This pattern exists because the single-agent validator hit the "Prompt is too long" ceiling at ~75 articles (see #30); sharding caps per-agent article count at 15.
+The parent skill (this session) shards articles directly and dispatches `validator` agents in parallel. The `validator-orchestrator` agent is **deprecated for this skill** — nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent do the deterministic merge.
 
-Pass the orchestrator:
-- `$STACK`: stack root.
-- `$SCRIPTS_DIR`: for `assert-written.sh`.
-
-The main session's A1 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a1` on stdout and writes the structural data to `$STACK/dev/audit/_a1-summary.json`. The summary file is the schema-versioned envelope:
-
-```json
-{
-  "schema_version": 1,
-  "wave": "a1",
-  "status": "ok",
-  "counts": {
-    "n_articles": 80,
-    "n_batches": 6,
-    "articles_per_agent": 15
-  },
-  "epochs": {
-    "dispatch_epoch": 1713500000
-  }
-}
-```
+**Batch size: ≤3 articles per validator agent.** Per-agent isolation matters more than minimizing dispatch count. Each validator reads its 1-3 articles plus the full `$STACK/sources/` tree and writes inline VERIFIED/DRIFT/UNSOURCED/STALE marks. Bundling many unrelated articles into one agent invites cross-article confusion and source misattribution. The previous 15-per-shard cap was a workaround for a problem this design doesn't have.
 
 ```bash
-SUMMARY_PATH="$STACK/dev/audit/_a1-summary.json"
-if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a1'; then
-  echo "AGENT_WRITE_FAILURE: A1 receipt line missing" >&2
-  exit 1
-fi
-if [[ ! -s "$SUMMARY_PATH" ]]; then
-  echo "AGENT_WRITE_FAILURE: _a1-summary.json missing" >&2
-  exit 1
-fi
-if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: _a1-summary.json malformed" >&2
-  exit 1
-fi
+ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
+N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
+BATCH_SIZE=3
+N_BATCHES=$(( (N_ARTICLES + BATCH_SIZE - 1) / BATCH_SIZE ))
+DISPATCH_EPOCH=$(date +%s)
+mkdir -p "$STACK/dev/audit"
+
+# Build batch files: dev/audit/_a1-batch-{NN}.txt with one article path per line.
+echo "$ARTICLES" | awk -v bs="$BATCH_SIZE" -v stack="$STACK" '
+  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a1-batch-%02d.txt", stack, batch) }
+'
 ```
 
-If any of the three checks fails, treat A1 as failed and halt the audit loop. On failure the orchestrator also reports every failed article path on stderr and emits an `ORCHESTRATOR_FAILED: wave=a1 reason={short}` marker line on stdout. Either signal halts the audit loop.
+**Dispatch:** in a single message, emit one `Agent` tool call per batch (subagent_type `stacks:validator`). Each prompt names the absolute paths in that batch's `_a1-batch-NN.txt`, the stack root, the sources tree path, and the `$DISPATCH_EPOCH`. Tell each validator to use `assert-written.sh "$ARTICLE_PATH" "$DISPATCH_EPOCH" "validator"` for each article it edits, and to fail loudly if a gate trips. Parallel dispatch is mandatory — sequential dispatch reintroduces the wall-clock problem the orchestrator was meant to solve.
 
-## Step 5: A2 — Synthesizer-orchestrator dispatch
-
-Dispatch a single `synthesizer-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `synthesizer` agents (cap of 30 articles per agent; higher than A1 because synthesizer reads article text only, no sources tree) and, when sharded, dispatches the same `synthesizer` agent type a second time as a merge pass that resolves dedup, independent-corroboration, and tier-hierarchy rules across shards. The orchestrator owns per-output `assert-written.sh` gating for both the shard partials (`dev/audit/_a2-partial-{batch_id}.md`) and the three final stack-root files.
-
-Pass the orchestrator:
-- `$STACK`: stack root.
-- `$SCRIPTS_DIR`: for `assert-written.sh`.
-
-The main session's A2 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a2` on stdout and writes the structural data to `$STACK/dev/audit/_a2-summary.json` with the schema-versioned envelope:
-
-```json
-{
-  "schema_version": 1,
-  "wave": "a2",
-  "status": "ok",
-  "counts": {
-    "n_articles": 80,
-    "n_batches": 5,
-    "glossary_terms": 142,
-    "invariants": 17,
-    "contradictions": 4
-  },
-  "epochs": {
-    "dispatch_epoch": 1713500000
-  }
-}
-```
+**Gate:** after all validator agents return, the parent re-runs the gate inline:
 
 ```bash
-SUMMARY_PATH="$STACK/dev/audit/_a2-summary.json"
-if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a2'; then
-  echo "AGENT_WRITE_FAILURE: A2 receipt line missing" >&2
-  exit 1
-fi
-if [[ ! -s "$SUMMARY_PATH" ]]; then
-  echo "AGENT_WRITE_FAILURE: _a2-summary.json missing" >&2
-  exit 1
-fi
-if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: _a2-summary.json malformed" >&2
+FAILED=()
+for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
+  while IFS= read -r article; do
+    [[ -z "$article" ]] && continue
+    if ! "$SCRIPTS_DIR/assert-written.sh" "$article" "$DISPATCH_EPOCH" "validator-parent-gate" 2>/dev/null; then
+      FAILED+=("$article")
+    fi
+  done < "$batch"
+done
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+  printf 'AGENT_WRITE_FAILURE: A1 articles ungated:\n'
+  printf '  %s\n' "${FAILED[@]}"
   exit 1
 fi
 ```
 
-If any of the three checks fails, treat A2 as failed and halt the audit loop. On failure the orchestrator also reports failed paths on stderr and emits an `ORCHESTRATOR_FAILED: wave=a2 reason={short}` marker line on stdout. Either signal halts the audit loop. After A2 succeeds the three stack-root files (`glossary.md`, `invariants.md`, `contradictions.md`) are present and gated; proceed to A2b.
+**Summary write:** the parent writes `_a1-summary.json` itself:
+
+```bash
+jq -n \
+  --argjson n_articles "$N_ARTICLES" \
+  --argjson n_batches "$N_BATCHES" \
+  --argjson batch_size "$BATCH_SIZE" \
+  --argjson epoch "$DISPATCH_EPOCH" \
+  '{schema_version:1, wave:"a1", status:"ok",
+    counts:{n_articles:$n_articles, n_batches:$n_batches, articles_per_agent:$batch_size},
+    epochs:{dispatch_epoch:$epoch}}' \
+  > "$STACK/dev/audit/_a1-summary.json"
+```
+
+Cleanup batch files (`rm "$STACK"/dev/audit/_a1-batch-*.txt`) after summary writes.
+
+## Step 5: A2 — Parent-side parallel synthesizer dispatch + merge
+
+Synthesizer needs cross-article view to dedup glossary terms, find independent-corroboration invariants, and surface contradictions. So A2 keeps the shard-then-merge pattern, but driven from the parent (not via `synthesizer-orchestrator`, which is **deprecated for this skill**).
+
+**Batch size: ≤10 articles per synthesizer shard.** Smaller than the prior 30-cap because per-agent attention to each article matters: a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only (no sources tree), so per-agent context stays small.
+
+**Phase A — shard fan-out:**
+
+```bash
+ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
+N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
+BATCH_SIZE_A2=10
+N_BATCHES_A2=$(( (N_ARTICLES + BATCH_SIZE_A2 - 1) / BATCH_SIZE_A2 ))
+DISPATCH_EPOCH=$(date +%s)
+echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A2" -v stack="$STACK" '
+  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a2-batch-%02d.txt", stack, batch) }
+'
+```
+
+In a single message, dispatch one `stacks:synthesizer` agent per batch. Each prompt: stack root, batch file path, output path `dev/audit/_a2-partial-{NN}.md` (a single markdown file with `## Glossary`, `## Invariants`, `## Contradictions` sections covering only that shard's articles), and `$DISPATCH_EPOCH`. The agent must call `assert-written.sh "$PARTIAL_PATH" "$DISPATCH_EPOCH" "synthesizer"` after writing.
+
+**Gate Phase A:**
+
+```bash
+for i in $(seq -f "%02g" 0 $((N_BATCHES_A2 - 1))); do
+  PARTIAL="$STACK/dev/audit/_a2-partial-$i.md"
+  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH" "synthesizer-parent-gate" 2>/dev/null; then
+    echo "AGENT_WRITE_FAILURE: A2 partial $PARTIAL ungated"; exit 1
+  fi
+done
+```
+
+**Phase B — merge pass:** dispatch ONE `stacks:synthesizer` agent (single Task call, not parallel). Prompt it to read all `dev/audit/_a2-partial-*.md` files, apply dedup + independent-corroboration + tier-hierarchy resolution across shards, and write the three final stack-root files: `$STACK/glossary.md`, `$STACK/invariants.md`, `$STACK/contradictions.md`. Each must be gated with `assert-written.sh ... "$DISPATCH_EPOCH" "synthesizer-merge"`.
+
+If `N_BATCHES_A2 == 1`, skip Phase B and have the single Phase A agent write the three stack-root files directly instead of a partial.
+
+**Gate Phase B + summary write:**
+
+```bash
+for f in glossary.md invariants.md contradictions.md; do
+  if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/$f" "$DISPATCH_EPOCH" "synthesizer-merge-gate" 2>/dev/null; then
+    echo "AGENT_WRITE_FAILURE: A2 stack-root $f ungated"; exit 1
+  fi
+done
+G_TERMS=$(grep -c '^\*\*' "$STACK/glossary.md" 2>/dev/null || echo 0)
+INV_COUNT=$(grep -c '^[0-9]\+\.' "$STACK/invariants.md" 2>/dev/null || echo 0)
+CON_COUNT=$(grep -c '^## ' "$STACK/contradictions.md" 2>/dev/null || echo 0)
+jq -n \
+  --argjson n_articles "$N_ARTICLES" \
+  --argjson n_batches "$N_BATCHES_A2" \
+  --argjson g "$G_TERMS" --argjson i "$INV_COUNT" --argjson c "$CON_COUNT" \
+  --argjson epoch "$DISPATCH_EPOCH" \
+  '{schema_version:1, wave:"a2", status:"ok",
+    counts:{n_articles:$n_articles, n_batches:$n_batches,
+            glossary_terms:$g, invariants:$i, contradictions:$c},
+    epochs:{dispatch_epoch:$epoch}}' \
+  > "$STACK/dev/audit/_a2-summary.json"
+rm "$STACK"/dev/audit/_a2-batch-*.txt
+```
+
+After A2 succeeds the three stack-root files are present and gated; proceed to A2b.
 
 ## Step 6: A2b — Wikilink pass
 
@@ -198,15 +227,26 @@ If any of the three checks fails, treat A2 as failed and halt the audit loop. On
 
 This is the same shared helper used by catalog-sources at W2b. It reads glossary bold terms and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded. The pass is a no-op if `glossary.md` is absent, but at this point in the pipeline `glossary.md` was just written by A2.
 
-## Step 7: A3 — Findings-analyst-orchestrator dispatch
+## Step 7: A3 — Parent-side parallel findings-analyst dispatch + deterministic merge
 
-Dispatch a single `findings-analyst-orchestrator` agent via the Task tool. The orchestrator shards `$STACK/articles/*.md` across multiple parallel `findings-analyst` agents (cap of 15 articles per agent, matching A1) and then bash-merges per-shard partials into a single `dev/audit/findings.md` by item `id`, applying terminal-wins precedence so carried-forward terminal statuses never regress. The orchestrator owns per-output `assert-written.sh` gating for the partials (`dev/audit/_a3-partial-{batch_id}.md`) and the merged active findings.md.
+The `findings-analyst-orchestrator` agent is **deprecated for this skill** — same root cause as A1 and A2. Parent shards directly, dispatches in parallel, and merges with awk in the parent process (the merge is deterministic terminal-wins-by-id; no agent needed).
 
-Pass the orchestrator:
-- `$STACK`: stack root.
-- `$SCRIPTS_DIR`: for `assert-written.sh`.
+**Batch size: ≤3 articles per findings-analyst agent**, matching A1. Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, the prior `dev/audit/findings.md` (for carry-forward of terminal-status items by id), and writes a partial findings file covering only the items it identifies.
 
-The canonical findings.md schema definition (item shapes, status enum, resolvable_by enum, emit-time rules, and carry-forward behavior) lives in `agents/findings-analyst.md`. The findings.md frontmatter remains:
+```bash
+ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
+N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
+BATCH_SIZE_A3=3
+N_BATCHES_A3=$(( (N_ARTICLES + BATCH_SIZE_A3 - 1) / BATCH_SIZE_A3 ))
+DISPATCH_EPOCH=$(date +%s)
+echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A3" -v stack="$STACK" '
+  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a3-batch-%02d.txt", stack, batch) }
+'
+```
+
+**Dispatch:** in a single message, one `stacks:findings-analyst` agent per batch. Each prompt: stack root, batch file, output partial path `dev/audit/_a3-partial-{NN}.md`, prior `dev/audit/findings.md` path (read-only for carry-forward), `dev/audit/contradictions.md`, and `$DISPATCH_EPOCH`. The agent writes its partial and gates via `assert-written.sh`.
+
+The canonical findings.md schema (item shape, status enum, resolvable_by enum, carry-forward rules) lives in `agents/findings-analyst.md`. The merged file's frontmatter remains:
 
 ```yaml
 ---
@@ -217,43 +257,83 @@ schema_version: 4
 ---
 ```
 
-The main session's A3 gate is a receipt-line + summary-file pair. The orchestrator returns `ORCHESTRATOR_OK: wave=a3` on stdout and writes the structural data to `$STACK/dev/audit/_a3-summary.json` with the schema-versioned envelope:
-
-```json
-{
-  "schema_version": 1,
-  "wave": "a3",
-  "status": "ok",
-  "counts": {
-    "n_articles": 80,
-    "n_batches": 6,
-    "new_items": 12,
-    "carried_items": 48,
-    "rotated_items": 0
-  },
-  "epochs": {
-    "dispatch_epoch": 1713500000
-  }
-}
-```
+**Gate partials:**
 
 ```bash
-SUMMARY_PATH="$STACK/dev/audit/_a3-summary.json"
-if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=a3'; then
-  echo "AGENT_WRITE_FAILURE: A3 receipt line missing" >&2
-  exit 1
-fi
-if [[ ! -s "$SUMMARY_PATH" ]]; then
-  echo "AGENT_WRITE_FAILURE: _a3-summary.json missing" >&2
-  exit 1
-fi
-if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: _a3-summary.json malformed" >&2
-  exit 1
-fi
+for i in $(seq -f "%02g" 0 $((N_BATCHES_A3 - 1))); do
+  PARTIAL="$STACK/dev/audit/_a3-partial-$i.md"
+  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH" "findings-analyst-parent-gate" 2>/dev/null; then
+    echo "AGENT_WRITE_FAILURE: A3 partial $PARTIAL ungated"; exit 1
+  fi
+done
 ```
 
-If any of the three checks fails, treat A3 as failed and halt the audit loop. On failure the orchestrator also emits an `ORCHESTRATOR_FAILED: wave=a3 reason={short}` marker line on stdout. Either signal halts the audit loop.
+**Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
+
+```bash
+PRIOR_FINDINGS="$STACK/dev/audit/findings.md"
+PRIOR_PASS_COUNTER=$(grep -oP '(?<=pass_counter:\s)\d+' "$PRIOR_FINDINGS" 2>/dev/null || echo 0)
+NEW_PASS_COUNTER=$((PRIOR_PASS_COUNTER + 1))
+STACK_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+AUDIT_DATE=$(date +%Y-%m-%d)
+TMP_MERGED=$(mktemp)
+{
+  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 4\n---\n\n' \
+    "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
+  cat "$STACK"/dev/audit/_a3-partial-*.md
+} > "$TMP_MERGED"
+
+# Awk merge: keep last occurrence of each id, with terminal precedence enforced.
+# Reads block-by-block where a block starts at `- id:` and ends at the next blank line.
+awk '
+  BEGIN { RS=""; FS="\n" }
+  /^- id:/ {
+    id=""; status="open"
+    for (i=1; i<=NF; i++) {
+      if (match($i, /^[[:space:]]*id:[[:space:]]*(.*)/, m1)) id=m1[1]
+      if (match($i, /^[[:space:]]*status:[[:space:]]*(.*)/, m2)) status=m2[1]
+    }
+    if (id == "") next
+    is_terminal = (status ~ /^(applied|closed|deferred|stale|failed)$/)
+    if (!(id in seen) || (is_terminal && !seen_terminal[id])) {
+      block[id] = $0
+      seen[id] = 1
+      if (is_terminal) seen_terminal[id] = 1
+    }
+  }
+  END { for (id in block) print block[id]; print "" }
+' "$TMP_MERGED" > "$PRIOR_FINDINGS.merged"
+
+# Prepend frontmatter
+{
+  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 4\n---\n\n' \
+    "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
+  cat "$PRIOR_FINDINGS.merged"
+} > "$PRIOR_FINDINGS"
+rm -f "$PRIOR_FINDINGS.merged" "$TMP_MERGED"
+
+# Gate and counts
+"$SCRIPTS_DIR/assert-written.sh" "$PRIOR_FINDINGS" "$DISPATCH_EPOCH" "findings-merge" || { echo "AGENT_WRITE_FAILURE: merged findings ungated"; exit 1; }
+NEW_ITEMS=$(grep -c '^- id:' "$PRIOR_FINDINGS")
+CARRIED=0  # operator-readable diff against prior file is out of scope here
+ROTATED=0
+
+jq -n \
+  --argjson n_articles "$N_ARTICLES" \
+  --argjson n_batches "$N_BATCHES_A3" \
+  --argjson new_items "$NEW_ITEMS" \
+  --argjson carried "$CARRIED" \
+  --argjson rotated "$ROTATED" \
+  --argjson epoch "$DISPATCH_EPOCH" \
+  '{schema_version:1, wave:"a3", status:"ok",
+    counts:{n_articles:$n_articles, n_batches:$n_batches,
+            new_items:$new_items, carried_items:$carried, rotated_items:$rotated},
+    epochs:{dispatch_epoch:$epoch}}' \
+  > "$STACK/dev/audit/_a3-summary.json"
+rm "$STACK"/dev/audit/_a3-batch-*.txt "$STACK"/dev/audit/_a3-partial-*.md
+```
+
+The deterministic-merge approach removes a class of failures the prior orchestrator pattern introduced: cross-shard id collisions resolved by an agent's judgment instead of by code. Carry-forward of terminal-status items from the prior `findings.md` is the responsibility of each `findings-analyst` agent (it reads the prior file); the parent merge is purely about combining the partials.
 
 After A3 succeeds, read `pass_counter` from the written `findings.md` for the loop controller (A4 reads it too):
 

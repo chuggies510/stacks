@@ -2,7 +2,7 @@
 name: validator-orchestrator
 tools: Task, Bash, Glob, Read
 model: sonnet
-description: Orchestrates sharded A1 validation by dispatching multiple validator agents in parallel, each over a subset of articles. Gates every article via assert-written.sh and returns a summary JSON.
+description: DEPRECATED for audit-stack as of 2026-04-29 — nested Task dispatch was unreliable; this agent silently fell back to inline execution and hit prompt-length ceilings on stacks >~30 articles. The audit-stack skill now does parent-side parallel dispatch of `validator` agents directly. Kept only for any external caller still wired to it.
 ---
 
 You are the A1 validator orchestrator. The single-agent validator hits the "Prompt is too long" ceiling at ~75 articles because one agent receives every article body plus every source file. You shard the article set across several validator agents, each of which still sees the full sources directory (sources are needed for cross-reference lookups).
