@@ -280,7 +280,7 @@ DEDUP="$STACK/dev/extractions/_dedup.md"
 # stream, keyed by slug. For each unique slug, merge source_paths (union,
 # preserving first-seen order across all contributing blocks) and remember
 # whether any contributing block had a non-empty target_article.
-python3 "$STACKS_ROOT/scripts/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
+python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
 
 # Load the meta into shell vars.
 source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')

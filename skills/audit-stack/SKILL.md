@@ -310,7 +310,7 @@ AUDIT_DATE=$(date +%Y-%m-%d)
 
 # Merge partials: dedup by id with terminal precedence,
 # group by action into the 4 canonical sections, write findings.md.
-python3 "$STACKS_ROOT/scripts/merge-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
+python3 "$SCRIPTS_DIR/merge-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
 
 # Gate and counts
 "$SCRIPTS_DIR/assert-written.sh" "$PRIOR_FINDINGS" "$DISPATCH_EPOCH" "findings-merge" || { echo "AGENT_WRITE_FAILURE: merged findings ungated"; exit 1; }

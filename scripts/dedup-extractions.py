@@ -8,14 +8,13 @@ import os, re, sys, glob
 extr_dir, dedup_path = sys.argv[1], sys.argv[2]
 batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
 
-slug_block_template = {}   # slug -> the first block seen (for non-merged fields)
-slug_sources = {}          # slug -> list of source paths in first-seen order
-slug_seen_sources = {}     # slug -> set
-slug_target_article = {}   # slug -> existing target slug ("" if none)
-slug_title = {}            # slug -> human title
-slug_tier = {}             # slug -> tier
-slug_claims = {}           # slug -> list of claim lines (concatenated across batches)
-slug_input_count = {}      # slug -> number of contributing blocks
+slug_seen = set()              # slugs encountered (dedup key)
+slug_sources = {}              # slug -> list of source paths in first-seen order
+slug_seen_sources = {}         # slug -> set
+slug_target_article = {}       # slug -> existing target slug ("" if none)
+slug_title = {}                # slug -> human title
+slug_tier = {}                 # slug -> tier
+slug_claims = {}               # slug -> list of claim lines (concatenated across batches)
 input_blocks_total = 0
 
 block_re = re.compile(r"^## Concept: ", re.MULTILINE)
@@ -53,15 +52,14 @@ for bf in batch_files:
         slug = fields["slug"]
         if not slug: continue
         input_blocks_total += 1
-        if slug not in slug_block_template:
-            slug_block_template[slug] = block
+        if slug not in slug_seen:
+            slug_seen.add(slug)
             slug_sources[slug] = []
             slug_seen_sources[slug] = set()
             slug_target_article[slug] = fields["target_article"]
             slug_title[slug] = fields["title"]
             slug_tier[slug] = fields["tier"]
             slug_claims[slug] = []
-            slug_input_count[slug] = 0
         for sp in fields["source_paths"]:
             if sp not in slug_seen_sources[slug]:
                 slug_sources[slug].append(sp)
@@ -69,11 +67,10 @@ for bf in batch_files:
         if fields["target_article"] and not slug_target_article[slug]:
             slug_target_article[slug] = fields["target_article"]
         slug_claims[slug].extend(fields["claims_lines"])
-        slug_input_count[slug] += 1
 
 # Write merged _dedup.md (one block per unique slug, source_paths merged).
 with open(dedup_path, "w") as f:
-    for slug in sorted(slug_block_template):
+    for slug in sorted(slug_seen):
         f.write(f"## Concept: {slug_title[slug]}\n\n")
         f.write(f"slug: {slug}\n")
         f.write(f"title: {slug_title[slug]}\n")
@@ -87,14 +84,12 @@ with open(dedup_path, "w") as f:
             f.write(cl + "\n")
         f.write("\n")
 
-# Emit slug list, new/updated classification, and counts to stdout for caller.
-new_slugs = [s for s in slug_block_template if not slug_target_article[s]]
-updated_slugs = [s for s in slug_block_template if slug_target_article[s]]
+# Emit slug list, new/updated classification, and counts to _dedup-meta.txt for caller to source.
+updated_slugs = [s for s in slug_seen if slug_target_article[s]]
 with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
     f.write(f"INPUT_BLOCKS={input_blocks_total}\n")
-    f.write(f"N_UNIQUE_CONCEPTS={len(slug_block_template)}\n")
-    f.write(f"N_NEW={len(new_slugs)}\n")
+    f.write(f"N_UNIQUE_CONCEPTS={len(slug_seen)}\n")
+    f.write(f"N_NEW={len(slug_seen) - len(updated_slugs)}\n")
     f.write(f"N_UPDATED={len(updated_slugs)}\n")
-    f.write("ALL_SLUGS=" + " ".join(sorted(slug_block_template)) + "\n")
-    f.write("NEW_SLUGS=" + " ".join(sorted(new_slugs)) + "\n")
+    f.write("ALL_SLUGS=" + " ".join(sorted(slug_seen)) + "\n")
     f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
