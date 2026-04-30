@@ -115,12 +115,51 @@ DISPATCH_EPOCH=$(date +%s)
 mkdir -p "$STACK/dev/audit"
 
 # Build batch files: dev/audit/_a1-batch-{NN}.txt with one article path per line.
+# Use bare `print` (defaults to $0 + ORS) — never `$0` literal in the awk script,
+# because the skill harness substitutes shell `$N` positionals through skill args.
 echo "$ARTICLES" | awk -v bs="$BATCH_SIZE" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a1-batch-%02d.txt", stack, batch) }
+  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a1-batch-%02d.txt", stack, batch) }
 '
 ```
 
-**Dispatch:** in a single message, emit one `Agent` tool call per batch (subagent_type `stacks:validator`). Each prompt names the absolute paths in that batch's `_a1-batch-NN.txt`, the stack root, the sources tree path, and the `$DISPATCH_EPOCH`. Tell each validator to use `assert-written.sh "$ARTICLE_PATH" "$DISPATCH_EPOCH" "validator"` for each article it edits, and to fail loudly if a gate trips. Parallel dispatch is mandatory — sequential dispatch reintroduces the wall-clock problem the orchestrator was meant to solve.
+**Per-batch citation graph:** for each batch, resolve which sources its articles cite and write the resolved absolute paths to `dev/audit/_a1-sources-{NN}.txt`. Pass that file to the matching validator. Restores the per-batch source union from 0.13.0 #34 lost in the 0.14.0 refactor: validator prompts grow with article count AND source count, so each shard must see only what its articles cite, not the full tree.
+
+```bash
+# slug -> path map of all sources excluding incoming/ and trash/.
+# Slug is the basename minus .md (the catalog filer's filename convention).
+declare -A SOURCE_MAP
+while IFS= read -r src; do
+  slug=$(basename "$src" .md)
+  SOURCE_MAP[$slug]="$src"
+done < <(find "$STACK/sources" -type f -name '*.md' \
+           -not -path "*/incoming/*" -not -path "*/trash/*" 2>/dev/null)
+
+for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
+  batch_id=$(basename "$batch" .txt | sed 's/_a1-batch-//')
+  union="$STACK/dev/audit/_a1-sources-$batch_id.txt"
+  : > "$union"
+  while IFS= read -r article; do
+    [[ -z "$article" ]] && continue
+    # Slugs from frontmatter `sources:` (basename of each path entry, minus .md).
+    awk '/^sources:/{flag=1;next} /^[A-Za-z]/{flag=0} flag && /^- /{print}' "$article" \
+      | sed -E 's|^- *||; s|^.*/||; s|\.md$||'
+    # Slugs from inline [slug] refs in the body.
+    grep -oE '\[[a-z0-9][a-z0-9-]*\]' "$article" | tr -d '[]'
+  done < "$batch" | sort -u | while read -r slug; do
+    [[ -n "${SOURCE_MAP[$slug]}" ]] && echo "${SOURCE_MAP[$slug]}"
+  done | sort -u > "$union"
+  # Fallback: if a batch has zero resolvable citations, give it the full tree
+  # so the validator still has a reference surface (matches 0.13.0 behavior).
+  if [[ ! -s "$union" ]]; then
+    find "$STACK/sources" -type f -name '*.md' \
+      -not -path "*/incoming/*" -not -path "*/trash/*" > "$union"
+  fi
+done
+```
+
+**Dispatch:** in a single message, emit one `Agent` tool call per batch (subagent_type `stacks:validator`). Each prompt passes (a) the absolute article paths from `_a1-batch-NN.txt`, (b) the absolute source paths from `_a1-sources-NN.txt` (the per-batch source union), (c) the stack root, and (d) `$DISPATCH_EPOCH`. Tell each validator to use `assert-written.sh "$ARTICLE_PATH" "$DISPATCH_EPOCH" "validator"` for each article it edits, and to fail loudly if a gate trips. Parallel dispatch is mandatory — sequential dispatch reintroduces the wall-clock problem the orchestrator was meant to solve.
+
+Note on stale frontmatter paths: catalog-sources W3 moves files out of `sources/incoming/` to publisher dirs but does not rewrite article frontmatter `sources:` paths. The slug→path map above resolves correctly because it indexes by basename, not by the stored path. Validators receive resolved paths, not stale ones.
 
 **Gate:** after all validator agents return, the parent re-runs the gate inline:
 
@@ -155,7 +194,7 @@ jq -n \
   > "$STACK/dev/audit/_a1-summary.json"
 ```
 
-Cleanup batch files (`rm "$STACK"/dev/audit/_a1-batch-*.txt`) after summary writes.
+Cleanup batch and per-batch sources files (`rm "$STACK"/dev/audit/_a1-batch-*.txt "$STACK"/dev/audit/_a1-sources-*.txt`) after summary writes.
 
 ## Step 5: A2 — Parent-side parallel synthesizer dispatch + merge
 
@@ -172,7 +211,7 @@ BATCH_SIZE_A2=10
 N_BATCHES_A2=$(( (N_ARTICLES + BATCH_SIZE_A2 - 1) / BATCH_SIZE_A2 ))
 DISPATCH_EPOCH=$(date +%s)
 echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A2" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a2-batch-%02d.txt", stack, batch) }
+  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a2-batch-%02d.txt", stack, batch) }
 '
 ```
 
@@ -240,7 +279,7 @@ BATCH_SIZE_A3=3
 N_BATCHES_A3=$(( (N_ARTICLES + BATCH_SIZE_A3 - 1) / BATCH_SIZE_A3 ))
 DISPATCH_EPOCH=$(date +%s)
 echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A3" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); printf "%s\n", $0 > sprintf("%s/dev/audit/_a3-batch-%02d.txt", stack, batch) }
+  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a3-batch-%02d.txt", stack, batch) }
 '
 ```
 

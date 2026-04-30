@@ -1,3 +1,10 @@
+## 0.14.1 — 2026-04-29
+
+Two regressions in the 0.14.0 audit-stack refactor surfaced on first execution against pca-stack (library-stack S11). Both were lost behavior the deprecated orchestrator agents had handled.
+
+- fix(audit-stack): batch-builder awk no longer references `$0`. The skill harness performs shell-positional `$N` substitution on the rendered SKILL.md, which turned the awk literal `$0` into the skill's first argument (e.g. `pca-stack`). The arithmetic `pca - stack` evaluated to 0 inside awk, writing `0\n` to every batch file. Replaced `printf "%s\n", $0` with bare `print` (which defaults to `$0` + ORS, no `$N` literal). Affects A1, A2, A3 batch sharding.
+- fix(audit-stack): A1 now builds a parent-side per-batch citation graph and passes the per-batch source union to each validator agent, restoring the 0.13.0 #34 behavior dropped in the 0.14.0 orchestrator removal. Without this, the SKILL left "the sources tree path" undefined and each invocation had to invent it (full tree → prompt-bloat regression at scale, or stale paths → mass UNSOURCED). Slug→path map now indexes by basename so catalog-sources W3 file moves do not break audit-time citation resolution. Full-tree fallback retained for batches with zero resolvable citations.
+
 ## 0.14.0 — 2026-04-29
 
 Pivots audit-stack and catalog-sources from nested-orchestrator dispatch to parent-side parallel sharding. Closes #41 and #42 (filed and resolved same session, library-stack S10).
