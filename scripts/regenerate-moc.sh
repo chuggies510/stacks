@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # W4 MoC generator: rebuild index.md from articles, preserving Reading Paths section
 # Usage: regenerate-moc.sh <stack_root>
 # Reads: <stack_root>/articles/*.md and <stack_root>/index.md
@@ -16,7 +17,7 @@ if [[ -f "$INDEX" ]]; then
     /^## Reading Paths/ { in_section=1 }
     in_section { buf = buf $0 "\n" }
     /^## / && !/^## Reading Paths/ && in_section { in_section=0; sub(/\n[^\n]*\n$/, "", buf) }
-    END { if (in_section) print buf; else print buf }
+    END { print buf }
   ' "$INDEX")
 fi
 
@@ -28,7 +29,7 @@ while IFS= read -r article; do
   slug=$(basename "$article" .md)
   tag="${tag:-uncategorized}"
   TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]\n"
-done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' | sort)
+done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || true)
 
 # 3. Write new index.md
 {
@@ -41,7 +42,7 @@ done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' | sort)
   for tag in $(echo "${!TAG_GROUPS[@]}" | tr ' ' '\n' | sort); do
     echo "### ${tag}"
     echo ""
-    printf "${TAG_GROUPS[$tag]}"
+    printf '%s' "${TAG_GROUPS[$tag]}"
     echo ""
   done
   if [[ -n "$READING_PATHS_BLOCK" ]]; then
