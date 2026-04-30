@@ -1,3 +1,18 @@
+## 0.14.0 — 2026-04-29
+
+Pivots audit-stack and catalog-sources from nested-orchestrator dispatch to parent-side parallel sharding. Closes #41 and #42 (filed and resolved same session, library-stack S10).
+
+Root cause: orchestrator agents (`validator-orchestrator`, `synthesizer-orchestrator`, `findings-analyst-orchestrator`, `concept-identifier-orchestrator`) declared `tools: Task` in frontmatter, but nested Task dispatch was unreliable in practice. When Task wasn't available to the nested subagent, the orchestrators silently fell back to inline execution, bundling every shard's work into one context. On 79-article stacks (svelte audit) and 45-source catalogs (swe), they hit "Prompt is too long" — the exact failure mode their sharding was designed to prevent. Even when nested Task did work, the original batch sizes (15 articles per validator, 30 per synthesizer, 1-or-10 sources per concept-identifier) were too coarse for clean per-agent attention.
+
+- feat(audit-stack): A1, A2, A3 now do parent-side parallel dispatch directly. Validator and findings-analyst at 3 articles per agent (was 15); synthesizer at 10 per shard (was 30) with parent-driven merge pass; A3 merge replaced with deterministic awk in the parent (terminal-wins by id, no agent judgment). `validator-orchestrator`, `synthesizer-orchestrator`, `findings-analyst-orchestrator` marked deprecated for audit-stack.
+- feat(catalog-sources): W1, W1b, W2 refactored to parent-side dispatch. W1 at 1 source per concept-identifier agent (was 1-or-10 batch math). W1b runs deterministic Python merge in the parent (slug-keyed `source_paths[]` union with first-seen-order preservation, per-slug awk split, `extraction_hash` via existing script). W2 keeps 1 slug per article-synthesizer with `W2_WAVE_CAP=25` per dispatch wave; parent owns gating and hash injection. `concept-identifier-orchestrator` marked deprecated.
+- fix(audit-stack): A4 empty-pass check now keys solely on `generative_open == 0`. Previously required `open_count == 0 AND generative_open == 0`, which contradicted the skill's own comment that fetch_source/research_question items "do not block convergence." Stacks with only out-of-scope open items (sysops at pass 2: 41 items, all fetch_source/research_question) now converge cleanly instead of running to budget cap.
+- docs(orchestrator agents): all four orchestrator agents carry deprecation notices in their frontmatter description pointing at the new parent-side patterns. Kept registered for any external caller still wired to them; not removed.
+
+### Architecture note
+
+The orchestrator pattern (parent skill → orchestrator subagent → fan-out worker subagents) is now considered an antipattern wherever the harness can drop Task on nested calls. Two-level fan-out should be designed as parent skill → worker subagents, with cross-cutting steps (dedup, merge, gate) as deterministic scripts in the parent process. Future pipelines should not introduce middle-tier orchestrator agents.
+
 ## 0.13.0 — 2026-04-19
 
 Audit follow-ups epic (#38). Closes sub-issues #32, #33, #34, #35, #36, #37. Ships the unified orchestrator summary-JSON contract (schema_version=1 envelope), two new orchestrator wrappers for A2 and A3 (unblocking mep-stack scale), per-batch source sharding for A1, per-slug progressive disclosure + wave cap for W2, and a findings rotation policy that keeps `findings.md` bounded across audit cycles.
