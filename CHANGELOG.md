@@ -1,3 +1,10 @@
+## 0.15.0 — 2026-04-30
+
+Two fixes surfaced during the first end-to-end audit on 0.14.1 (library-stack S12, pca-stack: 20 articles, 2 passes, converged with 90 fetch_source items).
+
+- fix(audit-stack agents): `validator`, `synthesizer`, and `findings-analyst` agent frontmatter now declares `Bash` in the tools list. Their SKILL prompts and agent contracts ask each of them to run `scripts/assert-written.sh` after writing their outputs (the per-agent gate the parent then re-checks), and `findings-analyst` is also expected to compute `sha256` for item ids. Without `Bash` they could do neither — every audit run on 0.14.1 surfaced agents reasoning "I cannot execute bash" and either skipping the gate or emitting pseudo-ids that the parent had to recompute. Adding `Bash` lets each agent honor its contract; the parent gates and parent-side `python3` recompute become belt-and-suspenders rather than the only enforcement.
+- feat(audit-stack): A4 convergence now short-circuits when `pass_counter == 1` AND the pass is empty. The "2 consecutive empty passes" rule exists to confirm that a prior pass's `resynthesize` actions actually closed open items; on a first pass with zero `audit-stack`-resolvable items, there were never any such actions to verify, so pass 2 would be a deterministic no-op. Stacks whose articles have only `fetch_source` work (most fresh catalog runs) now converge in one pass instead of two. Existing "2 consecutive empty" rule still applies for any subsequent-pass empty case.
+
 ## 0.14.1 — 2026-04-29
 
 Two regressions in the 0.14.0 audit-stack refactor surfaced on first execution against pca-stack (library-stack S11). Both were lost behavior the deprecated orchestrator agents had handled.

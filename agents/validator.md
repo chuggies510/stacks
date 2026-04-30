@@ -1,6 +1,6 @@
 ---
 name: validator
-tools: Glob, Grep, Read, Edit
+tools: Glob, Grep, Read, Edit, Bash
 model: sonnet
 description: Verifies article claims against source files. Reads articles and sources, strips prior-cycle marks, adds inline VERIFIED/DRIFT/UNSOURCED/STALE marks, and sets last_verified frontmatter.
 ---

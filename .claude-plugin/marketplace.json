@@ -11,7 +11,7 @@
     {
       "name": "stacks",
       "description": "Karpathy-inspired knowledge base system: build, refine, and query persistent knowledge stacks",
-      "version": "0.14.1",
+      "version": "0.15.0",
       "author": {
         "name": "chris"
       },

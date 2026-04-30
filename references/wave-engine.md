@@ -96,9 +96,12 @@ The script reads glossary bold terms and rewrites the first occurrence of each t
 
 A4 runs a bash convergence check after each audit-stack pass.
 
-An audit pass is empty when: zero items with `status: open` AND zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (`fetch_source`) or `resolvable_by: external` (`research_question`) are reported but do not block convergence — they queue for the next catalog cycle or external action.
+An audit pass is empty when: zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (`fetch_source`) or `resolvable_by: external` (`research_question`) are reported but do not block convergence — they queue for the next catalog cycle or external action.
 
-Convergence is reached when: 2 consecutive empty passes OR `MAX_AUDIT_PASSES` from STACK.md (default 3), whichever comes first.
+Convergence is reached when ANY of:
+- The current pass is empty AND it is `pass_counter == 1` (first-pass-empty short-circuit: no prior resynthesize actions exist to verify, so the "2 consecutive empty" confirmation is trivially satisfied).
+- 2 consecutive empty passes (validator changes from a prior resynthesize action did not surface new generative work).
+- `MAX_AUDIT_PASSES` from STACK.md reached (default 3).
 
 ---
 
@@ -294,7 +297,8 @@ A3 execution follows A2b (see [A3 — Findings (orchestrator-wrapped)](#a3--find
 
 Bash reads `dev/audit/findings.md`. Checks empty-pass condition: zero `status: open` items AND zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (fetch_source) or `resolvable_by: external` (research_question) are out of audit-stack's domain and do not block convergence.
 
-If empty pass and this is the 2nd consecutive empty pass: convergence. Proceed to A4.5.
+If empty pass and `pass_counter == 1`: convergence (first-pass-empty short-circuit). Proceed to A4.5.
+If empty pass and prior pass was also empty: convergence (2 consecutive). Proceed to A4.5.
 If `MAX_AUDIT_PASSES` reached: convergence regardless of open count. Proceed to A4.5.
 Otherwise: report pass count and open item count to user. Pipeline complete for this pass; next pass begins at A1.
 

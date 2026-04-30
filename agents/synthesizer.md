@@ -1,6 +1,6 @@
 ---
 name: synthesizer
-tools: Glob, Grep, Read, Write
+tools: Glob, Grep, Read, Write, Bash
 model: sonnet
 description: Synthesizes cross-cutting artifacts from articles. Produces glossary.md, invariants.md, and contradictions.md at the stack root.
 ---

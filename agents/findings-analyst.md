@@ -1,6 +1,6 @@
 ---
 name: findings-analyst
-tools: Glob, Grep, Read, Write
+tools: Glob, Grep, Read, Write, Bash
 model: sonnet
 description: Analyzes inline marks from the validator pass, surfaces cross-article research questions, and produces dev/audit/findings.md with structured action items, carry-forward from prior pass, and convergence accounting.
 ---

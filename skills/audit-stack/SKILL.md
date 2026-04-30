@@ -421,8 +421,18 @@ Apply convergence logic:
 
 ```bash
 if [[ "$empty_pass" -eq 1 ]]; then
-  if [[ "$prev_empty" -eq 1 ]]; then
-    # 2 consecutive empty passes: convergence
+  if [[ "$pass_counter" -eq 1 ]]; then
+    # First pass empty: there were never any audit-stack-resolvable items,
+    # so there is nothing prior-pass resynthesize actions could have changed
+    # for a second pass to verify. Short-circuit. The "2 consecutive empty"
+    # rule below exists to confirm the prior pass's resynthesize actions
+    # actually closed open items; with zero such actions, that confirmation
+    # is trivially satisfied.
+    echo "Pass 1 complete: empty pass on first execution (open=$open_count, generative_open=$generative_open). No audit-stack-resolvable work; converging immediately."
+    converged=1
+  elif [[ "$prev_empty" -eq 1 ]]; then
+    # 2 consecutive empty passes: convergence (validator changes from prior
+    # resynthesize actions did not surface new generative work).
     converged=1
   else
     prev_empty=1
