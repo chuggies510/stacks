@@ -309,47 +309,90 @@ done
 
 **Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
 
+The merge runs as inline python rather than awk: the prior awk used gawk's 3-arg `match($i, /pat/, m)` form which silently fails on mawk (Debian/Ubuntu/Mint default), producing zero-merged findings while the gate still passes (mtime advanced even though content is empty). Python is portable and the section-grouping logic is clearer in code than in nested awk.
+
 ```bash
 PRIOR_FINDINGS="$STACK/dev/audit/findings.md"
 PRIOR_PASS_COUNTER=$(grep -oP '(?<=pass_counter:\s)\d+' "$PRIOR_FINDINGS" 2>/dev/null || echo 0)
 NEW_PASS_COUNTER=$((PRIOR_PASS_COUNTER + 1))
 STACK_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 AUDIT_DATE=$(date +%Y-%m-%d)
-TMP_MERGED=$(mktemp)
-{
-  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 4\n---\n\n' \
-    "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
-  cat "$STACK"/dev/audit/_a3-partial-*.md
-} > "$TMP_MERGED"
 
-# Awk merge: keep last occurrence of each id, with terminal precedence enforced.
-# Reads block-by-block where a block starts at `- id:` and ends at the next blank line.
-awk '
-  BEGIN { RS=""; FS="\n" }
-  /^- id:/ {
-    id=""; status="open"
-    for (i=1; i<=NF; i++) {
-      if (match($i, /^[[:space:]]*id:[[:space:]]*(.*)/, m1)) id=m1[1]
-      if (match($i, /^[[:space:]]*status:[[:space:]]*(.*)/, m2)) status=m2[1]
-    }
-    if (id == "") next
-    is_terminal = (status ~ /^(applied|closed|deferred|stale|failed)$/)
-    if (!(id in seen) || (is_terminal && !seen_terminal[id])) {
-      block[id] = $0
-      seen[id] = 1
-      if (is_terminal) seen_terminal[id] = 1
-    }
-  }
-  END { for (id in block) print block[id]; print "" }
-' "$TMP_MERGED" > "$PRIOR_FINDINGS.merged"
+# Inline python merge: read all partials, dedup by id with terminal precedence,
+# group by action into the 4 canonical sections, write findings.md.
+STACK="$STACK" AUDIT_DATE="$AUDIT_DATE" STACK_HEAD="$STACK_HEAD" \
+  NEW_PASS_COUNTER="$NEW_PASS_COUNTER" python3 - <<'PY'
+import os, re, glob
 
-# Prepend frontmatter
-{
-  printf -- '---\naudit_date: %s\nstack_head: %s\npass_counter: %d\nschema_version: 4\n---\n\n' \
-    "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
-  cat "$PRIOR_FINDINGS.merged"
-} > "$PRIOR_FINDINGS"
-rm -f "$PRIOR_FINDINGS.merged" "$TMP_MERGED"
+stack = os.environ["STACK"]
+audit_date = os.environ["AUDIT_DATE"]
+stack_head = os.environ["STACK_HEAD"]
+new_pass = int(os.environ["NEW_PASS_COUNTER"])
+findings_path = f"{stack}/dev/audit/findings.md"
+
+partials = sorted(glob.glob(f"{stack}/dev/audit/_a3-partial-*.md"))
+items = []
+for p in partials:
+    content = open(p).read()
+    # Split at each "- id:" block boundary
+    for blk in re.split(r'\n(?=- id:)', content):
+        blk = blk.strip()
+        if not blk.startswith("- id:"):
+            continue
+        item = {"raw": blk}
+        for line in blk.splitlines():
+            m = re.match(r'^\s*-?\s*(\w+):\s*(.*)$', line)
+            if m:
+                k, v = m.group(1), m.group(2).strip()
+                item[k] = v
+        if "id" in item:
+            items.append(item)
+
+TERMINAL = {"applied", "closed", "deferred", "stale", "failed"}
+by_id = {}
+for it in items:
+    iid = it["id"]
+    cur = by_id.get(iid)
+    is_term = it.get("status", "open") in TERMINAL
+    if cur is None:
+        by_id[iid] = it
+    else:
+        cur_term = cur.get("status", "open") in TERMINAL
+        if is_term and not cur_term:
+            by_id[iid] = it
+        elif is_term == cur_term:
+            by_id[iid] = it  # latest wins on tie
+
+groups = {"fetch_source": [], "resynthesize": [], "research_question": [], "noop": []}
+for it in by_id.values():
+    a = it.get("action", "")
+    if a in groups:
+        groups[a].append(it)
+
+lines = ["---",
+         f"audit_date: {audit_date}",
+         f"stack_head: {stack_head}",
+         f"pass_counter: {new_pass}",
+         "schema_version: 4",
+         "---",
+         ""]
+for section, key in [("New Acquisitions", "fetch_source"),
+                     ("Articles to Re-Synthesize", "resynthesize"),
+                     ("Research Questions", "research_question"),
+                     ("Deferred", "noop")]:
+    lines.append(f"## {section}")
+    lines.append("")
+    for it in groups[key]:
+        # Deferred section only takes status:deferred items from noop bucket
+        if key == "noop" and it.get("status") != "deferred":
+            continue
+        lines.append(it["raw"])
+        lines.append("")
+
+open(findings_path, "w").write("\n".join(lines))
+print(f"merged: total_items={len(by_id)} fetch_source={len(groups['fetch_source'])} "
+      f"resynthesize={len(groups['resynthesize'])} research_question={len(groups['research_question'])}")
+PY
 
 # Gate and counts
 "$SCRIPTS_DIR/assert-written.sh" "$PRIOR_FINDINGS" "$DISPATCH_EPOCH" "findings-merge" || { echo "AGENT_WRITE_FAILURE: merged findings ungated"; exit 1; }

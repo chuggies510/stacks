@@ -1,3 +1,9 @@
+## 0.15.1 — 2026-04-30
+
+One fix surfaced during the first end-to-end audit on 0.15.0 (library-stack S13, svelte: 79 articles, 2 passes, converged via operator-applied resynthesis on a single DRIFT). Closes #43.
+
+- fix(audit-stack): A3 deterministic merge in `skills/audit-stack/SKILL.md` Step 7 now runs as inline python rather than awk. The prior awk used gawk's 3-arg `match($i, /pat/, m)` form which silently fails on mawk (the default `awk` on Debian/Ubuntu/Mint), producing zero-merged findings while `assert-written.sh` still passes the gate (mtime advanced even though the file is empty). Detection was indirect: `pass_counter` set, frontmatter present, but item count == 0. The S13 svelte audit hit this and worked around it with parent-side python; that workaround is now the SKILL contract. Parent script no longer requires gawk; mawk-only systems are first-class. Section grouping (`## New Acquisitions` / `## Articles to Re-Synthesize` / `## Research Questions` / `## Deferred`) is also clearer in code than in nested awk, so the merge now produces the canonical 4-section structure directly instead of dumping all blocks under no header.
+
 ## 0.15.0 — 2026-04-30
 
 Two fixes surfaced during the first end-to-end audit on 0.14.1 (library-stack S12, pca-stack: 20 articles, 2 passes, converged with 90 fetch_source items).
