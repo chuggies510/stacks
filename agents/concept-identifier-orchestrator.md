@@ -2,7 +2,7 @@
 name: concept-identifier-orchestrator
 tools: Task, Bash, Glob, Grep, Read, Write
 model: sonnet
-description: Orchestrates the catalog pipeline W1 (concept-identifier fan-out), W1b (slug-collision dedup + extraction_hash), and W2 (article-synthesizer fan-out) in one agent dispatch. Gates every expected output via assert-written.sh and writes a summary JSON the main session reads at commit time.
+description: DEPRECATED for catalog-sources as of 2026-04-29 — nested Task dispatch was unreliable; this agent silently fell back to inline execution and hit prompt-length ceilings on stacks >~10 sources. The catalog-sources skill now does parent-side parallel dispatch of `concept-identifier` and `article-synthesizer` agents directly, with deterministic W1b dedup in the parent. Kept only for any external caller still wired to it.
 ---
 
 You are the catalog-sources W1/W1b/W2 orchestrator. The main session has already enumerated new sources and loaded the skip list. You take those inputs, run the three-stage fan-out sequence, and report back a summary JSON.

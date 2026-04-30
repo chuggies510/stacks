@@ -211,41 +211,292 @@ fi
 
 Missing `findings.md` is a no-op; skip list is empty on the first run.
 
-## Step 6: W1 + W1b + W2 — Orchestrator dispatch
+## Step 6: W1 — Parent-side parallel concept-identifier dispatch
 
-Dispatch a single `concept-identifier-orchestrator` agent via the Task tool. The orchestrator owns the W1 concept-identifier fan-out (using the #26 batch math), the W1b dedup awk + `compute-extraction-hash.sh` loop, and the W2 article-synthesizer fan-out. It gates every expected output via `assert-written.sh` and writes a summary JSON the main session reads at Step 10.
+The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill** — same root cause as the audit-stack orchestrators: nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
 
-Pass the orchestrator as task content:
-- `$STACK`: stack root path.
-- `$SCRIPTS_DIR`: for `assert-written.sh` and `compute-extraction-hash.sh`.
-- `$NEW_SOURCES`: newline-separated source paths (from Step 4).
-- `$SKIP_HASHES`: the W0b skip list (may be empty).
-
-The orchestrator writes `$STACK/dev/extractions/_w1-w2-summary.json` with the schema-versioned envelope (see its contract) and returns the receipt line `ORCHESTRATOR_OK: wave=w1-w2` on stdout.
-
-The main session's gate matches the receipt line AND confirms the summary file exists AND type-checks the required nested fields. Any of the three signals missing = catalog-run failure. On failure the orchestrator emits an `ORCHESTRATOR_FAILED: wave=w1-w2 reason={W1|W2}` marker on stdout and reports failed batch ids / slugs on stderr.
+**Batch size: 1 source per concept-identifier agent.** Per-source isolation matters more than minimizing dispatch count. Each agent reads one source plus the existing `articles/` listing (for slug-immutability checks) and writes one `dev/extractions/batch-{NN}-concepts.md` file. Bundling multiple sources into one agent invites concept-bleed across sources — claims from source A get attributed to a concept first identified in source B.
 
 ```bash
-# After orchestrator returns, confirm the receipt line is present AND the
-# summary file exists AND the required fields are present with correct types.
-# Type-checks (not truthiness) because zero counts are valid on incremental
-# runs where every source is already in the skip list.
-SUMMARY_PATH="$STACK/dev/extractions/_w1-w2-summary.json"
-if ! printf '%s\n' "$ORCH_RESPONSE" | grep -q '^ORCHESTRATOR_OK: wave=w1-w2'; then
-  echo "AGENT_WRITE_FAILURE: concept-identifier-orchestrator receipt line missing" >&2
-  exit 1
+NEW_SOURCES_ARR=()
+while IFS= read -r src; do
+  [[ -z "$src" ]] && continue
+  NEW_SOURCES_ARR+=("$src")
+done <<< "$NEW_SOURCES"
+N_SOURCES=${#NEW_SOURCES_ARR[@]}
+if (( N_SOURCES == 0 )); then
+  echo "W1: no new sources; skipping to summary write."
+  # Jump to summary write at end of Step 6.75 with zero counts.
 fi
-if [[ ! -s "$SUMMARY_PATH" ]]; then
-  echo "AGENT_WRITE_FAILURE: _w1-w2-summary.json missing" >&2
-  exit 1
-fi
-if ! jq -e '(.schema_version == 1) and (.status == "ok") and (.counts.n_articles_new | type) == "number" and (.counts.n_articles_updated | type) == "number" and (.counts.n_sources | type) == "number"' "$SUMMARY_PATH" >/dev/null 2>&1; then
-  echo "AGENT_WRITE_FAILURE: _w1-w2-summary.json missing or wrong-typed required fields" >&2
+N_BATCHES_W1=$N_SOURCES
+mkdir -p "$STACK/dev/extractions"
+DISPATCH_EPOCH_W1=$(date +%s)
+```
+
+**Dispatch:** in a single message, emit one `Agent` tool call per source (subagent_type `stacks:concept-identifier`). Each prompt names: the assigned `batch_id` (`batch-1`, `batch-2`, …), the absolute source path, the path to `$STACK/STACK.md`, the existing `$STACK/articles/` listing, and the `$SKIP_HASHES` list. Tell each agent to write its output to `dev/extractions/{batch_id}-concepts.md`. Parallel dispatch is mandatory.
+
+**Gate W1:**
+
+```bash
+W1_FAILED=()
+for ((i=1; i<=N_BATCHES_W1; i++)); do
+  PARTIAL="$STACK/dev/extractions/batch-${i}-concepts.md"
+  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH_W1" "concept-identifier" 2>/dev/null; then
+    W1_FAILED+=("batch-${i}")
+  fi
+done
+if (( ${#W1_FAILED[@]} > 0 )); then
+  printf 'AGENT_WRITE_FAILURE: W1 batches ungated:\n'
+  printf '  %s\n' "${W1_FAILED[@]}"
   exit 1
 fi
 ```
 
-Downstream steps (W2b wikilink, W2b-post tag drift, W3 source filing, W4 MoC update) remain in this skill after the orchestrator returns successfully.
+## Step 6.5: W1b — Deterministic dedup in the parent
+
+Group concept blocks across all W1 outputs by slug. For any slug appearing in multiple batches, merge `source_paths[]` into a single unified block. Compute `extraction_hash` per unique slug. Classify each unique slug as `new` (no `target_article` in any contributing block) or `updated`. All deterministic; no agent needed.
+
+A concept block in `batch-{N}-concepts.md` looks like:
+
+```
+## Concept: {title}
+
+slug: {kebab-case-slug}
+title: {human title}
+source_paths:
+  - {path}
+target_article: {existing-slug | ""}
+tier: {1|2|3|4}
+
+### Claims
+- ...
+```
+
+Block boundaries: a block starts at `## Concept:` and ends at the next `## Concept:` or end-of-file. Within a block, `source_paths:` is a YAML list (lines starting with `  - `).
+
+```bash
+DEDUP="$STACK/dev/extractions/_dedup.md"
+: > "$DEDUP"
+
+# Pass 1: aggregate every concept block from every batch into a flat working
+# stream, keyed by slug. For each unique slug, merge source_paths (union,
+# preserving first-seen order across all contributing blocks) and remember
+# whether any contributing block had a non-empty target_article.
+python3 - <<'PYEOF' "$STACK/dev/extractions" "$DEDUP"
+import os, re, sys, glob
+
+extr_dir, dedup_path = sys.argv[1], sys.argv[2]
+batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
+
+slug_block_template = {}   # slug -> the first block seen (for non-merged fields)
+slug_sources = {}          # slug -> list of source paths in first-seen order
+slug_seen_sources = {}     # slug -> set
+slug_target_article = {}   # slug -> existing target slug ("" if none)
+slug_title = {}            # slug -> human title
+slug_tier = {}             # slug -> tier
+slug_claims = {}           # slug -> list of claim lines (concatenated across batches)
+slug_input_count = {}      # slug -> number of contributing blocks
+input_blocks_total = 0
+
+block_re = re.compile(r"^## Concept: ", re.MULTILINE)
+
+def parse_block(block_text):
+    lines = block_text.splitlines()
+    fields = {"slug": "", "title": "", "target_article": "",
+              "tier": "", "source_paths": [], "claims_lines": []}
+    in_sources = False
+    in_claims = False
+    for line in lines:
+        if line.startswith("### Claims"):
+            in_claims = True; in_sources = False; continue
+        if in_claims:
+            fields["claims_lines"].append(line); continue
+        if line.startswith("source_paths:"):
+            in_sources = True; continue
+        if in_sources:
+            m = re.match(r"^\s+-\s+(.+)$", line)
+            if m: fields["source_paths"].append(m.group(1).strip()); continue
+            in_sources = False
+        m = re.match(r"^(slug|title|target_article|tier):\s*(.*)$", line)
+        if m:
+            v = m.group(2).strip().strip('"')
+            fields[m.group(1)] = v
+    return fields
+
+for bf in batch_files:
+    with open(bf) as f: text = f.read()
+    parts = block_re.split(text)
+    # parts[0] is anything before the first "## Concept: ", discard
+    for body in parts[1:]:
+        block = "## Concept: " + body
+        fields = parse_block(block)
+        slug = fields["slug"]
+        if not slug: continue
+        input_blocks_total += 1
+        if slug not in slug_block_template:
+            slug_block_template[slug] = block
+            slug_sources[slug] = []
+            slug_seen_sources[slug] = set()
+            slug_target_article[slug] = fields["target_article"]
+            slug_title[slug] = fields["title"]
+            slug_tier[slug] = fields["tier"]
+            slug_claims[slug] = []
+            slug_input_count[slug] = 0
+        for sp in fields["source_paths"]:
+            if sp not in slug_seen_sources[slug]:
+                slug_sources[slug].append(sp)
+                slug_seen_sources[slug].add(sp)
+        if fields["target_article"] and not slug_target_article[slug]:
+            slug_target_article[slug] = fields["target_article"]
+        slug_claims[slug].extend(fields["claims_lines"])
+        slug_input_count[slug] += 1
+
+# Write merged _dedup.md (one block per unique slug, source_paths merged).
+with open(dedup_path, "w") as f:
+    for slug in sorted(slug_block_template):
+        f.write(f"## Concept: {slug_title[slug]}\n\n")
+        f.write(f"slug: {slug}\n")
+        f.write(f"title: {slug_title[slug]}\n")
+        f.write("source_paths:\n")
+        for sp in slug_sources[slug]:
+            f.write(f"  - {sp}\n")
+        f.write(f'target_article: {slug_target_article[slug] or ""}\n')
+        f.write(f"tier: {slug_tier[slug]}\n\n")
+        f.write("### Claims\n")
+        for cl in slug_claims[slug]:
+            f.write(cl + "\n")
+        f.write("\n")
+
+# Emit slug list, new/updated classification, and counts to stdout for caller.
+new_slugs = [s for s in slug_block_template if not slug_target_article[s]]
+updated_slugs = [s for s in slug_block_template if slug_target_article[s]]
+with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
+    f.write(f"INPUT_BLOCKS={input_blocks_total}\n")
+    f.write(f"N_UNIQUE_CONCEPTS={len(slug_block_template)}\n")
+    f.write(f"N_NEW={len(new_slugs)}\n")
+    f.write(f"N_UPDATED={len(updated_slugs)}\n")
+    f.write("ALL_SLUGS=" + " ".join(sorted(slug_block_template)) + "\n")
+    f.write("NEW_SLUGS=" + " ".join(sorted(new_slugs)) + "\n")
+    f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
+PYEOF
+
+# Load the meta into shell vars.
+source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')
+CONCEPT_SLUGS=($ALL_SLUGS)
+
+# Per-slug split: for each unique slug, write dev/extractions/_dedup-{slug}.md
+# containing only that slug's merged block. The aggregated _dedup.md is the
+# audit trail; the per-slug files are what W2 article-synthesizer agents read.
+for slug in "${CONCEPT_SLUGS[@]}"; do
+  per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
+  awk -v want="$slug" '
+    /^## Concept: / {
+      if (in_block && block) { print block }
+      block = $0 "\n"
+      next
+    }
+    /^slug:[[:space:]]/ {
+      cur=$2
+      in_block=(cur==want)
+      block = block $0 "\n"
+      next
+    }
+    in_block { block = block $0 "\n" }
+  ' "$DEDUP" > "$per_slug_path"
+done
+
+# Compute extraction_hash per unique slug. Required byte format (stable across
+# stacks; do not change without invalidating every skip list):
+#   {path1}|{path2}|...|{pathN}|{slug}
+# paths sorted ascending, joined by `|`, no trailing newline.
+declare -A SLUG_HASH
+for slug in "${CONCEPT_SLUGS[@]}"; do
+  per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
+  paths=$(awk '/^source_paths:/{p=1;next} p && /^  - /{sub(/^  - /,""); print} p && !/^  -/{exit}' "$per_slug_path" | sort)
+  hash=$("$SCRIPTS_DIR/compute-extraction-hash.sh" "$slug" $paths)
+  SLUG_HASH[$slug]=$hash
+done
+```
+
+The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus per-slug files. The awk per-slug split mirrors the orchestrator's previous behavior. The `compute-extraction-hash.sh` invocation matches the byte format documented in `agents/article-synthesizer.md`.
+
+## Step 6.75: W2 — Parent-side parallel article-synthesizer dispatch
+
+Article-synthesizer is naturally 1-per-slug — each agent reads one `_dedup-{slug}.md` and writes one `articles/{slug}.md`. No batching needed.
+
+**Wave cap: 25 agents per dispatch wave.** This matches the prior orchestrator's `W2_WAVE_CAP` to avoid overwhelming the harness on stacks with hundreds of new concepts. Each wave runs in parallel; waves run sequentially. Each wave captures its own dispatch epoch so the gate compares each wave's articles against the epoch immediately preceding their dispatch.
+
+```bash
+W2_WAVE_CAP=25
+n_w2_waves=0
+DISPATCH_EPOCH_W2_FIRST=""
+W2_FAILED=()
+n=${#CONCEPT_SLUGS[@]}
+i=0
+while (( i < n )); do
+  WAVE_SLICE=("${CONCEPT_SLUGS[@]:i:W2_WAVE_CAP}")
+  DISPATCH_EPOCH_W2_WAVE=$(date +%s)
+  [[ -z "$DISPATCH_EPOCH_W2_FIRST" ]] && DISPATCH_EPOCH_W2_FIRST="$DISPATCH_EPOCH_W2_WAVE"
+  # In a single message, dispatch one stacks:article-synthesizer agent per slug
+  # in WAVE_SLICE. Each prompt names:
+  #   - $STACK/dev/extractions/_dedup-${slug}.md (concept block, self-contained)
+  #   - $STACK/articles/${slug}.md if slug is in UPDATED_SLUGS (else absent)
+  #   - $STACK/STACK.md (for source hierarchy + allowed_tags)
+  # Tell each agent to copy extraction_hash verbatim from the concept block
+  # frontmatter (W1b populated it; agents don't recompute).
+  # ----- DISPATCH MARKER (parent does this) -----
+
+  # After fan-in, gate each article in this wave against this wave's epoch.
+  for slug in "${WAVE_SLICE[@]}"; do
+    if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/articles/${slug}.md" "$DISPATCH_EPOCH_W2_WAVE" "article-synthesizer" 2>/dev/null; then
+      W2_FAILED+=("$slug")
+    fi
+  done
+  ((i += W2_WAVE_CAP))
+  ((n_w2_waves++))
+done
+if (( ${#W2_FAILED[@]} > 0 )); then
+  printf 'AGENT_WRITE_FAILURE: W2 slugs ungated:\n'
+  printf '  %s\n' "${W2_FAILED[@]}"
+  exit 1
+fi
+```
+
+Before each wave's dispatch, the parent must populate the `extraction_hash` field in each `_dedup-${slug}.md` per-slug file using `${SLUG_HASH[$slug]}` from Step 6.5. The article-synthesizer copies that field verbatim into the article frontmatter:
+
+```bash
+for slug in "${WAVE_SLICE[@]}"; do
+  per_slug="$STACK/dev/extractions/_dedup-${slug}.md"
+  if ! grep -q "^extraction_hash:" "$per_slug"; then
+    sed -i "/^slug: ${slug}/a extraction_hash: ${SLUG_HASH[$slug]}" "$per_slug"
+  fi
+done
+```
+
+**Summary write (parent):**
+
+```bash
+jq -n \
+  --argjson n_sources "$N_SOURCES" \
+  --argjson n_batches_w1 "$N_BATCHES_W1" \
+  --argjson n_concepts_input "$INPUT_BLOCKS" \
+  --argjson n_unique_concepts "$N_UNIQUE_CONCEPTS" \
+  --argjson n_articles_new "$N_NEW" \
+  --argjson n_articles_updated "$N_UPDATED" \
+  --argjson n_w2_waves "$n_w2_waves" \
+  --arg dispatch_epoch_w1 "$DISPATCH_EPOCH_W1" \
+  --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2_FIRST" \
+  '{schema_version:1, wave:"w1-w2", status:"ok",
+    counts:{n_sources:$n_sources, n_batches_w1:$n_batches_w1,
+            n_concepts_input:$n_concepts_input, n_unique_concepts:$n_unique_concepts,
+            n_articles_new:$n_articles_new, n_articles_updated:$n_articles_updated,
+            n_w2_waves:$n_w2_waves},
+    epochs:{dispatch_epoch_w1:$dispatch_epoch_w1, dispatch_epoch_w2:$dispatch_epoch_w2}}' \
+  > "$STACK/dev/extractions/_w1-w2-summary.json"
+rm -f "$STACK/dev/extractions/_dedup-meta.txt"
+```
+
+Downstream steps (W2b wikilink, W2b-post tag drift, W3 source filing, W4 MoC update) remain in this skill after Step 6.75 succeeds.
 
 ## Step 7: W2b — Wikilink pass
 

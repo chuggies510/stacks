@@ -366,8 +366,12 @@ generative_open=$(awk '
   }
 ' "$FINDINGS" 2>/dev/null || echo "0")
 
-# Determine empty-pass: both counters must be zero
-if [[ "$open_count" -eq 0 && "$generative_open" -eq 0 ]]; then
+# Determine empty-pass: only items audit-stack can act on count.
+# fetch_source items resolve via catalog-sources; research_question items
+# resolve externally. Neither blocks convergence — looping A1/A2/A3 cannot
+# change them, so requiring open_count==0 makes the loop run to budget cap
+# on any stack with unresolved out-of-scope items.
+if [[ "$generative_open" -eq 0 ]]; then
   empty_pass=1
 else
   empty_pass=0
