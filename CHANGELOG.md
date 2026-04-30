@@ -1,3 +1,14 @@
+## 0.15.4 — 2026-04-30
+
+Readability refactor: inline code extracted to scripts/, deprecated orchestrators stubbed.
+
+### Refactors
+
+- refactor(catalog-sources): W1b Python dedup block (~97 lines) extracted to `scripts/dedup-extractions.py`. Skill step replaced with `python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"`. Side-output contract (_dedup-meta.txt sourced by caller) unchanged.
+- refactor(catalog-sources): W4 MoC generator bash block (~43 lines) extracted to `scripts/regenerate-moc.sh`. Skill step replaced with `"$SCRIPTS_DIR/regenerate-moc.sh" "$STACK"`.
+- refactor(audit-stack): A3 Python merge block (~76 lines) extracted to `scripts/merge-findings.py`. Skill step replaced with `python3 "$SCRIPTS_DIR/merge-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"`. Interface adapted from env-var reads to sys.argv; logic verbatim.
+- refactor(agents): concept-identifier-orchestrator, findings-analyst-orchestrator, synthesizer-orchestrator, validator-orchestrator reduced from ~856 total lines to 6-line stubs each. Description frontmatter preserved (deprecation date, root cause, replacement skill). Body: ORCHESTRATOR_DEPRECATED redirect for any external caller.
+
 ## 0.15.3 — 2026-04-30
 
 Full-plugin parallel-reviewer audit (library-stack S15). 6 findings: 1 high, 2 medium, 3 low. All applied.
