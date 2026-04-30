@@ -29,7 +29,7 @@ for term in "${terms[@]}"; do
       continue
     fi
 
-    if grep -qi "\[\[$term\]\]" "$article"; then
+    if grep -qiF "[[$term]]" "$article"; then
       continue
     fi
 

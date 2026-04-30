@@ -148,6 +148,11 @@ awk -v closed_dates_file="$CLOSED_DATES_FILE" \
     next
   }
 
+  in_item && /^## / {
+    printf "%s\n", $0 >> tmp_findings
+    next
+  }
+
   {
     if (in_item) {
       item_buf = item_buf "\n" $0

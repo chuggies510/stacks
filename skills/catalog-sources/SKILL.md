@@ -412,7 +412,7 @@ declare -A SLUG_HASH
 for slug in "${CONCEPT_SLUGS[@]}"; do
   per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
   paths=$(awk '/^source_paths:/{p=1;next} p && /^  - /{sub(/^  - /,""); print} p && !/^  -/{exit}' "$per_slug_path" | sort)
-  hash=$("$SCRIPTS_DIR/compute-extraction-hash.sh" "$slug" $paths)
+  hash=$(printf '%s' "$(echo "$paths" | tr '\n' '|')${slug}" | "$SCRIPTS_DIR/compute-extraction-hash.sh")
   SLUG_HASH[$slug]=$hash
 done
 ```

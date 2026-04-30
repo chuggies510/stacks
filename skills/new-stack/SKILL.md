@@ -13,12 +13,10 @@ Create a new empty knowledge stack in this library.
 ## Step 0: Telemetry
 
 ```bash
-TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
-fi
-SKILL_NAME="stacks:new-stack" bash "$TELEMETRY_SH" 2>/dev/null || true
+LOCATE=$(find ~/.claude/plugins/cache -name locate-plugin-root.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
+[[ -z "$LOCATE" ]] && LOCATE="$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)/scripts/locate-plugin-root.sh"
+STACKS_ROOT=$(bash "$LOCATE" 2>/dev/null)
+SKILL_NAME="stacks:new-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -54,14 +52,8 @@ fi
 Find the stack template in the stacks plugin directory:
 
 ```bash
-# Try plugin cache first
-TEMPLATE_DIR=$(find ~/.claude/plugins/cache -type d -name "stack" -path "*/stacks/*/templates/stack" 2>/dev/null | sort -V | tail -1)
-# Fallback: local install path from settings
-if [[ -z "$TEMPLATE_DIR" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  [[ -n "$STACKS_ROOT" && -d "$STACKS_ROOT/templates/stack" ]] && TEMPLATE_DIR="$STACKS_ROOT/templates/stack"
-fi
-if [[ -z "$TEMPLATE_DIR" ]]; then
+TEMPLATE_DIR="$STACKS_ROOT/templates/stack"
+if [[ -z "$TEMPLATE_DIR" || ! -d "$TEMPLATE_DIR" ]]; then
   echo "ERROR: Stack template not found. Is the stacks plugin installed?"
   exit 1
 fi

@@ -13,12 +13,10 @@ Create a new knowledge library.
 ## Step 0: Telemetry
 
 ```bash
-TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
-fi
-SKILL_NAME="stacks:init-library" bash "$TELEMETRY_SH" 2>/dev/null || true
+LOCATE=$(find ~/.claude/plugins/cache -name locate-plugin-root.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
+[[ -z "$LOCATE" ]] && LOCATE="$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)/scripts/locate-plugin-root.sh"
+STACKS_ROOT=$(bash "$LOCATE" 2>/dev/null)
+SKILL_NAME="stacks:init-library" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Parse arguments
@@ -55,11 +53,7 @@ If any check fails, stop and tell the user how to fix it.
 ## Step 3: Find and run init.sh
 
 ```bash
-INIT_SH=$(find ~/.claude/plugins/cache -name init.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-if [[ -z "$INIT_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  INIT_SH="$STACKS_ROOT/scripts/init.sh"
-fi
+INIT_SH="$STACKS_ROOT/scripts/init.sh"
 if [[ ! -f "$INIT_SH" ]]; then
   echo "ERROR: init.sh not found. Is the stacks plugin installed?"
   exit 1

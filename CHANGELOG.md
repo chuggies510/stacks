@@ -1,3 +1,22 @@
+## 0.15.3 — 2026-04-30
+
+Full-plugin parallel-reviewer audit (library-stack S15). 6 findings: 1 high, 2 medium, 3 low. All applied.
+
+### Fixes
+
+- fix(catalog-sources): W1b extraction hash now piped to `compute-extraction-hash.sh` via stdin instead of positional args. The prior invocation (`compute-extraction-hash.sh "$slug" $paths`) passed args the script ignores — it reads only stdin. Every slug was hashed as empty input, producing the constant SHA256 digest `e3b0c44...` for all articles. The W0b skip list then matched every slug on subsequent runs, silently blocking all re-processing. Correct format: `printf '%s' "$(echo "$paths" | tr '\n' '|')${slug}" | compute-extraction-hash.sh` (paths sorted, pipe-joined, slug appended, no trailing newline). HIGH.
+- fix(rotate-findings): section headers (`## New Acquisitions`, `## Articles to Re-Synthesize`, etc.) inside findings.md were absorbed into the preceding item buffer when `in_item=1`. If the first item of a section was rotated out, its buffer — including the section header — went to `findings-archive.md`, leaving the surviving items in that section without a header in the rewritten `findings.md`. Fix: added awk rule `in_item && /^## / { printf "%s\n", $0 >> tmp_findings; next }` immediately before the catch-all to route section headers directly to the output file. MEDIUM.
+- fix(wikilink-pass): skip-check now uses `grep -qiF "[[$term]]"` (fixed-string) instead of `grep -qi "\[\[$term\]\]"` (regex). Glossary terms containing regex metacharacters (`.`, `*`, `+`) were interpreted as patterns; `.` in `C.O.P` would match `[[CCOP]]`, producing false-positive skips where the wikilink was never written. The perl replacement on the following line already used `\Q$t\E` (quotemeta) — the grep check now matches. LOW.
+
+### Refactors
+
+- refactor(skills): all 6 skills now use `locate-plugin-root.sh` in Step 0 telemetry. The prior ask, process-inbox, new-stack, and init-library skills used a direct cache-first telemetry find (inverted preference order vs. `locate-plugin-root.sh`, which prefers installLocation). On directory-source dev installs the 4 old-pattern skills loaded telemetry from a cached older version. The 4-line block was also copy-pasted verbatim 4 times. MEDIUM.
+- refactor(new-stack, init-library): Steps 3 now use `$STACKS_ROOT` set in Step 0 (via locate-plugin-root.sh) to derive template dir and init.sh path, replacing their own inline cache-first finds. LOW.
+
+### Docs
+
+- docs(findings-analyst-orchestrator): DEPRECATED description updated from "awk merge" to "Python merge" — the A3 merge was converted to Python in 0.15.1, but the orchestrator's stale description still said awk. LOW.
+
 ## 0.15.2 — 2026-04-30
 
 Batch of 14 findings surfaced by parallel-reviewer audit of the 0.13.0 → 0.15.1 release window (library-stack S14). Six high-severity issues were latent or silent (none would have raised an obvious error, but several would have produced subtly wrong output on the next user-driven run). Seven medium-severity issues are doc/contract drift and edge-case gaps.
