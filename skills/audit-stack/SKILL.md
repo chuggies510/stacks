@@ -16,12 +16,10 @@ Validate articles against sources, synthesize cross-cutting artifacts, produce s
 ## Step 0: Telemetry
 
 ```bash
-TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
-fi
-SKILL_NAME="stacks:audit-stack" bash "$TELEMETRY_SH" 2>/dev/null || true
+LOCATE=$(find ~/.claude/plugins/cache -name locate-plugin-root.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
+[[ -z "$LOCATE" ]] && LOCATE="$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)/scripts/locate-plugin-root.sh"
+STACKS_ROOT=$(bash "$LOCATE" 2>/dev/null)
+SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -49,20 +47,10 @@ fi
 
 ## Step 2: Read STACK.md
 
-Locate plugin helpers. Anchor the lookup on the `scripts/` subdirectory (path-guarded so a similarly-named dir from another plugin cannot collide), then derive every other plugin path from the shared root:
+Locate plugin helpers via the shared root resolver. `STACKS_ROOT` was set in Step 0; derive sibling paths from it:
 
 ```bash
-# Prefer installLocation from known_marketplaces.json — authoritative for
-# directory-source installs. Fall back to a cache scan only when that field
-# is not set (registry-style installs).
-STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-if [[ -z "$STACKS_ROOT" ]]; then
-  SCRIPTS_DIR=$(find ~/.claude/plugins/cache -type d -name "scripts" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
-  STACKS_ROOT="${SCRIPTS_DIR%/scripts}"
-else
-  SCRIPTS_DIR="$STACKS_ROOT/scripts"
-fi
-
+SCRIPTS_DIR="$STACKS_ROOT/scripts"
 WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
 AGENTS_DIR="$STACKS_ROOT/agents"
 ```
@@ -102,7 +90,7 @@ The pass loop continues through Steps 4-8 below. At A4 (Step 8), the loop either
 
 ## Step 4: A1 — Parent-side parallel validator dispatch
 
-The parent skill (this session) shards articles directly and dispatches `validator` agents in parallel. The `validator-orchestrator` agent is **deprecated for this skill** — nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent do the deterministic merge.
+The parent skill (this session) shards articles directly and dispatches `validator` agents in parallel. The `validator-orchestrator` agent is **deprecated for this skill**: nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent do the deterministic merge.
 
 **Batch size: ≤3 articles per validator agent.** Per-agent isolation matters more than minimizing dispatch count. Each validator reads its 1-3 articles plus the full `$STACK/sources/` tree and writes inline VERIFIED/DRIFT/UNSOURCED/STALE marks. Bundling many unrelated articles into one agent invites cross-article confusion and source misattribution. The previous 15-per-shard cap was a workaround for a problem this design doesn't have.
 
@@ -141,8 +129,10 @@ for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
   while IFS= read -r article; do
     [[ -z "$article" ]] && continue
     # Slugs from frontmatter `sources:` (basename of each path entry, minus .md).
-    awk '/^sources:/{flag=1;next} /^[A-Za-z]/{flag=0} flag && /^- /{print}' "$article" \
-      | sed -E 's|^- *||; s|^.*/||; s|\.md$||'
+    # Match list entries at any leading-whitespace indent because article frontmatter
+    # uses two-space-indented `  - path/to/source.md`.
+    awk '/^sources:/{flag=1;next} /^[A-Za-z]/{flag=0} flag && /^[[:space:]]*-[[:space:]]/{print}' "$article" \
+      | sed -E 's|^[[:space:]]*-[[:space:]]*||; s|^.*/||; s|\.md$||'
     # Slugs from inline [slug] refs in the body.
     grep -oE '\[[a-z0-9][a-z0-9-]*\]' "$article" | tr -d '[]'
   done < "$batch" | sort -u | while read -r slug; do
@@ -198,7 +188,7 @@ Cleanup batch and per-batch sources files (`rm "$STACK"/dev/audit/_a1-batch-*.tx
 
 ## Step 5: A2 — Parent-side parallel synthesizer dispatch + merge
 
-Synthesizer needs cross-article view to dedup glossary terms, find independent-corroboration invariants, and surface contradictions. So A2 keeps the shard-then-merge pattern, but driven from the parent (not via `synthesizer-orchestrator`, which is **deprecated for this skill**).
+Synthesizer needs cross-article view to dedup glossary terms, find independent-corroboration invariants, and surface contradictions. So A2 keeps the shard-then-merge pattern, but driven from the parent (not via `synthesizer-orchestrator`, which is **deprecated for this skill**: same root cause as A1).
 
 **Batch size: ≤10 articles per synthesizer shard.** Smaller than the prior 30-cap because per-agent attention to each article matters: a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only (no sources tree), so per-agent context stays small.
 
@@ -268,7 +258,7 @@ This is the same shared helper used by catalog-sources at W2b. It reads glossary
 
 ## Step 7: A3 — Parent-side parallel findings-analyst dispatch + deterministic merge
 
-The `findings-analyst-orchestrator` agent is **deprecated for this skill** — same root cause as A1 and A2. Parent shards directly, dispatches in parallel, and merges with awk in the parent process (the merge is deterministic terminal-wins-by-id; no agent needed).
+The `findings-analyst-orchestrator` agent is **deprecated for this skill**: same root cause as A1 and A2. Parent shards directly, dispatches in parallel, and merges with awk in the parent process (the merge is deterministic terminal-wins-by-id; no agent needed).
 
 **Batch size: ≤3 articles per findings-analyst agent**, matching A1. Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, the prior `dev/audit/findings.md` (for carry-forward of terminal-status items by id), and writes a partial findings file covering only the items it identifies.
 
@@ -363,8 +353,15 @@ for it in items:
         elif is_term == cur_term:
             by_id[iid] = it  # latest wins on tie
 
-groups = {"fetch_source": [], "resynthesize": [], "research_question": [], "noop": []}
+# Status-first bucketing: status:deferred items route to Deferred regardless
+# of action. Everything else routes by action. This matches the findings-analyst
+# schema, where "Deferred" means "operator moved to status: deferred", not
+# "action == noop".
+groups = {"fetch_source": [], "resynthesize": [], "research_question": [], "deferred": []}
 for it in by_id.values():
+    if it.get("status") == "deferred":
+        groups["deferred"].append(it)
+        continue
     a = it.get("action", "")
     if a in groups:
         groups[a].append(it)
@@ -379,13 +376,10 @@ lines = ["---",
 for section, key in [("New Acquisitions", "fetch_source"),
                      ("Articles to Re-Synthesize", "resynthesize"),
                      ("Research Questions", "research_question"),
-                     ("Deferred", "noop")]:
+                     ("Deferred", "deferred")]:
     lines.append(f"## {section}")
     lines.append("")
     for it in groups[key]:
-        # Deferred section only takes status:deferred items from noop bucket
-        if key == "noop" and it.get("status") != "deferred":
-            continue
         lines.append(it["raw"])
         lines.append("")
 
@@ -397,19 +391,15 @@ PY
 # Gate and counts
 "$SCRIPTS_DIR/assert-written.sh" "$PRIOR_FINDINGS" "$DISPATCH_EPOCH" "findings-merge" || { echo "AGENT_WRITE_FAILURE: merged findings ungated"; exit 1; }
 NEW_ITEMS=$(grep -c '^- id:' "$PRIOR_FINDINGS")
-CARRIED=0  # operator-readable diff against prior file is out of scope here
-ROTATED=0
 
 jq -n \
   --argjson n_articles "$N_ARTICLES" \
   --argjson n_batches "$N_BATCHES_A3" \
   --argjson new_items "$NEW_ITEMS" \
-  --argjson carried "$CARRIED" \
-  --argjson rotated "$ROTATED" \
   --argjson epoch "$DISPATCH_EPOCH" \
   '{schema_version:1, wave:"a3", status:"ok",
     counts:{n_articles:$n_articles, n_batches:$n_batches,
-            new_items:$new_items, carried_items:$carried, rotated_items:$rotated},
+            new_items:$new_items},
     epochs:{dispatch_epoch:$epoch}}' \
   > "$STACK/dev/audit/_a3-summary.json"
 rm "$STACK"/dev/audit/_a3-batch-*.txt "$STACK"/dev/audit/_a3-partial-*.md
@@ -506,7 +496,11 @@ audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/
 if [[ -z "$audit_date" ]]; then
   audit_date=$(date +%Y-%m-%d)
 fi
-DISPATCH_EPOCH=$(date +%s)
+# Capture epoch BEFORE the rotate script writes. assert-written.sh requires
+# strictly mtime > epoch, so passing DISPATCH_EPOCH would trip on same-second
+# writes (rotate-findings.sh is synchronous and finishes well within a clock
+# second on SSDs). Subtract 1 to widen the window without weakening the gate.
+DISPATCH_EPOCH=$(($(date +%s) - 1))
 ROTATION_OUTPUT=$(bash "$SCRIPTS_DIR/rotate-findings.sh" "$STACK" "$audit_date")
 echo "$ROTATION_OUTPUT"
 rotated_count=$(echo "$ROTATION_OUTPUT" | grep -oP '(?<=rotated_items=)\d+' || echo "0")

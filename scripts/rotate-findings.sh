@@ -33,10 +33,19 @@ if [[ -z "$ROTATION_CYCLES" ]] || ! [[ "$ROTATION_CYCLES" =~ ^[0-9]+$ ]]; then
   ROTATION_CYCLES=3
 fi
 
+# Initialize all temp-file vars BEFORE the trap. set -u + an early failure
+# between trap registration and the mktemp calls would otherwise abort inside
+# the trap on unbound variables, hiding the real error.
+CLOSED_DATES_FILE=""
+TMP_FINDINGS=""
+KEEP_FILE=""
+ROTATE_FILE=""
+COUNT_FILE=""
+trap 'rm -f "$CLOSED_DATES_FILE" "$KEEP_FILE" "$ROTATE_FILE" "$TMP_FINDINGS" "$COUNT_FILE" 2>/dev/null || true' EXIT
+
 # Build the list of archived audit_dates from dev/audit/closed/ filenames.
 # Filename form: YYYY-MM-DD-findings.md
 CLOSED_DATES_FILE=$(mktemp)
-trap 'rm -f "$CLOSED_DATES_FILE" "$KEEP_FILE" "$ROTATE_FILE" "$TMP_FINDINGS" "$COUNT_FILE" 2>/dev/null || true' EXIT
 
 if [[ -d "$CLOSED_DIR" ]]; then
   # Extract leading date from each closed-findings filename

@@ -18,12 +18,10 @@ Process new sources into article-per-concept wiki entries for a knowledge stack.
 ## Step 0: Telemetry
 
 ```bash
-TELEMETRY_SH=$(find ~/.claude/plugins/cache -name telemetry.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-if [[ -z "$TELEMETRY_SH" ]]; then
-  STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-  TELEMETRY_SH="$STACKS_ROOT/scripts/telemetry.sh"
-fi
-SKILL_NAME="stacks:catalog-sources" bash "$TELEMETRY_SH" 2>/dev/null || true
+LOCATE=$(find ~/.claude/plugins/cache -name locate-plugin-root.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
+[[ -z "$LOCATE" ]] && LOCATE="$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)/scripts/locate-plugin-root.sh"
+STACKS_ROOT=$(bash "$LOCATE" 2>/dev/null)
+SKILL_NAME="stacks:catalog-sources" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Gate check
@@ -140,20 +138,10 @@ Read `$STACK/STACK.md` and extract:
 
 ## Step 3: Locate plugin scripts and agents
 
-Anchor on the `scripts/` subdirectory under the plugin cache (path-guarded so a similarly-named dir from another plugin cannot collide), then derive every other plugin path from the shared root:
+Derive sibling paths from `STACKS_ROOT` (set in Step 0 via the shared resolver):
 
 ```bash
-# Prefer installLocation from known_marketplaces.json — authoritative for
-# directory-source installs. Fall back to a cache scan only when that field
-# is not set (registry-style installs).
-STACKS_ROOT=$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)
-if [[ -z "$STACKS_ROOT" ]]; then
-  SCRIPTS_DIR=$(find ~/.claude/plugins/cache -type d -name "scripts" -path "*/stacks/*" 2>/dev/null | sort -V | tail -1)
-  STACKS_ROOT="${SCRIPTS_DIR%/scripts}"
-else
-  SCRIPTS_DIR="$STACKS_ROOT/scripts"
-fi
-
+SCRIPTS_DIR="$STACKS_ROOT/scripts"
 AGENTS_DIR="$STACKS_ROOT/agents"
 WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
 ```
@@ -193,14 +181,17 @@ FINDINGS="$STACK/dev/audit/findings.md"
 if [[ -f "$FINDINGS" ]]; then
   # Extract extraction_hash values from terminal-status items
   # Items have YAML-style fields; terminal statuses: applied, closed
+  # Item boundary is `- id:`, not blank line. Blank-line-as-terminator misses
+  # items abutting without separator and bleeds prior status into the next.
   SKIP_HASHES=$(awk '
-    /^- id:/ { in_item=1; hash=""; status="" }
-    in_item && /extraction_hash:/ { hash=$2 }
-    in_item && /status:/ { status=$2 }
-    in_item && /^$/ {
-      if (status=="applied" || status=="closed") print hash
-      in_item=0
+    function flush() {
+      if (have && (status=="applied" || status=="closed") && hash != "") print hash
+      have=0; hash=""; status=""
     }
+    /^- id:/ { flush(); have=1; next }
+    have && /extraction_hash:/ { hash=$2 }
+    have && /status:/ { status=$2 }
+    END { flush() }
   ' "$FINDINGS")
   SKIP_COUNT=$(echo "$SKIP_HASHES" | grep -c . || echo 0)
   echo "W0b: loaded $SKIP_COUNT extraction_hash values to skip (terminal-status findings)"
@@ -213,7 +204,7 @@ Missing `findings.md` is a no-op; skip list is empty on the first run.
 
 ## Step 6: W1 — Parent-side parallel concept-identifier dispatch
 
-The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill** — same root cause as the audit-stack orchestrators: nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
+The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
 
 **Batch size: 1 source per concept-identifier agent.** Per-source isolation matters more than minimizing dispatch count. Each agent reads one source plus the existing `articles/` listing (for slug-immutability checks) and writes one `dev/extractions/batch-{NN}-concepts.md` file. Bundling multiple sources into one agent invites concept-bleed across sources — claims from source A get attributed to a concept first identified in source B.
 
@@ -225,8 +216,15 @@ while IFS= read -r src; do
 done <<< "$NEW_SOURCES"
 N_SOURCES=${#NEW_SOURCES_ARR[@]}
 if (( N_SOURCES == 0 )); then
-  echo "W1: no new sources; skipping to summary write."
-  # Jump to summary write at end of Step 6.75 with zero counts.
+  echo "W1: no new sources. Writing zero-count summary and exiting."
+  mkdir -p "$STACK/dev/extractions"
+  jq -n '{schema_version:1, wave:"w1-w2", status:"ok",
+          counts:{n_sources:0, n_batches_w1:0, n_concepts_input:0,
+                  n_unique_concepts:0, n_articles_new:0, n_articles_updated:0,
+                  n_w2_waves:0},
+          epochs:{}}' \
+    > "$STACK/dev/extractions/_w1-w2-summary.json"
+  return 0 2>/dev/null || exit 0
 fi
 N_BATCHES_W1=$N_SOURCES
 mkdir -p "$STACK/dev/extractions"
@@ -402,6 +400,7 @@ for slug in "${CONCEPT_SLUGS[@]}"; do
       next
     }
     in_block { block = block $0 "\n" }
+    END { if (in_block && block) print block }
   ' "$DEDUP" > "$per_slug_path"
 done
 
@@ -426,6 +425,8 @@ Article-synthesizer is naturally 1-per-slug — each agent reads one `_dedup-{sl
 
 **Wave cap: 25 agents per dispatch wave.** This matches the prior orchestrator's `W2_WAVE_CAP` to avoid overwhelming the harness on stacks with hundreds of new concepts. Each wave runs in parallel; waves run sequentially. Each wave captures its own dispatch epoch so the gate compares each wave's articles against the epoch immediately preceding their dispatch.
 
+Each wave does, in order: (1) populate `extraction_hash` in each slug's per-slug dedup file from `${SLUG_HASH[$slug]}` so article-synthesizer can copy it verbatim into article frontmatter; (2) dispatch one `stacks:article-synthesizer` per slug in a single message; (3) gate every expected article against that wave's epoch. The hash injection MUST happen before dispatch — agents read the per-slug file at dispatch time, so a missing hash field at dispatch produces an article with empty `extraction_hash` frontmatter, breaking the W0b skip-list flywheel for the next catalog run.
+
 ```bash
 W2_WAVE_CAP=25
 n_w2_waves=0
@@ -435,18 +436,29 @@ n=${#CONCEPT_SLUGS[@]}
 i=0
 while (( i < n )); do
   WAVE_SLICE=("${CONCEPT_SLUGS[@]:i:W2_WAVE_CAP}")
+
+  # 1. Inject extraction_hash into each per-slug dedup file BEFORE dispatch.
+  for slug in "${WAVE_SLICE[@]}"; do
+    per_slug="$STACK/dev/extractions/_dedup-${slug}.md"
+    if ! grep -q "^extraction_hash:" "$per_slug"; then
+      sed -i "/^slug: ${slug}/a extraction_hash: ${SLUG_HASH[$slug]}" "$per_slug"
+    fi
+  done
+
+  # 2. Capture epoch, then dispatch.
   DISPATCH_EPOCH_W2_WAVE=$(date +%s)
   [[ -z "$DISPATCH_EPOCH_W2_FIRST" ]] && DISPATCH_EPOCH_W2_FIRST="$DISPATCH_EPOCH_W2_WAVE"
   # In a single message, dispatch one stacks:article-synthesizer agent per slug
   # in WAVE_SLICE. Each prompt names:
-  #   - $STACK/dev/extractions/_dedup-${slug}.md (concept block, self-contained)
+  #   - $STACK/dev/extractions/_dedup-${slug}.md (concept block, self-contained,
+  #     extraction_hash now populated)
   #   - $STACK/articles/${slug}.md if slug is in UPDATED_SLUGS (else absent)
   #   - $STACK/STACK.md (for source hierarchy + allowed_tags)
   # Tell each agent to copy extraction_hash verbatim from the concept block
   # frontmatter (W1b populated it; agents don't recompute).
   # ----- DISPATCH MARKER (parent does this) -----
 
-  # After fan-in, gate each article in this wave against this wave's epoch.
+  # 3. After fan-in, gate each article in this wave against this wave's epoch.
   for slug in "${WAVE_SLICE[@]}"; do
     if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/articles/${slug}.md" "$DISPATCH_EPOCH_W2_WAVE" "article-synthesizer" 2>/dev/null; then
       W2_FAILED+=("$slug")
@@ -460,17 +472,6 @@ if (( ${#W2_FAILED[@]} > 0 )); then
   printf '  %s\n' "${W2_FAILED[@]}"
   exit 1
 fi
-```
-
-Before each wave's dispatch, the parent must populate the `extraction_hash` field in each `_dedup-${slug}.md` per-slug file using `${SLUG_HASH[$slug]}` from Step 6.5. The article-synthesizer copies that field verbatim into the article frontmatter:
-
-```bash
-for slug in "${WAVE_SLICE[@]}"; do
-  per_slug="$STACK/dev/extractions/_dedup-${slug}.md"
-  if ! grep -q "^extraction_hash:" "$per_slug"; then
-    sed -i "/^slug: ${slug}/a extraction_hash: ${SLUG_HASH[$slug]}" "$per_slug"
-  fi
-done
 ```
 
 **Summary write (parent):**

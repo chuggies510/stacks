@@ -1,3 +1,31 @@
+## 0.15.2 — 2026-04-30
+
+Batch of 14 findings surfaced by parallel-reviewer audit of the 0.13.0 → 0.15.1 release window (library-stack S14). Six high-severity issues were latent or silent (none would have raised an obvious error, but several would have produced subtly wrong output on the next user-driven run). Seven medium-severity issues are doc/contract drift and edge-case gaps.
+
+Audit context: the 0.14.0 deprecation of the four orchestrator agents was correct architecturally (silent fallback to inline execution under nested Task is unrecoverable), but the docs and several call sites still described the deprecated pattern as live. This release closes that gap.
+
+### Fixes
+
+- fix(audit-stack): A1 per-batch citation graph now matches indented frontmatter `sources:` entries. The prior awk required column-0 `- ` dashes, but `article-synthesizer` writes the list with two-space indent (`  - path`). Every frontmatter source entry was silently skipped, falling through to inline-`[slug]` body grep + full-tree fallback for any article that lacked inline citations. The svelte audit converged via the fallback rather than the citation graph; this fix restores intended behavior.
+- fix(catalog-sources): W1b per-slug awk split now emits an `END` flush block. The prior implementation flushed `block` only on the next `## Concept:` header, so the alphabetically-last slug was buffered into memory and never written. Single-concept catalog runs produced an empty `_dedup-{slug}.md` and then a malformed article. Latent until a user catalogs a 1-concept source set on 0.14.0+.
+- fix(catalog-sources): W2 wave loop now injects `extraction_hash` into each per-slug dedup file BEFORE dispatching `article-synthesizer` for that wave. The prior layout placed the injection block after the wave loop closed, where `WAVE_SLICE` was out of scope. Article-synthesizer agents read the per-slug file at dispatch time, so a missing hash field at dispatch yielded an article with empty `extraction_hash` frontmatter, breaking the W0b skip-list flywheel for the next catalog run. Latent because no fresh catalog had been run on 0.14.0+ before this release.
+- fix(audit-stack): rotate-findings.sh archive write now passes `$DISPATCH_EPOCH - 1` to `assert-written.sh`. The gate uses `mtime <= dispatch_epoch` (strict less-than-or-equal); the rotate script is synchronous and finishes within the same clock second on SSDs, tripping the gate as `AGENT_WRITE_FAILURE` even when the rotation was correct. Latent until a stack accumulates `ROTATION_CYCLES` worth of terminal items.
+- fix(catalog-sources): W0b skip-list awk now uses `^- id:` boundary triggers instead of blank-line termination. The prior implementation relied on a trailing blank line as the item delimiter; items that abut without a separator (or where the last item lacks a trailing blank) had `status` from one item bleed into the next, causing false-positive skip-list inclusion. Switched to a `flush()` function called at each new `- id:` and at `END`.
+- fix(rotate-findings.sh): trap-registered temp file vars (`KEEP_FILE`, `ROTATE_FILE`, `TMP_FINDINGS`, `COUNT_FILE`) are now initialized to empty string before the EXIT trap is registered. Previously, any failure between trap registration and the mktemp calls would have aborted inside the trap on `set -u` unbound-variable, masking the original error.
+- fix(audit-stack): A3 python merge now buckets by `status` first, then by `action`. Items with `status: deferred` route to the Deferred section regardless of action (matching the `findings-analyst` schema definition: "Deferred = operator moved to status: deferred"). Previously, a `fetch_source` item the operator marked `status: deferred` was rendered under "New Acquisitions"; data integrity was preserved (the `raw` block still carried `status: deferred`) but section placement was wrong.
+
+### Refactors
+
+- refactor(scripts): new `scripts/locate-plugin-root.sh` echoes `STACKS_ROOT` using the authoritative lookup order (`installLocation` first, cache scan fallback). Both SKILL Step-0 telemetry blocks and Step-2/3 plugin-root resolution now call it instead of duplicating the lookup logic in four places (with inverted preference order between Step 0 and Step 2/3 in the prior layout).
+- refactor(audit-stack): `_a3-summary.json` no longer emits hard-coded `carried_items: 0` and `rotated_items: 0`. The fields were never populated correctly; the comment in the code admitted "out of scope here." Removed from the schema. No external consumer reads these fields; the rotation count is already echoed by `rotate-findings.sh` to stdout for the operator.
+- refactor(catalog-sources): the empty-source short-circuit in W1 now writes a zero-count summary file and exits cleanly, instead of falling through vacuous loops with a misleading "Jump to summary write" comment that referenced behavior the code did not implement.
+
+### Docs
+
+- docs(references/wave-engine.md): rewritten to describe parent-side parallel sharding for A1, A2, A3, and W1+W1b+W2. The prior text named the four deprecated orchestrator agents as the canonical dispatch agents and described their internal logic as the live contract. Both SKILLs read this reference at startup; the drift would have produced incorrect dispatch on any agent that took the reference at face value. A4 description corrected to match SKILL implementation (gates on `generative_open == 0` only; `open_count` is for reporting). Summary-JSON contract section rewritten to describe parent-driven summary writes.
+- docs(agents/synthesizer.md): contract now documents the three dispatch modes (shard, merge, single) the audit-stack SKILL uses. The agent's `description:` field claimed stack-root-only output; in shard mode the agent writes `dev/audit/_a2-partial-NN.md` with no equivalent in the contract. Description updated; new `## Modes` section added.
+- docs(skills/{audit-stack,catalog-sources}/SKILL.md): em dashes in prose replaced with commas/colons per workspace style rule.
+
 ## 0.15.1 — 2026-04-30
 
 One fix surfaced during the first end-to-end audit on 0.15.0 (library-stack S13, svelte: 79 articles, 2 passes, converged via operator-applied resynthesis on a single DRIFT). Closes #43.

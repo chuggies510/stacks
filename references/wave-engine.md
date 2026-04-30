@@ -29,10 +29,10 @@ The loop closes because `audit-stack` produces `dev/audit/findings.md` and `cata
 
 | Wave | Agent / Module | Input | Output |
 |------|----------------|-------|--------|
-| A1 | `validator-orchestrator` wrapping N parallel `validator` shards | all articles + per-batch citation-graph source union | inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks on articles |
-| A2 | `synthesizer-orchestrator` wrapping N parallel `synthesizer` shards + merge pass | all articles | `{stack}/glossary.md`, `{stack}/invariants.md`, `{stack}/contradictions.md` |
+| A1 | parent-side parallel `validator` shards (≤3 articles per shard) + per-batch citation-graph source union | all articles + per-batch source paths | inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks on articles |
+| A2 | parent-side parallel `synthesizer` shards (≤10 articles per shard) + parent-driven `synthesizer` merge pass | all articles | `{stack}/glossary.md`, `{stack}/invariants.md`, `{stack}/contradictions.md` |
 | A2b | bash wikilink pass (shared helper) | articles + glossary | articles mutated in-place |
-| A3 | `findings-analyst-orchestrator` wrapping N parallel `findings-analyst` shards + bash merge | articles (inline marks are the data source), contradictions, prior `findings.md` | `dev/audit/findings.md` |
+| A3 | parent-side parallel `findings-analyst` shards (≤3 articles per shard) + parent-side deterministic python merge | articles (inline marks are the data source), contradictions, prior `findings.md` | `dev/audit/findings.md` |
 | A4 | bash convergence check | current + prior findings | empty-pass signal |
 | A4.5 | `scripts/rotate-findings.sh` | `findings.md` + `STACK.md` `ROTATION_CYCLES:` | items rotated to `dev/audit/findings-archive.md` |
 | A5 | bash archive | — | `dev/audit/closed/{audit_date}-findings.md` |
@@ -137,48 +137,29 @@ Read `dev/audit/findings.md` (if present). Extract `extraction_hash` values from
 
 Gate: no write-or-fail check (bash read-only pass). Missing `findings.md` is a no-op; skip list is empty.
 
-### W1 + W1b + W2 — Orchestrator dispatch
+### W1 + W1b + W2 — Parent-side parallel dispatch
 
-Main session dispatches ONE `concept-identifier-orchestrator` via the Task tool. The orchestrator owns all three waves: W1 concept-identifier fan-out (using the #26 batch math), W1b dedup awk + per-slug split + `scripts/compute-extraction-hash.sh` invocation, W2 article-synthesizer fan-out (wave-capped). It gates every expected output via `scripts/assert-written.sh` and writes `dev/extractions/_w1-w2-summary.json` under the unified schema_version=1 envelope (see [Summary-JSON contract](#summary-json-contract) below).
+The main session (`catalog-sources` SKILL) shards directly. The `concept-identifier-orchestrator` agent is **deprecated for this skill** because nested Task dispatch was unreliable: when the harness dropped Task on a nested call, the orchestrator silently fell back to inline execution and bundled every shard's work into one context, hitting "Prompt is too long" on stacks the sharding was meant to keep below the ceiling. Parent-side dispatch keeps Task usage shallow and lets the parent run all deterministic pieces (dedup, per-slug split, hash compute, wave gating) as code in the parent process. The orchestrator agent file is kept registered for any external caller still wired to it; do not introduce new callers.
 
-```bash
-# Main session dispatches ONE orchestrator. The orchestrator runs internally:
-#   - W1 dispatch: N_AGENTS concept-identifier agents in parallel
-#       (SOURCES_PER_AGENT=10 baseline; 1-per-agent when N_SOURCES < 10)
-#   - W1 gate:     assert-written.sh per batch-{id}-concepts.md file
-#   - W1b:         awk dedup groups blocks by slug, merges source_paths[];
-#                  compute-extraction-hash.sh computes the hash per unique slug
-#                  using stable byte format `{path1}|{path2}|...|{pathN}|{slug}`
-#                  (paths sorted ascending, `|`-joined, echo -n piped so no
-#                  trailing newline enters the digest);
-#                  then splits the aggregated `_dedup.md` into one
-#                  `_dedup-{slug}.md` file per unique slug (self-contained,
-#                  slug: line through next slug: boundary). The aggregated
-#                  `_dedup.md` is kept as the audit-trail artifact; the
-#                  per-slug files are what W2 agents read.
-#   - W2 dispatch: N_UNIQUE_CONCEPTS article-synthesizer agents, capped at
-#                  W2_WAVE_CAP=25 per wave with a loop. Each wave captures
-#                  its own DISPATCH_EPOCH_W2_WAVE and runs its per-article
-#                  gate against THAT wave's epoch. `n_w2_waves` records the
-#                  actual wave count.
-#   - W2 gate:     assert-written.sh per articles/{slug}.md, per wave.
-#
-# Orchestrator writes dev/extractions/_w1-w2-summary.json (schema_version=1
-# envelope) with nested counts {n_sources, n_batches_w1, n_concepts_input,
-# n_unique_concepts, n_articles_new, n_articles_updated, n_w2_waves} and
-# nested epochs {dispatch_epoch_w1, dispatch_epoch_w2}.
-#
-# Orchestrator returns on stdout the receipt line:
-#   ORCHESTRATOR_OK: wave=w1-w2
-# On failure emits `ORCHESTRATOR_FAILED: wave=w1-w2 reason={W1|W2}` marker
-# on stdout and failed batch-ids / slugs on stderr.
-```
+W1 (one `concept-identifier` per source):
 
-Each concept-identifier agent receives N sources (N≥1) and a `batch_id`, reads its assigned source files, `STACK.md`, and the skip list. Output: one merged `dev/extractions/{batch_id}-concepts.md` with concept blocks (`slug`, `title`, `source_paths`, `target_article`). `extraction_hash` is populated by W1b, not by the concept-identifier. When N>1 the agent dedups within-batch at the source level so a concept appearing in multiple assigned sources becomes one block with a multi-entry `source_paths:`.
+- Batch size: 1 source per agent. Per-source isolation matters more than minimizing dispatch count; bundling multiple sources in one agent invites concept-bleed across sources.
+- Dispatch: parent emits one Agent call per source in a single message. Each agent receives its assigned source path, `STACK.md`, the existing `articles/` listing (for slug-immutability checks), and the W0b skip list. Each writes one `dev/extractions/batch-{NN}-concepts.md` file with concept blocks (`slug`, `title`, `source_paths`, `target_article`, `tier`, `### Claims`).
+- Gate: parent runs `assert-written.sh` per expected batch file after fan-in.
 
-Each article-synthesizer agent receives one concept block, the existing article if `target_article` is set, and `STACK.md`. First-write frontmatter includes: `extraction_hash`, `last_verified=""`, `updated=today`, `sources[]`, `title`, `tags[]`. On re-synthesis, the agent strips prior-cycle inline marks (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) from the existing article body before writing the update.
+W1b (deterministic in parent, no agent):
 
-The orchestrator wrapper pattern exists for the same reason as `validator-orchestrator` (see #30): it moves bash-array state and gate loops out of the main-session skill and into a single dispatch boundary. The summary JSON is what makes accurate end-of-pipeline counts possible; the previous inline pattern never populated `NEW_ARTICLE_SLUGS` / `UPDATED_ARTICLE_SLUGS`.
+- An inline python pass aggregates every concept block from every batch, keyed by slug. For each unique slug it merges `source_paths[]` (set-of-seen with first-seen-order preservation), classifies as `new` or `updated` based on `target_article`, and writes a single canonical `dev/extractions/_dedup.md` plus per-slug `dev/extractions/_dedup-{slug}.md` files.
+- An awk pass splits `_dedup.md` into the per-slug files (one block per file, `## Concept:` through next-concept boundary, with `END` flush so the alphabetically-last slug isn't lost).
+- `scripts/compute-extraction-hash.sh` computes a stable hash per unique slug using the byte format `{path1}|{path2}|...|{pathN}|{slug}` (paths sorted ascending, `|`-joined, no trailing newline).
+
+W2 (one `article-synthesizer` per unique slug, wave-capped):
+
+- Cap: `W2_WAVE_CAP=25` agents per dispatch wave, sequential waves. Each wave captures its own `DISPATCH_EPOCH_W2_WAVE` so the per-article gate compares each article against the epoch immediately preceding its dispatch.
+- Each wave does, in order: (1) inject the wave's slugs' `extraction_hash` into the per-slug dedup files using `${SLUG_HASH[$slug]}` from W1b; (2) capture the wave epoch; (3) dispatch one `article-synthesizer` per slug in a single message; (4) gate every expected article. Hash injection MUST precede dispatch — agents read the per-slug file at dispatch time, so a missing hash field at dispatch yields an article with empty `extraction_hash` frontmatter, breaking the W0b skip-list flywheel for the next catalog run.
+- Each agent receives one per-slug dedup file (with hash now present), the existing article if `target_article` is set, and `STACK.md`. First-write frontmatter includes `extraction_hash`, `last_verified=""`, `updated=today`, `sources[]`, `title`, `tags[]`. On re-synthesis, the agent strips prior-cycle inline marks before writing.
+
+Summary write: parent emits `dev/extractions/_w1-w2-summary.json` directly with the schema_version=1 envelope. See [Summary-JSON contract](#summary-json-contract).
 
 ### W2b — Wikilink pass
 
@@ -213,54 +194,47 @@ Bash reads `tags[0]` from all `articles/*.md` frontmatter and regenerates `index
 
 ### A1 — Validation (inline marks)
 
-Dispatch one `validator-orchestrator` agent. The orchestrator owns dispatch math, the pre-dispatch citation graph, per-batch `validator` dispatches, and the per-article assert-written gate loop. The main session's A1 gate is a receipt-line + summary-file pair (see [Summary-JSON contract](#summary-json-contract) below).
+Parent shards articles into ≤3-article batches and dispatches `validator` agents in parallel (one Agent call per batch in a single parent message). The `validator-orchestrator` agent is **deprecated for this skill** for the same reason as the catalog-sources orchestrator: nested Task was unreliable and the silent fallback to inline execution defeated the sharding.
 
-```bash
-# Main session dispatches ONE orchestrator via the Task tool. The orchestrator
-# shards articles across N_BATCHES parallel `validator` agents (cap 15
-# articles per batch), captures its own DISPATCH_EPOCH, and runs
-# scripts/assert-written.sh per article before returning.
-#   - N <= 15   : 1 batch (ARTICLES_PER_AGENT = N)
-#   - N  > 15   : ARTICLES_PER_AGENT = min(ceil(N/5), 15)
-#
-# Before dispatch, the orchestrator builds a citation graph:
-#   - SOURCE_MAP: { source-slug -> sources/.../path.md } from sources/ frontmatter
-#   - ARTICLE_SOURCES: per article, union of frontmatter `sources:` +
-#     inline `[source-slug]` refs in the body.
-# Each per-batch validator receives the UNION of its articles' resolved
-# source paths (per-batch citation-graph union), not the full sources tree.
-# Full-tree fallback fires when a batch's articles have zero resolvable
-# citations (safety net: unresolved slugs still get marked [UNSOURCED] per
-# the validator contract but the validator retains a reference surface).
-#
-# Orchestrator writes dev/audit/_a1-summary.json (schema_version=1 envelope)
-# and returns the receipt line on stdout:
-#   ORCHESTRATOR_OK: wave=a1
-# A response missing the receipt line, or a missing/malformed summary file,
-# is treated as A1 failure. On failure the orchestrator also emits
-# `ORCHESTRATOR_FAILED: wave=a1 reason={short}` on stdout and reports all
-# failed paths on stderr.
-```
+Before dispatch the parent builds a citation graph:
 
-Per-batch validators read their assigned articles and their per-batch source union (or the full-tree fallback). Before marking, each strips any prior-cycle marks from its article bodies. Output: articles mutated in-place with inline `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` marks appended to claims. No separate validation scratch file. Findings-analyst reads these marks directly from articles at A3.
+- `SOURCE_MAP`: slug → path for every file under `sources/` excluding `incoming/` and `trash/` (slug = basename minus `.md`, indexed by basename so catalog-sources W3 file moves do not break audit-time lookup).
+- Per article, slug union = frontmatter `sources:` list (entries may be 2-space-indented under YAML convention) plus inline `[source-slug]` refs in the article body.
+- Per batch, the parent writes `dev/audit/_a1-sources-{NN}.txt` containing the resolved absolute paths for that batch's slug union. If a batch has zero resolvable citations the parent falls back to the full sources tree so the validator retains a reference surface.
 
-Sharding exists because the single-agent validator hit the "Prompt is too long" ceiling at ~75 articles (see #30). Per-batch source union (vs. full-tree) exists because validator prompts grow with article count AND source count; citation-graph sharding cuts the source surface each validator sees to the set its articles actually cite (see #34). The per-article gate (rather than a directory check) is required because editing files inside a directory does not advance the directory's mtime on Linux.
+Each validator receives only its batch's article paths and its per-batch source union, not the full tree. Validator strips prior-cycle marks before writing new ones, then writes inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks in place. Each validator runs `scripts/assert-written.sh` per article it edits. Parent re-runs the gate inline after fan-in and writes `dev/audit/_a1-summary.json` directly (schema_version=1).
 
-### A2 — Stack-root artifact synthesis (orchestrator-wrapped)
+Sharding exists because the single-agent validator hit the "Prompt is too long" ceiling at ~75 articles. Per-batch source union (rather than full-tree) exists because validator prompts grow with both article count and source count; citation-graph sharding cuts the source surface each validator sees to the set its articles actually cite. The per-article gate (rather than a directory check) is required because editing files inside a directory does not advance the directory's mtime on Linux.
 
-Dispatch one `synthesizer-orchestrator` agent. The orchestrator shards articles across parallel `synthesizer` agents (cap `ARTICLES_PER_AGENT=30`, higher than A1 because synthesizer reads article text only, no sources tree). When `N_BATCHES == 1` each `synthesizer` writes the three final stack-root files directly; when sharded, each shard writes `dev/audit/_a2-partial-{batch_id}.md` and a second `synthesizer` dispatch runs as a merge pass that resolves dedup, independent-corroboration, and tier-hierarchy rules across shards and emits the three final files. The orchestrator owns per-output `assert-written.sh` gating for both the shard partials and the three final stack-root files.
+### A2 — Stack-root artifact synthesis (parent-side shard + merge)
 
-Orchestrator writes `dev/audit/_a2-summary.json` (schema_version=1 envelope) and returns the receipt line `ORCHESTRATOR_OK: wave=a2` on stdout. On failure it emits `ORCHESTRATOR_FAILED: wave=a2 reason={single-shard-gate|shard-gate|merge-gate|dispatch}` on stdout and failed paths on stderr; no summary file is written on failure.
+Parent shards articles into ≤10-article batches. The `synthesizer-orchestrator` agent is **deprecated**; parent dispatches `synthesizer` agents in parallel directly.
 
-### A3 — Findings (orchestrator-wrapped)
+Phase A (shards): one `synthesizer` per batch writes `dev/audit/_a2-partial-{NN}.md` with three sections (`## Glossary`, `## Invariants`, `## Contradictions`) covering its batch only. Parent gates each partial.
 
-Dispatch one `findings-analyst-orchestrator` agent. The orchestrator shards articles across parallel `findings-analyst` agents (cap 15 articles per agent, matching A1). When `N_BATCHES == 1` the single shard writes `dev/audit/findings.md` directly; when sharded, each shard writes `dev/audit/_a3-partial-{batch_id}.md` and the orchestrator bash-merges partials into the single `findings.md` by item `id`, applying terminal-wins precedence so carried-forward terminal statuses never regress. Per-output `assert-written.sh` gates cover both the partials and the merged active findings file.
+Phase B (merge): parent dispatches one additional `synthesizer` in merge mode that reads all partials, applies cross-shard dedup, independent-corroboration verification, and tier-hierarchy resolution, then writes the three final stack-root files (`glossary.md`, `invariants.md`, `contradictions.md`). Parent gates each.
 
-Orchestrator writes `dev/audit/_a3-summary.json` (schema_version=1 envelope) and returns the receipt line `ORCHESTRATOR_OK: wave=a3` on stdout. On failure it emits `ORCHESTRATOR_FAILED: wave=a3 reason={single-shard-gate|shard-gate|merge-gate|dispatch}` on stdout and failed paths on stderr; no summary file is written on failure.
+If the batch count is 1, Phase B is skipped and the single Phase A agent writes the three final stack-root files directly (single mode). The synthesizer agent contract documents all three modes (shard, merge, single).
+
+Smaller per-shard batch (≤10) than the prior orchestrator's 30-cap because per-agent attention to each article matters: a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only; per-agent context stays small.
+
+Parent writes `dev/audit/_a2-summary.json` directly (schema_version=1).
+
+### A3 — Findings (parent-side shard + deterministic merge)
+
+Parent shards articles into ≤3-article batches and dispatches `findings-analyst` agents in parallel. The `findings-analyst-orchestrator` agent is **deprecated**.
+
+Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, and the prior `dev/audit/findings.md` (read-only, for carry-forward of terminal-status items by id). Each writes `dev/audit/_a3-partial-{NN}.md` and runs `assert-written.sh`. Parent re-gates each partial after fan-in.
+
+The merge runs as inline python in the parent (no agent): read all partials, split each on `- id:` boundaries, dedup by id with terminal-wins precedence (`applied`, `closed`, `deferred`, `stale`, `failed` overrides `open`; latest wins on ties), bucket by status-then-action (`status: deferred` items always route to the Deferred section regardless of action), emit the four canonical sections (`## New Acquisitions` / `## Articles to Re-Synthesize` / `## Research Questions` / `## Deferred`) with frontmatter (`audit_date`, `stack_head`, `pass_counter` incremented, `schema_version: 4`).
+
+Inline python (rather than awk) is mandatory because mawk (default `awk` on Debian/Ubuntu/Mint) silently fails on gawk's 3-arg `match($i, /pat/, m)` form, producing zero-merged findings while the gate still passes (mtime advanced even on empty content). Python avoids the gawk/mawk split entirely.
+
+Parent writes `dev/audit/_a3-summary.json` directly (schema_version=1).
 
 ### Summary-JSON contract
 
-All four orchestrators (`validator-orchestrator`, `concept-identifier-orchestrator`, `synthesizer-orchestrator`, `findings-analyst-orchestrator`) write a schema_version=1 envelope to a per-wave summary path:
+The four wave summary files are emitted directly by the parent skill (not by an orchestrator agent):
 
 - W1+W1b+W2 → `dev/extractions/_w1-w2-summary.json`
 - A1 → `dev/audit/_a1-summary.json`
@@ -279,9 +253,9 @@ Envelope shape:
 }
 ```
 
-Wave-specific keys live under `counts` (e.g. `glossary_terms` for a2, `new_items` / `carried_items` / `rotated_items` for a3, `n_articles_new` / `n_articles_updated` / `n_w2_waves` for w1-w2). `epochs` carries whatever dispatch epoch(s) the wave captures (w1-w2 carries both `dispatch_epoch_w1` and `dispatch_epoch_w2`).
+Wave-specific keys live under `counts`: `glossary_terms` / `invariants` / `contradictions` for a2, `new_items` for a3, `n_articles_new` / `n_articles_updated` / `n_w2_waves` for w1-w2. `epochs` carries whatever dispatch epoch(s) the wave captured (w1-w2 carries both `dispatch_epoch_w1` and `dispatch_epoch_w2`).
 
-The orchestrator-return signal is a receipt line of the form `ORCHESTRATOR_OK: wave={wave}` as the final content of its stdout response. The main session's gate is a three-part check: (1) receipt line present, (2) summary file exists and is non-empty, (3) `jq -e` type-check of the required nested fields. Any of the three signals missing is treated as wave failure. On failure the orchestrator emits `ORCHESTRATOR_FAILED: wave={wave} reason={short}` as the final stdout line and reports failed paths on stderr; no summary file is written on failure.
+The parent gate is two-part: (1) the per-shard `assert-written.sh` checks (the parent re-runs them after fan-in independently of any agent-side check), (2) the summary file exists and is non-empty. A failed gate halts the pipeline at that wave.
 
 ### A2b — Wikilink pass
 
@@ -295,7 +269,7 @@ A3 execution follows A2b (see [A3 — Findings (orchestrator-wrapped)](#a3--find
 
 ### A4 — Convergence check
 
-Bash reads `dev/audit/findings.md`. Checks empty-pass condition: zero `status: open` items AND zero items with `resolvable_by: audit-stack` in non-terminal status. Items with `resolvable_by: catalog-sources` (fetch_source) or `resolvable_by: external` (research_question) are out of audit-stack's domain and do not block convergence.
+Bash reads `dev/audit/findings.md`. Empty-pass condition: zero items with `resolvable_by: audit-stack` in non-terminal status (`generative_open == 0`). Items with `resolvable_by: catalog-sources` (`fetch_source`) or `resolvable_by: external` (`research_question`) are reported but do not block convergence; looping A1/A2/A3 cannot change them. The `open_count` of all open items is computed for reporting only.
 
 If empty pass and `pass_counter == 1`: convergence (first-pass-empty short-circuit). Proceed to A4.5.
 If empty pass and prior pass was also empty: convergence (2 consecutive). Proceed to A4.5.
