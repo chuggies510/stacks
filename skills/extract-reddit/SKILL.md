@@ -16,8 +16,6 @@ description: |
 
 Turn a Reddit thread URL into one inbox file the rest of the stacks pipeline can ingest.
 
-The signal in a Reddit thread is mostly in the long tail of high-scored comments where someone reports a real cost, names a model number, quotes a regulation, or describes a real install. The chaff is partisan venting, one-line snark, generic doom, and "vote X" cycles. This skill mechanizes the fetch and capping, then asks Claude to do the wheat-vs-chaff judgment that scripts can't.
-
 ## Step 0: Telemetry
 
 ```bash
@@ -80,15 +78,16 @@ Use the bundled script. It hits `reddit.com/comments/{id}/.json` with a browser 
 
 ```bash
 THREAD_JSON=$(mktemp -t reddit-thread-XXXXXX.json)
-python3 "$STACKS_ROOT/scripts/extract-reddit-thread.py" "$URL" --max-comments 100 --max-depth 6 > "$THREAD_JSON" || exit $?
+python3 "$STACKS_ROOT/scripts/extract-reddit-thread.py" "$URL" > "$THREAD_JSON" || exit $?
 ```
+
+The script caps at top 100 comments by score, depth ≤ 6, drops `[deleted]`/`[removed]`. Those limits are constants in the script — if you ever need to scale up for an unusually deep thread, edit the constants there rather than threading flags through the skill.
 
 If the script exits non-zero, surface its stderr verbatim — common cases are 403 (blocked from this IP, suggest PRAW upgrade), 429 (rate-limited, wait), or a non-Reddit URL (regex didn't match).
 
-Read the JSON. The fields you'll work from in the next steps are:
-- `title`, `permalink`, `selftext`, `linked_url`, `subreddit`, `created_utc`
-- `score`, `upvote_ratio`, `num_comments_total`, `stats.comments_kept`
-- `comments[]` — already sorted by score descending, each with `score`, `depth`, `author`, `body`
+Read the JSON. Fields used downstream:
+- post: `title`, `permalink`, `selftext`, `linked_url`, `subreddit`, `created_utc`, `score`, `upvote_ratio`, `num_comments_total`, `stats.comments_kept`
+- `comments[]`: sorted by score descending, each entry is `{score, depth, author, body}`
 
 ## Step 3: Fetch the linked article (best-effort)
 
@@ -209,6 +208,8 @@ tags:
 
 Render the template with the captured data. Keep the chaff ledger short — three to seven bullet patterns, not a comment-by-comment account. The point is auditability of the cut, not a transcript.
 
+When in doubt about a borderline comment, keep it — the next pipeline stage (catalog-sources) does another filter, and false positives are cheaper to drop later than false negatives are to recover. A high score doesn't make a comment signal (top-of-thread snark often sits at +200), and a low score doesn't make it chaff (a first-hand cost report two layers deep at +5 is gold). Read the bodies, not the scores.
+
 ## Step 6: Write the file
 
 Choose the destination based on whether `$STACK` was set:
@@ -255,18 +256,10 @@ If `$STACK` was set, the file is gitignored at the destination (per stack conven
 
 If `$STACK` was not set, the file is in `inbox/` (tracked by default). No special note needed.
 
-## Notes on the filter
-
-The wheat-vs-chaff cut is the part that no script can do. The categories above are the ones that recur in technical-discussion threads on Reddit; they are not exhaustive. Use them as a starting frame, then trust your judgment on the specific thread. When in doubt about a borderline comment, keep it — the next pipeline stage (catalog-sources) does another filter, and false positives are cheaper to drop later than false negatives are to recover.
-
-The score threshold is implicit, not explicit. A high-scored comment can still be chaff (top-of-thread snark often sits at +200), and a low-scored comment can be signal (a first-hand cost report two layers deep at +5 is gold). Read the bodies, not the scores.
-
 ## Notes on tier assignment
 
 When the linked article is from a known trade press or news outlet, tier the source as **3 (Practitioner / trade press)**. The Reddit discussion itself is **Tier 4 (general / forum)**. The composite source file gets the higher of the two tiers in its frontmatter, with the discussion explicitly noted as filtered Tier 4 input. If there's no linked article (Reddit self-post), the file is Tier 4 alone.
 
-## When this skill is the wrong tool
+## Failure mode worth surfacing
 
-- The user wants to extract structured data from a non-Reddit forum (Hacker News, Discourse, Stack Exchange) — this skill only handles Reddit. A future `extract-discussion` or domain-specific skill would cover those.
-- The user wants every comment, not a filtered slice — this skill is built around the wheat-vs-chaff cut. For a full archive, fetch the JSON directly with the bundled script and skip the synthesis step.
-- The thread is in a private/quarantined subreddit — Reddit's `.json` endpoint serves a "you need to be logged in" stub for those. PRAW with API creds is the only path; suggest that and stop.
+If the script exits with `unexpected response shape (private/quarantined subreddit?)`, Reddit's public `.json` endpoint is serving a logged-in-only stub. Stop and tell the user the thread requires authenticated access — PRAW with Reddit API creds is the upgrade path, not in scope for this skill.

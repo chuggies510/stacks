@@ -1,3 +1,14 @@
+## 0.16.1 — 2026-05-08
+
+Three-round-review tightening of the new extract-reddit skill.
+
+### Refactors
+
+- refactor(extract-reddit-thread.py): drop `--max-comments` and `--max-depth` flags. The only call site passed both at their defaults. Constants live in the script (`MAX_COMMENTS = 100`, `MAX_DEPTH = 6`); edit there if you ever need to scale up.
+- refactor(extract-reddit-thread.py): strip `id`, `parent`, `created_utc` from per-comment records and drop `indent=2` from the JSON output. Comment records are now `{author, score, depth, body}`. Output dropped from ~78KB to ~28KB on a 100-comment thread (~64% smaller context payload for the filter pass).
+- refactor(extract-reddit-thread.py): drop `stats.dropped_deleted_or_removed` — the field name implied a deletion count but the math (`num_comments - len(flat)`) silently lumped depth-truncated comments in too. Stats now report only `comments_parsed`, `comments_kept`, `max_depth_applied`.
+- refactor(extract-reddit/SKILL.md): cut "Notes on the filter" section (duplicated Step 4 rules), the preamble paragraph (restated the description), and 2 of 3 bullets in "When this skill is the wrong tool" (speculative future-tool references). The remaining failure mode — private/quarantined subreddit — moved into a dedicated section since the script's error message points at it.
+
 ## 0.16.0 — 2026-05-08
 
 New skill: `/stacks:extract-reddit` — capture a Reddit thread into the library as an inbox source with a critical wheat-vs-chaff filter on comments.
