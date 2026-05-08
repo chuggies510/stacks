@@ -1,3 +1,12 @@
+## 0.16.0 — 2026-05-08
+
+New skill: `/stacks:extract-reddit` — capture a Reddit thread into the library as an inbox source with a critical wheat-vs-chaff filter on comments.
+
+### Features
+
+- feat(extract-reddit): new skill takes a Reddit thread URL and an optional stack name. Fetches post + comments via the public `.json` endpoint with a browser User-Agent (bare curl is blocked by Reddit's edge), follows the linked article via WebFetch when present, and writes a single inbox markdown file. With a stack arg the file lands in `{stack}/sources/incoming/`; without one it lands in library-root `inbox/` for `/stacks:process-inbox` to route. The wheat-vs-chaff cut is documented in the skill body — first-hand cost data, technical claims with model numbers, policy specifics, and dated rebate facts are kept; partisan venting, generic doom, defiance without install detail, and one-line snark are dropped, with the cut categories logged in an auditable ledger inside each output file.
+- feat(scripts): `scripts/extract-reddit-thread.py` — Python stdlib (urllib, no deps) fetcher that normalizes any Reddit URL form (old.reddit, www.reddit, redd.it short-link), walks the comment tree, drops `[deleted]`/`[removed]` while still recursing past them for substantive children, sorts by score, and caps to top-N at depth-D. Defaults: top 100, depth 6. Surfaces 403 (blocked, suggest PRAW upgrade) and 429 (rate-limited) with actionable error messages.
+
 ## 0.15.4 — 2026-04-30
 
 Readability refactor: inline code extracted to scripts/, deprecated orchestrators stubbed.
