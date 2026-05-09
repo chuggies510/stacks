@@ -28,7 +28,7 @@ while IFS= read -r article; do
   title=$(awk '/^title:/{print substr($0, 8); exit}' "$article")
   slug=$(basename "$article" .md)
   tag="${tag:-uncategorized}"
-  TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]\n"
+  TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]"$'\n'
 done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || true)
 
 # 3. Write new index.md

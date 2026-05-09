@@ -1,3 +1,11 @@
+## 0.16.2 — 2026-05-09
+
+Bugfix: regenerate-moc.sh wrote literal `\n` between article links instead of newlines.
+
+### Fixes
+
+- fix(scripts/regenerate-moc.sh): line accumulation used `"...\n"` inside a double-quoted bash string (which is a literal backslash-n, not a newline), then emitted via `printf '%s'` (which does not interpret backslashes). Result: every per-tag article list rendered as one long line with `\n` between entries instead of a markdown bullet list. Switched to `$'\n'` ANSI-C quoting which gives a real newline. Surfaced on the first plumbing catalog run in library-stack (5 articles, single tag group).
+
 ## 0.16.1 — 2026-05-08
 
 Three-round-review tightening of the new extract-reddit skill.
