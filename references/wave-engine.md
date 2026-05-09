@@ -111,7 +111,7 @@ The loop between the two pipelines closes as follows:
 
 1. `audit-stack` produces `dev/audit/findings.md` (schema v3) with four sections: New Acquisitions (`action: fetch_source`), Articles to Re-Synthesize (`action: resynthesize`), Research Questions (`action: research_question`), and Deferred. Each item carries `status` and `resolvable_by` fields.
 2. `catalog-sources` reads prior findings at W0b: it builds a skip list of `extraction_hash` values for already-synthesized content and surfaces generative items (`fetch_source` and `research_question` with identifiable `verification_target`) as new acquisition candidates.
-3. `audit-stack` carries item status forward across passes: `applied`, `closed`, `deferred`, `failed`, `stale`. A second audit run is differential, not a full re-run from scratch.
+3. `audit-stack` carries item status forward across passes: `applied`, `closed`, `deferred`. A pre-A3 reconcile pass (`scripts/reconcile-findings.py`) auto-closes prior open findings whose claims now validate `[VERIFIED]` or `[DRIFT]`, whose articles were deleted, or whose claim text was rewritten out. A second audit run is differential, not a full re-run from scratch.
 4. On convergence, A5 archives findings to `dev/audit/closed/{audit_date}-findings.md`, clearing the active queue.
 
 This replaces the old single-pass model where findings accumulated in a static report with nothing consuming them back into synthesis.
@@ -222,11 +222,13 @@ Parent writes `dev/audit/_a2-summary.json` directly (schema_version=1).
 
 ### A3 — Findings (parent-side shard + deterministic merge)
 
+Pre-dispatch, the parent runs `scripts/reconcile-findings.py` against the prior `dev/audit/findings.md` (no-op if absent). The script closes prior open findings whose claims now carry `[VERIFIED]` or `[DRIFT]`, whose articles were deleted, or whose claim text was rewritten out. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a `note:` line. Findings-analyst agents read the post-reconcile findings.md as their carry-forward input.
+
 Parent shards articles into ≤3-article batches and dispatches `findings-analyst` agents in parallel. The `findings-analyst-orchestrator` agent is **deprecated**.
 
 Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, and the prior `dev/audit/findings.md` (read-only, for carry-forward of terminal-status items by id). Each writes `dev/audit/_a3-partial-{NN}.md` and runs `assert-written.sh`. Parent re-gates each partial after fan-in.
 
-The merge runs as inline python in the parent (no agent): read all partials, split each on `- id:` boundaries, dedup by id with terminal-wins precedence (`applied`, `closed`, `deferred`, `stale`, `failed` overrides `open`; latest wins on ties), bucket by status-then-action (`status: deferred` items always route to the Deferred section regardless of action), emit the four canonical sections (`## New Acquisitions` / `## Articles to Re-Synthesize` / `## Research Questions` / `## Deferred`) with frontmatter (`audit_date`, `stack_head`, `pass_counter` incremented, `schema_version: 4`).
+The merge runs as inline python in the parent (no agent): read all partials, split each on `- id:` boundaries, dedup by id with terminal-wins precedence (`applied`, `closed`, `deferred` overrides `open`; latest wins on ties), bucket by status-then-action (`status: deferred` items always route to the Deferred section regardless of action), emit the four canonical sections (`## New Acquisitions` / `## Articles to Re-Synthesize` / `## Research Questions` / `## Deferred`) with frontmatter (`audit_date`, `stack_head`, `pass_counter` incremented, `schema_version: 4`).
 
 Inline python (rather than awk) is mandatory because mawk (default `awk` on Debian/Ubuntu/Mint) silently fails on gawk's 3-arg `match($i, /pat/, m)` form, producing zero-merged findings while the gate still passes (mtime advanced even on empty content). Python avoids the gawk/mawk split entirely.
 
@@ -290,7 +292,7 @@ if [[ "$rotated_count" -gt 0 ]]; then
 fi
 ```
 
-`scripts/rotate-findings.sh` moves items from the active `findings.md` to `dev/audit/findings-archive.md` when they have been in a terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) for `ROTATION_CYCLES` distinct audit cycles or more (default 3, parsed from `STACK.md`). Items carry a `terminal_transitioned_on: YYYY-MM-DD` field set on their first terminal cycle (schema v4); a carry-forward migration block backfills the field to the current `audit_date` on first encounter for v3 items, so no hand-editing is required.
+`scripts/rotate-findings.sh` moves items from the active `findings.md` to `dev/audit/findings-archive.md` when they have been in a terminal status (`applied`, `closed`, `deferred`) for `ROTATION_CYCLES` distinct audit cycles or more (default 3, parsed from `STACK.md`). Items carry a `terminal_transitioned_on: YYYY-MM-DD` field set on their first terminal cycle (schema v4); a carry-forward migration block backfills the field to the current `audit_date` on first encounter for v3 items, so no hand-editing is required.
 
 The assert-written gate fires only when `rotated_items > 0`. Zero-rotation runs (common during the stack's first terminal-accumulation cycles) are no-ops. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set cleanly.
 

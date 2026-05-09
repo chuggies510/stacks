@@ -104,7 +104,7 @@ awk -v closed_dates_file="$CLOSED_DATES_FILE" \
       }
     }
 
-    is_terminal = (status == "applied" || status == "closed" || status == "deferred" || status == "stale" || status == "failed")
+    is_terminal = (status == "applied" || status == "closed" || status == "deferred")
 
     if (!is_terminal) {
       print item_buf >> keep_file

@@ -260,6 +260,17 @@ This is the same shared helper used by catalog-sources at W2b. It reads glossary
 
 The `findings-analyst-orchestrator` agent is **deprecated for this skill**: same root cause as A1 and A2. Parent shards directly, dispatches in parallel, and merges with awk in the parent process (the merge is deterministic terminal-wins-by-id; no agent needed).
 
+**Pre-A3 reconcile pass.** Before sharding articles, the parent runs `scripts/reconcile-findings.py` against the prior `dev/audit/findings.md` (no-op if absent). The script closes prior open findings whose claims now carry a `[VERIFIED]` or `[DRIFT]` mark, whose articles were deleted between cycles, or whose claim text was rewritten out of the article. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a `note:` line. Findings-analyst agents then read the post-reconcile findings.md as their carry-forward input — closures are visible to their existing terminal-carry-forward logic without any agent prompt change.
+
+```bash
+PRIOR_FINDINGS="$STACK/dev/audit/findings.md"
+if [[ -f "$PRIOR_FINDINGS" ]]; then
+  AUDIT_DATE=$(date +%Y-%m-%d)
+  STACK_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+  python3 "$SCRIPTS_DIR/reconcile-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD"
+fi
+```
+
 **Batch size: ≤3 articles per findings-analyst agent**, matching A1. Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, the prior `dev/audit/findings.md` (for carry-forward of terminal-status items by id), and writes a partial findings file covering only the items it identifies.
 
 ```bash
@@ -297,7 +308,7 @@ for i in $(seq -f "%02g" 0 $((N_BATCHES_A3 - 1))); do
 done
 ```
 
-**Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
+**Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
 
 The merge runs as inline python rather than awk: the prior awk used gawk's 3-arg `match($i, /pat/, m)` form which silently fails on mawk (Debian/Ubuntu/Mint default), producing zero-merged findings while the gate still passes (mtime advanced even though content is empty). Python is portable and the section-grouping logic is clearer in code than in nested awk.
 
@@ -339,7 +350,7 @@ pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md"
 
 ## Step 8: A4 — Convergence check
 
-Count open work in the current findings file. Terminal statuses are `applied`, `closed`, `deferred`, `stale`, `failed`.
+Count open work in the current findings file. Terminal statuses are `applied`, `closed`, `deferred`.
 
 ```bash
 FINDINGS="$STACK/dev/audit/findings.md"
@@ -355,7 +366,7 @@ generative_open=$(awk '
     next
   }
   in_item && /resolvable_by: audit-stack/ { resolvable_by="audit-stack" }
-  in_item && /status: (applied|closed|deferred|stale|failed)/ { status="terminal" }
+  in_item && /status: (applied|closed|deferred)/ { status="terminal" }
   END {
     if (in_item && resolvable_by == "audit-stack" && status != "terminal") count++
     print count+0
@@ -413,7 +424,7 @@ If `converged=0` and the budget has not been reached, loop back to Step 4 (next 
 
 This step runs only when `converged=1` (per the A4 decision above). It runs before A5 archive so the archive snapshot reflects the post-rotation active file.
 
-Items in a terminal status (`applied`, `closed`, `deferred`, `stale`, `failed`) for ≥ `ROTATION_CYCLES` distinct audit cycles (default 3, parsed from `STACK.md`) are moved from the active `dev/audit/findings.md` to `dev/audit/findings-archive.md`. The archive is append-only, chronological, and operator-readable. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set.
+Items in a terminal status (`applied`, `closed`, `deferred`) for ≥ `ROTATION_CYCLES` distinct audit cycles (default 3, parsed from `STACK.md`) are moved from the active `dev/audit/findings.md` to `dev/audit/findings-archive.md`. The archive is append-only, chronological, and operator-readable. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set.
 
 ```bash
 audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/dev/null | head -1)

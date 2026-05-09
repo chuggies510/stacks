@@ -60,7 +60,7 @@ Items the operator has moved to `status: deferred`.
   source: <source path if relevant, else "">
   action: <fetch_source|resynthesize|noop>
   resolvable_by: <audit-stack|catalog-sources|external>
-  status: <open|applied|closed|deferred|stale|failed>
+  status: <open|applied|closed|deferred>
   terminal_transitioned_on: <YYYY-MM-DD, required for any item currently in a terminal status; empty/unset for open items>
   note: <optional>
 ```
@@ -73,7 +73,7 @@ Items the operator has moved to `status: deferred`.
   verification_target: <URL or source path or "unknown">
   action: research_question
   resolvable_by: external
-  status: <open|applied|closed|deferred|stale|failed>
+  status: <open|applied|closed|deferred>
   terminal_transitioned_on: <YYYY-MM-DD, required for any item currently in a terminal status; empty/unset for open items>
   note: <optional — what a satisfying answer would look like>
 ```
@@ -84,10 +84,8 @@ Question IDs hash the article slugs in sorted order so the ID is stable across p
 
 - `open` — needs action
 - `applied` — operator applied the fix (re-ingested or re-synthesized)
-- `closed` — verified resolved on a subsequent pass
+- `closed` — verified resolved on a subsequent pass (set by `scripts/reconcile-findings.py` at A3 dispatch when a prior open finding's claim now carries `[VERIFIED]` or `[DRIFT]`, or when the article was deleted, or when the claim was rewritten out of the article)
 - `deferred` — operator chose to shelve
-- `stale` — item superseded by a later finding on the same article/claim
-- `failed` — terminal; set by catalog-sources when a fetch_source action errors (404, parser failure). `failed` items do NOT count toward convergence being blocked.
 
 Status only transitions from `open` to a terminal state. Never regress a terminal status.
 
@@ -107,14 +105,14 @@ Emit-time rule (apply at write time to every new item):
 ## Carry-Forward Rule
 
 Read the prior `dev/audit/findings.md` before writing. For each item ID that already exists in the prior findings:
-- If its status is `applied`, `closed`, `deferred`, `failed`, or `stale`: carry that status forward — do not reset to `open`.
+- If its status is `applied`, `closed`, or `deferred`: carry that status forward, do not reset to `open`.
 - If its status is `open`: keep it `open` (it has not been resolved).
 
 New IDs not present in the prior findings default to `open`.
 
 When a prior-pass item lacks `resolvable_by` (schema v2), populate it using the emit-time defaults below before writing the v3 item: `fetch_source → catalog-sources`, `resynthesize → audit-stack`, `research_question → external`, `noop → audit-stack`. This is the only v2→v3 migration; no hand-editing of findings.md files is required.
 
-**v3→v4 migration (schema_version bump):** When reading a prior-pass item whose `status` is terminal (`applied`, `closed`, `deferred`, `stale`, `failed`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `scripts/rotate-findings.sh` then always sees the field populated on any terminal item it encounters. No hand-editing of existing files is required; the migration fires automatically on the first A3 pass after the schema bump.
+**v3→v4 migration (schema_version bump):** When reading a prior-pass item whose `status` is terminal (`applied`, `closed`, `deferred`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `scripts/rotate-findings.sh` then always sees the field populated on any terminal item it encounters. No hand-editing of existing files is required; the migration fires automatically on the first A3 pass after the schema bump.
 
 On any fresh transition from `open` into a terminal status during the current pass, record today's `audit_date` as `terminal_transitioned_on`. On carry-forward of an already-terminal item, preserve the existing `terminal_transitioned_on` value.
 

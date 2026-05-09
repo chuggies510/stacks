@@ -1,3 +1,15 @@
+## 0.17.0 — 2026-05-09
+
+Flywheel automation: pre-A3 reconcile auto-closes prior open findings when validation transitions resolve them. Schema enum narrowed to remove dead values.
+
+### Features
+
+- feat(audit-stack): pre-A3 reconcile pass via new `scripts/reconcile-findings.py`. Closes prior `open` findings whose claims now carry `[VERIFIED]` or `[DRIFT]`, whose articles were deleted between cycles, or whose claim text was rewritten out of the article. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a structured `note:` line. Closes the manual-bookkeeping gap in the Karpathy-style flywheel: the operator drops a source addressing an open `fetch_source` finding, recatalogs, and the next audit auto-closes the corresponding finding without hand-editing YAML. Ambiguous-match cases (claim text appearing more than once in the article body) are logged to stderr and carried forward unchanged. Findings-analyst agents read the post-reconcile findings.md, so closures are visible to their existing terminal-carry-forward logic without any agent prompt change.
+
+### Removed
+
+- remove(schema): `status: stale` and `status: failed` removed from the findings.md enum. Both values were defined in `agents/findings-analyst.md` but never emitted by any code path; pre-removal grep across all stacks confirmed zero live uses. Affected files: `agents/findings-analyst.md`, `scripts/merge-findings.py`, `scripts/rotate-findings.sh`, `skills/audit-stack/SKILL.md`, `references/wave-engine.md`.
+
 ## 0.16.2 — 2026-05-09
 
 Bugfix: regenerate-moc.sh wrote literal `\n` between article links instead of newlines.

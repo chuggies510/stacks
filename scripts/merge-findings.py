@@ -29,7 +29,7 @@ for p in partials:
         if "id" in item:
             items.append(item)
 
-TERMINAL = {"applied", "closed", "deferred", "stale", "failed"}
+TERMINAL = {"applied", "closed", "deferred"}
 by_id = {}
 for it in items:
     iid = it["id"]
