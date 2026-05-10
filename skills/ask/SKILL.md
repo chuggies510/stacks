@@ -74,14 +74,18 @@ Resolve `STACKS_TO_SEARCH` — the list of stack names to search:
 ```bash
 # -- REPLACE-WITH-QMD when #10 lands: this bash enumeration is the stub.
 # The qmd implementation accepts (query, stacks_to_search[]) and returns
-# (article_path, stack_name, score)[] — replace Step 5 article-mode body only.
+# (article_path, stack_name)[] ranked by score — replace Step 5 article-mode body only.
 if [[ -n "$STACK_SINGLE" ]]; then
   [[ -d "$LIBRARY/$STACK_SINGLE" ]] || { echo "ERROR: stack '$STACK_SINGLE' not found"; exit 1; }
   STACKS_TO_SEARCH=("$STACK_SINGLE")
 elif [[ -n "$STACKS_MULTI" ]]; then
-  IFS=',' read -ra STACKS_TO_SEARCH <<< "$STACKS_MULTI"
-  for s in "${STACKS_TO_SEARCH[@]}"; do
+  IFS=',' read -ra _RAW_STACKS <<< "$STACKS_MULTI"
+  STACKS_TO_SEARCH=()
+  for s in "${_RAW_STACKS[@]}"; do
+    s="${s//[[:space:]]/}"
+    [[ -n "$s" ]] || continue
     [[ -d "$LIBRARY/$s" ]] || { echo "ERROR: stack '$s' not found"; exit 1; }
+    STACKS_TO_SEARCH+=("$s")
   done
 else
   # Default: all stacks from catalog.md
@@ -178,11 +182,15 @@ Valuable answers compound into the library rather than disappearing into chat hi
 - Was a lookup that required no synthesis
 - Is ephemeral context specific to the current task
 
-If the answer warrants filing, ask: "File this answer into the {stack} stack? (yes/no)"
+If the answer warrants filing, proceed as follows:
 
-If yes, branch on `MODE` (the article/guide flag set in Step 5):
+**Determine the filing target.** If results came from a single stack, file there. If results came from multiple stacks, ask: "File this answer to: {list of contributing stacks}, all of them, or skip?"
 
-### Article mode
+For each chosen stack, run the filing branch for that stack independently using that stack's mode (article or guide — determined in Step 5 by whether `$LIBRARY/{stack}/articles/` exists and has files).
+
+For each chosen stack:
+
+**Article mode** (stack has `articles/` with files):
 
 1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
 
@@ -196,32 +204,31 @@ If yes, branch on `MODE` (the article/guide flag set in Step 5):
    updated: <YYYY-MM-DD today>
    sources:
      - <path/to/source1.md>
-     - <path/to/source2.md>
    title: <human-readable title>
    tags:
      - <tag>
    ---
    ```
-   `extraction_hash` is empty because a query-filed article is not driven by a concept-block extraction; the next `catalog-sources` run will fill it if a source later produces the same slug. Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks — those belong to the validator. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list (keep alphabetical).
+   Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list (keep alphabetical).
 
-### Guide mode (legacy stacks without `articles/`)
+**Guide mode** (stack has no `articles/`):
 
 1. Determine whether it fits an existing topic (extends a guide) or is genuinely new.
 
-2. **Extends existing topic:** append the synthesized content to `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section. Increment `sources` if new material was drawn in.
+2. **Extends existing topic:** append the synthesized content to `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section.
 
-3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Populate from the synthesized answer. Add to `$LIBRARY/{stack}/index.md` Topics table.
+3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Add to `$LIBRARY/{stack}/index.md` Topics table.
 
-### Both modes
+**After each stack filed:**
 
-4. Update `$LIBRARY/{stack}/log.md`, prepending:
-   ```
-   ## [YYYY-MM-DD] query | "{short query summary}" → filed to {target}
-   Synthesized answer filed. {new | updated} {article|topic}: {slug}.
-   ```
-   Where `{target}` is the article slug (article mode) or topic name (guide mode).
+Update `$LIBRARY/{stack}/log.md`, prepending:
+```
+## [YYYY-MM-DD] query | "{short query summary}" → filed to {target}
+Synthesized answer filed. {new | updated} {article|topic}: {slug}.
+```
 
-5. Commit:
-   ```bash
-   cd "$LIBRARY" && git add "{stack}/" && git commit -m "feat({stack}): file query result — {short description}"
-   ```
+**After all chosen stacks are filed:**
+
+```bash
+cd "$LIBRARY" && git add . && git commit -m "feat: file query result — {short description}"
+```
