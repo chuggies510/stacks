@@ -1,0 +1,30 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-10-stacks-bug-sprint.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Pre-clean dev/extractions/ before W1 dispatch (#46)",
+      "status": "pending",
+      "description": "**Goal:** Add two rm -f lines before Step 6 dispatch to eliminate stale batch files from prior catalog runs.\n\n**Files:**\n- Modify: `skills/catalog-sources/SKILL.md` — add rm -f lines after `mkdir -p \"$STACK/dev/extractions\"` (~line 230)\n\n**Acceptance Criteria:**\n- [ ] `batch-*-concepts.md` and `_dedup*.md` absent at W1 start\n- [ ] Zero-sources early-exit path unaffected\n- [ ] CHANGELOG updated, patch version bumped\n\n**Verify:** `grep -n \"rm -f\" skills/catalog-sources/SKILL.md` → two rm -f lines in Step 6 section\n\n```json:metadata\n{\"files\": [\"skills/catalog-sources/SKILL.md\", \".claude-plugin/plugin.json\", \".claude-plugin/marketplace.json\", \"CHANGELOG.md\"], \"verifyCommand\": \"grep -n 'rm -f' skills/catalog-sources/SKILL.md\", \"acceptanceCriteria\": [\"rm -f batch-*-concepts.md present\", \"rm -f _dedup*.md present\", \"patch version bumped\", \"CHANGELOG entry added\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Move per-slug split into dedup-extractions.py (#49, closes #48)",
+      "status": "pending",
+      "description": "**Goal:** Eliminate the awk per-slug split from SKILL.md by having dedup-extractions.py write per-slug files directly.\n\n**Files:**\n- Modify: `scripts/dedup-extractions.py` — add per-slug file writes after _dedup-meta.txt write\n- Modify: `skills/catalog-sources/SKILL.md` — remove awk for-loop (~lines 289-309), update prose comment\n\n**Acceptance Criteria:**\n- [ ] Per-slug files written by Python, not awk\n- [ ] Awk for-loop absent from SKILL.md\n- [ ] Each per-slug file has exactly one `## Concept:` block\n- [ ] CHANGELOG updated, minor version bumped\n\n**Verify:** `grep -n 'awk.*want' skills/catalog-sources/SKILL.md` → no output\n\n```json:metadata\n{\"files\": [\"scripts/dedup-extractions.py\", \"skills/catalog-sources/SKILL.md\", \".claude-plugin/plugin.json\", \".claude-plugin/marketplace.json\", \"CHANGELOG.md\"], \"verifyCommand\": \"grep -n 'awk.*want' skills/catalog-sources/SKILL.md\", \"acceptanceCriteria\": [\"per-slug writes in dedup-extractions.py\", \"awk for-loop removed\", \"minor version bumped\", \"CHANGELOG entry added\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Re-run wikilink-pass.sh after A1 validator wave (#44)",
+      "status": "pending",
+      "description": "**Goal:** Add wikilink-pass.sh call after A1 cleanup in audit-stack so wikilinks stripped by the validator are restored before A2.\n\n**Files:**\n- Modify: `skills/audit-stack/SKILL.md` — add wikilink-pass.sh call after A1 cleanup (~line 187)\n\n**Acceptance Criteria:**\n- [ ] wikilink-pass.sh called after A1 in audit-stack skill\n- [ ] Two wikilink-pass.sh call sites in SKILL.md\n- [ ] CHANGELOG updated, patch version bumped\n\n**Verify:** `grep -n 'wikilink-pass' skills/audit-stack/SKILL.md` → two lines\n\n```json:metadata\n{\"files\": [\"skills/audit-stack/SKILL.md\", \".claude-plugin/plugin.json\", \".claude-plugin/marketplace.json\", \"CHANGELOG.md\"], \"verifyCommand\": \"grep -n 'wikilink-pass' skills/audit-stack/SKILL.md\", \"acceptanceCriteria\": [\"wikilink-pass.sh after A1 cleanup\", \"two call sites total\", \"patch version bumped\", \"CHANGELOG entry added\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Fuzzy claim match in reconcile-findings.py (#47)",
+      "status": "pending",
+      "description": "**Goal:** Sentence-level fuzzy match gated on [VERIFIED]/[DRIFT] closes rewritten findings instead of dropping them.\n\n**Files:**\n- Modify: `scripts/reconcile-findings.py` — add difflib import, _fuzzy_rewrite_check(), update occurrences==0 branch, add count key, update print, update docstring\n\n**Acceptance Criteria:**\n- [ ] Rewritten-then-VERIFIED findings close with rewrite-then-verify note\n- [ ] Unverified rewrites remain unchanged\n- [ ] Only stdlib (difflib) added\n- [ ] CHANGELOG updated, minor version bumped\n\n**Verify:** `grep -n '_fuzzy_rewrite_check' scripts/reconcile-findings.py` → function definition present\n\n```json:metadata\n{\"files\": [\"scripts/reconcile-findings.py\", \".claude-plugin/plugin.json\", \".claude-plugin/marketplace.json\", \"CHANGELOG.md\"], \"verifyCommand\": \"grep -n '_fuzzy_rewrite_check' scripts/reconcile-findings.py\", \"acceptanceCriteria\": [\"_fuzzy_rewrite_check present\", \"difflib imported\", \"closed-rewrite-verified count key present\", \"minor version bumped\", \"CHANGELOG entry added\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-10T00:00:00Z"
+}
