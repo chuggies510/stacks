@@ -1,3 +1,17 @@
+## 0.18.0 — 2026-05-10
+
+Bug sprint: stale extraction artifacts, awk harness clobber, missing post-A1 wikilink restore, and fuzzy reconcile for rewritten claims.
+
+### Fixes
+
+- fix(catalog-sources): pre-clean `dev/extractions/batch-*-concepts.md` and `_dedup*.md` before W1 dispatch. Without this, stale batch files from a prior catalog run that ended mid-flight would feed the dedup step as if they were fresh output from the current run, producing phantom concepts or incorrect merge counts. Zero-sources early-exit path is unaffected — rm runs after the source-count guard. Closes #46.
+- fix(audit-stack): re-run `wikilink-pass.sh` after A1 cleanup (new Step 4.5: A1b). Validator agents strip `[[wikilinks]]` from sentences they rewrite; without this pass those links were absent when A2 synthesized the glossary, causing A2b's pass to add fewer links than intended. A no-op on first-pass runs where `glossary.md` is not yet present. Closes #44.
+- fix(audit-stack): fuzzy claim match in `reconcile-findings.py`. Sentence-level fuzzy scoring (Jaccard pre-filter ≥ 0.30, SequenceMatcher ratio ≥ 0.55) now detects rewritten claims that still carry a `[VERIFIED]` or `[DRIFT]` mark in the immediately following window and closes them with a `rewrite-then-verify` note. Previously these items were left `unchanged` and aged out by `rotate-findings.sh` rather than being credited to the validator that actually resolved them. Claims shorter than 4 tokens are excluded from fuzzy scoring to avoid false positives on short boilerplate fragments. Adds `closed-rewrite-verified` action key to reconcile output. Only stdlib (`difflib`) added. Closes #47.
+
+### Refactors
+
+- refactor(catalog-sources): move per-slug extraction split from awk for-loop in SKILL.md into `dedup-extractions.py`. The awk loop used `$2` to extract the slug field from `_dedup.md` — a pattern susceptible to the Claude Code skill-harness `$N` substitution gotcha documented in CLAUDE.md (harness replaces `$0`/`$2` literals with positional skill args before the model sees the body). Python now writes `_dedup-{slug}.md` directly during the dedup pass, using the already-computed `slug_seen`/`slug_sources` data structures; no second read of `_dedup.md` required. Removes the awk loop and the prose reference to it. Closes #48, closes #49.
+
 ## 0.17.1 — 2026-05-09
 
 Three-lens review patches on the 0.17.0 reconcile pass.
