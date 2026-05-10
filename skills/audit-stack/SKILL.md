@@ -160,6 +160,8 @@ for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
     [[ -z "$article" ]] && continue
     if ! "$SCRIPTS_DIR/assert-written.sh" "$article" "$DISPATCH_EPOCH" "validator-parent-gate" 2>/dev/null; then
       FAILED+=("$article")
+    elif ! "$SCRIPTS_DIR/assert-structure.sh" "$article" article-validated "validator-parent-gate" 2>/dev/null; then
+      FAILED+=("$article")
     fi
   done < "$batch"
 done
@@ -238,6 +240,10 @@ for f in glossary.md invariants.md contradictions.md; do
     echo "AGENT_WRITE_FAILURE: A2 stack-root $f ungated"; exit 1
   fi
 done
+"$SCRIPTS_DIR/assert-structure.sh" "$STACK/glossary.md" glossary-md "synthesizer-merge-gate" \
+  || { echo "STRUCTURE_FAILURE: glossary.md has no bold term entries"; exit 1; }
+"$SCRIPTS_DIR/assert-structure.sh" "$STACK/invariants.md" invariants-md "synthesizer-merge-gate" \
+  || { echo "STRUCTURE_FAILURE: invariants.md has no numbered entries"; exit 1; }
 G_TERMS=$(grep -c '^\*\*' "$STACK/glossary.md" 2>/dev/null || echo 0)
 INV_COUNT=$(grep -c '^[0-9]\+\.' "$STACK/invariants.md" 2>/dev/null || echo 0)
 CON_COUNT=$(grep -c '^## ' "$STACK/contradictions.md" 2>/dev/null || echo 0)
