@@ -243,6 +243,8 @@ for ((i=1; i<=N_BATCHES_W1; i++)); do
   PARTIAL="$STACK/dev/extractions/batch-${i}-concepts.md"
   if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH_W1" "concept-identifier" 2>/dev/null; then
     W1_FAILED+=("batch-${i}")
+  elif ! "$SCRIPTS_DIR/assert-structure.sh" "$PARTIAL" concept-batch "concept-identifier" 2>/dev/null; then
+    W1_FAILED+=("batch-${i}")
   fi
 done
 if (( ${#W1_FAILED[@]} > 0 )); then
@@ -283,6 +285,10 @@ DEDUP="$STACK/dev/extractions/_dedup.md"
 # preserving first-seen order across all contributing blocks) and remember
 # whether any contributing block had a non-empty target_article.
 python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
+"$SCRIPTS_DIR/assert-structure.sh" "$DEDUP" dedup-md "dedup-extractions" \
+  || { echo "STRUCTURE_FAILURE: dedup output malformed — no concept blocks"; exit 1; }
+"$SCRIPTS_DIR/assert-structure.sh" "$STACK/dev/extractions/_dedup-meta.txt" dedup-meta "dedup-extractions" \
+  || { echo "STRUCTURE_FAILURE: dedup meta malformed — missing or empty ALL_SLUGS"; exit 1; }
 
 # Load the meta into shell vars.
 source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')
@@ -346,6 +352,8 @@ while (( i < n )); do
   # 3. After fan-in, gate each article in this wave against this wave's epoch.
   for slug in "${WAVE_SLICE[@]}"; do
     if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/articles/${slug}.md" "$DISPATCH_EPOCH_W2_WAVE" "article-synthesizer" 2>/dev/null; then
+      W2_FAILED+=("$slug")
+    elif ! "$SCRIPTS_DIR/assert-structure.sh" "$STACK/articles/${slug}.md" article-md "article-synthesizer" 2>/dev/null; then
       W2_FAILED+=("$slug")
     fi
   done
