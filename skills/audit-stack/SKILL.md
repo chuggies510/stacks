@@ -186,6 +186,14 @@ jq -n \
 
 Cleanup batch and per-batch sources files (`rm "$STACK"/dev/audit/_a1-batch-*.txt "$STACK"/dev/audit/_a1-sources-*.txt`) after summary writes.
 
+## Step 4.5: A1b — Wikilink pass (post-validator restore)
+
+```bash
+"$SCRIPTS_DIR/wikilink-pass.sh" "$STACK/articles/" "$STACK/glossary.md"
+```
+
+Validator agents strip `[[wikilinks]]` from sentences they rewrite (the marks land inline and the surrounding text is normalized without the link syntax). Running wikilink-pass.sh here restores them before A2 reads the articles; otherwise A2 synthesizes from a partially de-linked article set and A2b's pass adds fewer links than intended. A no-op if `glossary.md` is absent (first-pass case: glossary hasn't been written yet).
+
 ## Step 5: A2 — Parent-side parallel synthesizer dispatch + merge
 
 Synthesizer needs cross-article view to dedup glossary terms, find independent-corroboration invariants, and surface contradictions. So A2 keeps the shard-then-merge pattern, but driven from the parent (not via `synthesizer-orchestrator`, which is **deprecated for this skill**: same root cause as A1).
