@@ -3,7 +3,7 @@
 # Usage:   python3 reconcile-findings.py <stack> <audit_date> <stack_head>
 # Output:  rewrites <stack>/dev/audit/findings.md in place. Logs ambiguous-match warnings to stderr.
 
-import os, re, sys
+import difflib, os, re, sys
 
 stack = sys.argv[1]
 audit_date = sys.argv[2]
@@ -46,10 +46,46 @@ def strip_quotes(v):
     return v
 
 
+def _fuzzy_rewrite_check(body, norm_claim):
+    """Return a close-note string if a sentence in body is a fuzzy match for
+    norm_claim AND carries a [VERIFIED] or [DRIFT] mark immediately after it.
+    Return None if no match is found or the claim is too short to score reliably."""
+    if len(norm_claim.split()) < 4:
+        return None
+    claim_tokens = set(norm_claim.lower().split())
+    sentences = re.split(r'(?<=\.)\s+|\n', body)
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        norm_sent = normalize_ws(sent)
+        sent_tokens = set(norm_sent.lower().split())
+        if not sent_tokens:
+            continue
+        jaccard = len(claim_tokens & sent_tokens) / len(claim_tokens | sent_tokens)
+        if jaccard < 0.3:
+            continue
+        ratio = difflib.SequenceMatcher(None, norm_claim, norm_sent).ratio()
+        if ratio < 0.55:
+            continue
+        sent_pos = body.find(sent)
+        if sent_pos == -1:
+            continue
+        window_start = sent_pos + len(sent)
+        window_end = min(len(body), window_start + 60)
+        m = MARK_PATTERN.search(body, window_start, window_end)
+        if m and m.group() in ("[VERIFIED]", "[DRIFT]"):
+            return (
+                f"rewrite-then-verify: claim rewritten but {m.group()} "
+                f"found in adjacent sentence (ratio={ratio:.2f})"
+            )
+    return None
+
+
 def reconcile(blk):
     """Return (new_blk, action). action is one of:
        'unchanged', 'closed-article-missing', 'closed-verified',
-       'closed-drift', 'ambiguous'."""
+       'closed-drift', 'closed-rewrite-verified', 'ambiguous'."""
     fields = parse_item(blk)
     if fields.get("status") != "open":
         return blk, "unchanged"
@@ -80,10 +116,9 @@ def reconcile(blk):
         start = idx + 1
 
     if len(occurrences) == 0:
-        # Claim text not found verbatim. Almost always means findings-analyst
-        # paraphrased when extracting (dropped parentheticals, expanded
-        # acronyms). Don't close on this signal; let rotate-findings.sh age
-        # out truly-stale items eventually.
+        fuzzy_note = _fuzzy_rewrite_check(body, norm_claim)
+        if fuzzy_note:
+            return _close(blk, fuzzy_note), "closed-rewrite-verified"
         return blk, "unchanged"
 
     if len(occurrences) > 1:
@@ -154,6 +189,7 @@ counts = {
     "closed-article-missing": 0,
     "closed-verified": 0,
     "closed-drift": 0,
+    "closed-rewrite-verified": 0,
     "ambiguous": 0,
 }
 for blk in item_blocks:
@@ -168,6 +204,7 @@ print(
     f"reconciled: article_missing={counts['closed-article-missing']} "
     f"verified={counts['closed-verified']} "
     f"drift={counts['closed-drift']} "
+    f"rewrite_verified={counts['closed-rewrite-verified']} "
     f"ambiguous={counts['ambiguous']} "
     f"unchanged={counts['unchanged']}"
 )
