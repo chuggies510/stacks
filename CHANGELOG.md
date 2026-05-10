@@ -1,3 +1,16 @@
+## 0.19.0 — 2026-05-10
+
+Phase 2: pipeline content-structure gates and cross-stack lookup.
+
+### Added
+
+- feat(#50): `scripts/assert-structure.sh` — content-shape gate for pipeline output files. Checks 7 types: `concept-batch`, `dedup-md`, `dedup-meta`, `article-md`, `article-validated`, `glossary-md`, `invariants-md`. Companion to `assert-written.sh` (mtime gate). Comes with a 21-test bats suite at `tests/assert-structure.bats`.
+- feat(#50): `catalog-sources` — assert-structure gates at W1 (`concept-batch`), W1b (`dedup-md`, `dedup-meta`), and W2 (`article-md`). Truncated or empty pipeline outputs now halt with a named `STRUCTURE_FAILURE:` error before they propagate downstream.
+- feat(#50): `audit-stack` — assert-structure gates at A1 (`article-validated`) and A2 (`glossary-md`, `invariants-md`). Validator output with no marks and synthesizer output with no entries both halt the pipeline immediately.
+- feat(#5): `/stacks:ask` cross-stack lookup. Default behavior (no flag) now searches all stacks in the library. `--stack {name}` forces single-stack scope (prior behavior). `--stacks {a,b,c}` scopes to a named subset. Answer format cites contributing stack(s). Step 7 filing updated for multi-stack targets. Retrieval block labelled as a stub for #10 (qmd) replacement.
+
+Closes #50, closes #5.
+
 ## 0.18.0 — 2026-05-10
 
 Bug sprint: stale extraction artifacts, awk harness clobber, missing post-A1 wikilink restore, and fuzzy reconcile for rewritten claims.
