@@ -24,7 +24,7 @@ Full bug sprint: triaged 9 open issues with issues-planner and meta-pattern-reco
 
 ### Chat
 
-(filled in Phase 8)
+S11-stacks-bug-sprint-0-18
 
 ### Changes made
 
