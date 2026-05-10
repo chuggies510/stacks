@@ -1,0 +1,30 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-10-stacks-phase2.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Write assert-structure.sh with bats tests",
+      "status": "completed",
+      "description": "**Goal:** A standalone `scripts/assert-structure.sh` that checks content shape for each known file type, with a bats test suite covering all types and error paths.\n\n```json:metadata\n{\"files\": [\"scripts/assert-structure.sh\", \"tests/assert-structure.bats\"], \"verifyCommand\": \"bats tests/assert-structure.bats\", \"acceptanceCriteria\": [\"exits 0 on valid input per type\", \"exits 1 with STRUCTURE_FAILURE on mismatch\", \"exits 1 on unknown type\", \"all 7 types covered\", \"bats suite passes\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Add structure gates to catalog-sources",
+      "status": "completed",
+      "description": "**Goal:** catalog-sources SKILL.md calls assert-structure.sh at W1, W1b, and W2 gates.\n\n```json:metadata\n{\"files\": [\"skills/catalog-sources/SKILL.md\"], \"verifyCommand\": \"grep 'assert-structure.sh' skills/catalog-sources/SKILL.md | wc -l\", \"acceptanceCriteria\": [\"W1 gate calls concept-batch\", \"W1b calls dedup-md and dedup-meta\", \"W2 gate calls article-md\", \"4 total call sites\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Add structure gates to audit-stack",
+      "status": "completed",
+      "description": "**Goal:** audit-stack SKILL.md calls assert-structure.sh at A1 and A2 gates.\n\n```json:metadata\n{\"files\": [\"skills/audit-stack/SKILL.md\"], \"verifyCommand\": \"grep 'assert-structure.sh' skills/audit-stack/SKILL.md | wc -l\", \"acceptanceCriteria\": [\"A1 gate calls article-validated\", \"A2 gate calls glossary-md\", \"A2 gate calls invariants-md\", \"3 total call sites\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Cross-stack lookup for /stacks:ask",
+      "status": "completed",
+      "description": "**Goal:** /stacks:ask defaults to all stacks. --stack single-stack. --stacks subset. Stub comment for #10.\n\n```json:metadata\n{\"files\": [\"skills/ask/SKILL.md\"], \"verifyCommand\": \"grep 'STACKS-SEARCH STUB' skills/ask/SKILL.md\", \"acceptanceCriteria\": [\"--stack flag parsed\", \"--stacks flag parsed\", \"default cross-stack search\", \"stack attribution in answer\", \"stub comment present\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-10T00:00:00Z"
+}
