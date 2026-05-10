@@ -28,29 +28,19 @@ Once resolved: `/stacks:ask` detects `$LIBRARY/.qmd/` and routes retrieval throu
 
 **Files:**
 - Modify: `skills/process-inbox/SKILL.md` — add quality assessment in Step 4, RECYCLED list, recycling-bin mkdir, Recycled section in Step 6 report, recycling-bin in Step 5 git add
-- Create: `templates/library/recycling-bin/.gitkeep` — scaffold recycling-bin at library init time (init.sh copies templates/library/ verbatim)
 
 **Acceptance Criteria:**
 - [ ] Files with specific, non-obvious technical facts route to stack incoming/ as normal
 - [ ] Files with only generic content (process wisdom, meeting notes, API restatements) move to recycling-bin/
-- [ ] recycling-bin/ is created lazily in process-inbox when first needed
+- [ ] recycling-bin/ is created lazily in process-inbox when first needed (`mkdir -p` in quality gate block)
 - [ ] Step 6 report includes "Recycled (N):" section when any files are recycled (omitted when empty, matching existing pattern)
-- [ ] `templates/library/recycling-bin/.gitkeep` exists so new libraries get the directory on scaffold
+- [ ] Commit guard updated: skip commit only when BOTH MOVED and RECYCLED are empty
 
 **Verify:** Manual smoke test in a test library — add a low-quality file ("meeting summary, no technical facts") and a high-quality file ("specific failure mode with cause and symptom"), run `/stacks:process-inbox`, confirm high-quality file routes to stack incoming/ and low-quality file moves to recycling-bin/.
 
 **Steps:**
 
-- [ ] **Step 1: Add recycling-bin to library template**
-
-```bash
-mkdir -p /home/chris/2_project-files/projects/active-projects/stacks/templates/library/recycling-bin
-touch /home/chris/2_project-files/projects/active-projects/stacks/templates/library/recycling-bin/.gitkeep
-```
-
-Verify: `ls templates/library/recycling-bin/` → shows `.gitkeep`
-
-- [ ] **Step 2: Update process-inbox SKILL.md Step 4 — add RECYCLED list and quality gate**
+- [ ] **Step 1: Update process-inbox SKILL.md Step 4 — add RECYCLED list and quality gate**
 
 In `skills/process-inbox/SKILL.md`:
 
@@ -94,14 +84,22 @@ For files that pass quality: route to stack incoming/ as before.
 
 In Step 5 of process-inbox SKILL.md, update the `git add` line to include `recycling-bin/` when RECYCLED is non-empty:
 
-When RECYCLED is non-empty, the commit command becomes:
+Update the commit block to cover three cases:
+
+- MOVED=0 and RECYCLED=0: skip the commit entirely (no changes).
+- MOVED>0 and RECYCLED=0: original commit (no recycling-bin/ in staged paths).
+- MOVED>0 and RECYCLED>0:
 ```bash
 cd "$LIBRARY"
 git add -A inbox/ {each affected stack}/sources/incoming/ recycling-bin/
 git commit -m "chore(inbox): route {N_MOVED} file(s), recycle {N_RECYCLED} low-quality file(s)"
 ```
-
-When RECYCLED is empty, keep the original commit message and don't add `recycling-bin/` to the staged paths.
+- MOVED=0 and RECYCLED>0 (all files low quality):
+```bash
+cd "$LIBRARY"
+git add -A inbox/ recycling-bin/
+git commit -m "chore(inbox): recycle {N_RECYCLED} low-quality file(s)"
+```
 
 - [ ] **Step 4: Update Step 6 report to include Recycled section**
 
@@ -117,31 +115,13 @@ Omit this section if RECYCLED is empty, matching the existing pattern for Unmatc
 - [ ] **Step 5: Commit**
 
 ```bash
-git add templates/library/recycling-bin/.gitkeep skills/process-inbox/SKILL.md
+git add skills/process-inbox/SKILL.md
 git commit -m "feat(#40): quality gate in process-inbox — low-quality files to recycling-bin"
 ```
 
-- [ ] **Step 6: Version bump + CHANGELOG**
+- [ ] **Step 6: Close issue** *(version bump is consolidated at end of Task 4)*
 
 ```bash
-jq --arg v "0.20.0" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
-jq --arg v "0.20.0" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
-```
-
-Prepend to CHANGELOG.md:
-
-```markdown
-## [0.20.0] — 2026-05-10
-
-### Added
-- process-inbox: quality gate — files with no specific technical content route to `recycling-bin/` instead of stack incoming dirs (#40)
-- templates/library: scaffold `recycling-bin/` directory at library init time
-```
-
-```bash
-git add .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
-git commit -m "chore: bump to 0.20.0, #40 quality gate CHANGELOG"
-git push
 gh issue close 40 --repo chuggies510/stacks --comment "Quality gate added to process-inbox in 0.20.0. Low-quality files route to recycling-bin/ instead of stack incoming dirs."
 ```
 
@@ -149,7 +129,7 @@ gh issue close 40 --repo chuggies510/stacks --comment "Quality gate added to pro
 
 ### Task 2: Scheduled loop — process-inbox + catalog-sources on a timer (#14)
 
-**Goal:** `scripts/loop.sh` does mechanical inbox routing (keyword scoring, no LLM) then invokes `catalog-sources` via `claude -p` for each stack that received files. Enable/disable via `$LIBRARY/.loop-enabled` sentinel. Bats tests cover mechanical logic; the `claude -p` calls are mocked.
+**Goal:** `scripts/loop.sh` delegates inbox routing to `/stacks:process-inbox` via `claude -p`, then invokes `/stacks:catalog-sources` for each stack that has files in incoming/ after routing. Enable/disable via `$LIBRARY/.loop-enabled` sentinel. Bats tests cover mechanical logic; the `claude -p` calls are mocked.
 
 **Files:**
 - Create: `scripts/loop.sh`
@@ -158,14 +138,14 @@ gh issue close 40 --repo chuggies510/stacks --comment "Quality gate added to pro
 **Acceptance Criteria:**
 - [ ] Script exits 0 when `$LIBRARY/.loop-enabled` is absent (disabled, no-op, logs "disabled")
 - [ ] Script exits 0 when inbox is empty (logs timestamp + "inbox empty")
-- [ ] Script routes inbox `.md` files to stack incoming/ using keyword scoring against STACK.md scope sections (threshold ≥2 matching keywords)
-- [ ] Script invokes `claude -p "/stacks:catalog-sources {stack}"` for each stack with newly routed files
-- [ ] Script skips `claude -p` when no files were routed
+- [ ] Script invokes `claude -p "/stacks:process-inbox"` to route inbox files (delegation — no keyword routing in loop.sh)
+- [ ] Script invokes `claude -p "/stacks:catalog-sources {stack}"` for each stack with files in incoming/ after process-inbox
+- [ ] Script skips catalog-sources when no stacks have incoming files
 - [ ] All activity appended to `$LIBRARY/loop.log` with ISO-8601 timestamps
-- [ ] `bats tests/loop.bats` passes (all 7 tests)
+- [ ] `bats tests/loop.bats` passes (all 6 tests)
 - [ ] Script uses `STACKS_CONFIG` env var override for testability (falls back to `~/.config/stacks/config.json`)
 
-**Verify:** `bats tests/loop.bats` → all 7 tests pass. Manual smoke test: `touch $LIBRARY/.loop-enabled && bash scripts/loop.sh` from a library with one inbox file → file routed, loop.log written, `claude -p` invoked.
+**Verify:** `bats tests/loop.bats` → all 6 tests pass. Manual smoke test: `touch $LIBRARY/.loop-enabled && bash scripts/loop.sh` from a library with one inbox file → process-inbox invoked, loop.log written.
 
 **Steps:**
 
@@ -183,7 +163,7 @@ setup() {
   # Library structure
   mkdir -p "$TEST_TMP/lib/inbox"
   mkdir -p "$TEST_TMP/lib/mystack/sources/incoming"
-  printf '# My Stack\n\n## Scope\n\nCovers the svelte framework, reactivity system, components, runes, and stores.\n' \
+  printf '# My Stack\n\n## Scope\n\nCovers svelte, reactivity, components, runes.\n' \
     > "$TEST_TMP/lib/mystack/STACK.md"
 
   # Fake config
@@ -232,42 +212,32 @@ teardown() {
   [ ! -f "$TEST_TMP/claude-calls.log" ]
 }
 
-@test "routes inbox file to best-matching stack incoming/" {
+@test "calls claude process-inbox when inbox has files" {
   touch "$TEST_TMP/lib/.loop-enabled"
-  printf '# Svelte Runes\n\nsvelte reactivity system runes notes\n' \
-    > "$TEST_TMP/lib/inbox/runes.md"
+  touch "$TEST_TMP/lib/inbox/file.md"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ -f "$TEST_TMP/lib/mystack/sources/incoming/runes.md" ]
-  [ ! -f "$TEST_TMP/lib/inbox/runes.md" ]
+  grep -q "process-inbox" "$TEST_TMP/claude-calls.log"
 }
 
-@test "calls claude catalog-sources for stack with new incoming files" {
+@test "calls claude catalog-sources for stacks with files in incoming/" {
   touch "$TEST_TMP/lib/.loop-enabled"
-  printf '# Svelte Runes\n\nsvelte reactivity system runes notes\n' \
-    > "$TEST_TMP/lib/inbox/runes.md"
+  touch "$TEST_TMP/lib/inbox/file.md"
+  # Pre-populate incoming/ to simulate what process-inbox would have done
+  touch "$TEST_TMP/lib/mystack/sources/incoming/filed.md"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -q "catalog-sources mystack" "$TEST_TMP/claude-calls.log"
 }
-
-@test "skips claude when no inbox files match any stack" {
-  touch "$TEST_TMP/lib/.loop-enabled"
-  printf '# Cooking Recipe\n\nIngredients: flour, water, salt.\n' \
-    > "$TEST_TMP/lib/inbox/recipe.md"
-  run bash "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ ! -f "$TEST_TMP/claude-calls.log" ]
-}
 ```
 
-Run: `bats tests/loop.bats` → expected: all 7 fail (script doesn't exist yet).
+Run: `bats tests/loop.bats` → expected: all 6 fail (script doesn't exist yet).
 
 - [ ] **Step 2: Write scripts/loop.sh**
 
 ```bash
 #!/usr/bin/env bash
-# Scheduled library maintenance: route inbox files (keyword matching), then catalog per stack.
+# Scheduled library maintenance: run process-inbox then catalog stacks with pending files.
 #
 # Add to crontab (crontab -e):
 #   0 * * * * PATH="$HOME/.local/bin:$HOME/.nvm/default/bin:/usr/local/bin:$PATH" \
@@ -277,8 +247,6 @@ Run: `bats tests/loop.bats` → expected: all 7 fail (script doesn't exist yet).
 # Disable:               rm "$LIBRARY/.loop-enabled"
 #
 # Note: 'claude' must be in PATH at cron time (see crontab PATH line above).
-# Routing is keyword-based (not LLM) — some imprecision is acceptable for
-# unattended runs. For precision routing, run /stacks:process-inbox manually.
 set -euo pipefail
 
 CONFIG="${STACKS_CONFIG:-$HOME/.config/stacks/config.json}"
@@ -291,76 +259,33 @@ LIBRARY="${LIBRARY/#\~/$HOME}"
 LOG="$LIBRARY/loop.log"
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
 
-# Sentinel check
 [[ -f "$LIBRARY/.loop-enabled" ]] || { log "disabled (.loop-enabled absent)"; exit 0; }
 
-# No-op if inbox is empty
 mapfile -t inbox_files < <(find "$LIBRARY/inbox" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort)
 if [[ ${#inbox_files[@]} -eq 0 ]]; then
   log "inbox empty — no-op"
   exit 0
 fi
 
-log "routing ${#inbox_files[@]} inbox file(s)..."
+log "routing ${#inbox_files[@]} inbox file(s) via process-inbox..."
+cd "$LIBRARY"
+claude -p "/stacks:process-inbox" >> "$LOG" 2>&1 \
+  || log "process-inbox failed (see log above)"
 
-declare -A stack_hit_count
-
-for f in "${inbox_files[@]}"; do
-  filename=$(basename "$f")
-  file_words=$(cat "$f" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{4,}' | sort -u)
-  best_stack=""
-  best_score=0
-
-  for stack_dir in "$LIBRARY"/*/; do
-    [[ -f "${stack_dir}STACK.md" ]] || continue
-    stack=$(basename "$stack_dir")
-
-    # Extract keywords from STACK.md Scope section
-    scope=$(awk '/^## Scope/,/^## /' "${stack_dir}STACK.md" 2>/dev/null | tail -n +2 | head -20)
-    scope_words=$(echo "$scope" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{4,}' | sort -u)
-
-    score=0
-    while IFS= read -r word; do
-      [[ -z "$word" ]] && continue
-      echo "$file_words" | grep -qxF "$word" && score=$((score + 1))
-    done <<< "$scope_words"
-
-    if [[ "$score" -gt "$best_score" ]]; then
-      best_score="$score"
-      best_stack="$stack"
-    fi
-  done
-
-  if [[ "$best_score" -ge 2 && -n "$best_stack" ]]; then
-    dest_dir="$LIBRARY/$best_stack/sources/incoming"
-    mkdir -p "$dest_dir"
-    dest="$dest_dir/$filename"
-    if [[ -f "$dest" ]]; then
-      base="${filename%.*}"; ext="${filename##*.}"; n=2
-      while [[ -f "$dest_dir/${base}-${n}.${ext}" ]]; do n=$((n + 1)); done
-      dest="$dest_dir/${base}-${n}.${ext}"
-    fi
-    mv "$f" "$dest"
-    log "routed: $filename → $best_stack/sources/incoming/ (score=$best_score)"
-    stack_hit_count["$best_stack"]=$((${stack_hit_count["$best_stack"]:-0} + 1))
-  else
-    log "unmatched: $filename (best_score=$best_score) — left in inbox"
+cataloged=0
+for stack_dir in "$LIBRARY"/*/; do
+  [[ -f "${stack_dir}STACK.md" ]] || continue
+  stack=$(basename "$stack_dir")
+  count=$(find "${stack_dir}sources/incoming" -maxdepth 1 -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$count" -gt 0 ]]; then
+    log "cataloging $stack ($count file(s))..."
+    claude -p "/stacks:catalog-sources $stack" >> "$LOG" 2>&1 \
+      || log "catalog-sources failed for $stack (see log above)"
+    cataloged=$((cataloged + 1))
   fi
 done
 
-if [[ ${#stack_hit_count[@]} -eq 0 ]]; then
-  log "no files routed — skipping catalog"
-  exit 0
-fi
-
-for stack in "${!stack_hit_count[@]}"; do
-  n="${stack_hit_count[$stack]}"
-  log "cataloging $stack ($n file(s))..."
-  cd "$LIBRARY"
-  claude -p "/stacks:catalog-sources $stack" >> "$LOG" 2>&1 \
-    || log "catalog-sources failed for $stack (see log above)"
-done
-
+[[ "$cataloged" -eq 0 ]] && log "no stacks with incoming files after routing"
 log "done"
 ```
 
@@ -370,40 +295,19 @@ log "done"
 bats tests/loop.bats
 ```
 
-Expected: all 7 tests pass. If the routing tests fail on score threshold, check that the bats setup STACK.md scope has enough keywords (≥4 distinct 4-char words) and the inbox file content overlaps at least 2 of them.
+Expected: all 6 tests pass.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add scripts/loop.sh tests/loop.bats
-git commit -m "feat(#14): scheduled loop — mechanical routing + claude catalog-sources per stack"
+git commit -m "feat(#14): scheduled loop — process-inbox routing + catalog-sources per stack"
 ```
 
-- [ ] **Step 5: Version bump + CHANGELOG**
+- [ ] **Step 5: Close issue** *(version bump is consolidated at end of Task 4)*
 
 ```bash
-jq --arg v "0.21.0" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
-jq --arg v "0.21.0" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
-```
-
-Prepend to CHANGELOG.md:
-
-```markdown
-## [0.21.0] — 2026-05-10
-
-### Added
-- scripts/loop.sh: scheduled library maintenance — route inbox files (keyword matching, no LLM) then catalog per stack via `claude -p`. Enable with `touch $LIBRARY/.loop-enabled`. Add to crontab with explicit PATH including claude's install dir. (#14)
-
-### Notes
-- Routing threshold: ≥2 keyword matches between file content and stack STACK.md scope. Files below threshold stay in inbox with a log entry.
-- `claude` must be in PATH at cron time. Example crontab: `0 * * * * PATH="$HOME/.local/bin:/usr/local/bin:$PATH" bash /path/to/loop.sh`
-```
-
-```bash
-git add .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
-git commit -m "chore: bump to 0.21.0, #14 loop CHANGELOG"
-git push
-gh issue close 14 --repo chuggies510/stacks --comment "Scheduled loop script added in 0.21.0 (scripts/loop.sh). Enable with touch \$LIBRARY/.loop-enabled. Routing is keyword-based; use /stacks:process-inbox for precision."
+gh issue close 14 --repo chuggies510/stacks --comment "Scheduled loop script added in 0.20.0 (scripts/loop.sh). Delegates inbox routing to /stacks:process-inbox via claude -p; catalogs any stacks with pending incoming files after routing. Enable with touch \$LIBRARY/.loop-enabled."
 ```
 
 ---
@@ -414,8 +318,7 @@ gh issue close 14 --repo chuggies510/stacks --comment "Scheduled loop script add
 
 **Files:**
 - Create: `skills/guide/SKILL.md`
-- Create: `templates/library/guides/.gitkeep` — scaffold guides/ at library init time
-- Modify: `skills/ask/SKILL.md` — add Step 1b to check existing guides before article retrieval
+- Modify: `skills/ask/SKILL.md` — add Step 1.5 to check existing guides before article retrieval
 
 **Acceptance Criteria:**
 - [ ] `skills/guide/SKILL.md` exists with correct frontmatter (name, description)
@@ -423,8 +326,7 @@ gh issue close 14 --repo chuggies510/stacks --comment "Scheduled loop script add
 - [ ] `--stacks` flag scopes retrieval to named stacks (same comma-separated format as /stacks:ask)
 - [ ] `--regenerate` flag bypasses existing guide check and overwrites
 - [ ] Guide body: 800-2000 words, structured sections (Overview, Key Concepts, Patterns, Pitfalls, Field Notes, Sources)
-- [ ] `/stacks:ask` Step 1b checks `$LIBRARY/guides/` before article retrieval and surfaces matching guide
-- [ ] `templates/library/guides/.gitkeep` exists
+- [ ] `/stacks:ask` Step 1.5 checks `$LIBRARY/guides/` before article retrieval and surfaces matching guide
 
 **Verify:** Manual smoke test in a test library with at least 2 articles cataloged:
 ```bash
@@ -442,14 +344,7 @@ gh issue close 14 --repo chuggies510/stacks --comment "Scheduled loop script add
 
 **Steps:**
 
-- [ ] **Step 1: Create guides/ in library template**
-
-```bash
-mkdir -p templates/library/guides
-touch templates/library/guides/.gitkeep
-```
-
-- [ ] **Step 2: Write skills/guide/SKILL.md**
+- [ ] **Step 1: Write skills/guide/SKILL.md**
 
 Create `skills/guide/SKILL.md`:
 
@@ -654,14 +549,14 @@ Run /stacks:guide --regenerate '{TOPIC}' to refresh after new sources are catalo
 \`\`\`
 ```
 
-- [ ] **Step 3: Update skills/ask/SKILL.md — add Step 1b guide check**
+- [ ] **Step 2: Update skills/ask/SKILL.md — add Step 1.5 guide check**
 
-In `skills/ask/SKILL.md`, add a new `## Step 1b: Check existing guides` section immediately after `## Step 1: Find the library` and before `## Step 2: Read the catalog`.
+In `skills/ask/SKILL.md`, add a new `## Step 1.5: Check existing guides` section immediately after `## Step 1: Find the library` and before `## Step 2: Read the catalog`.
 
 Content of the new step:
 
 ```markdown
-## Step 1b: Check existing guides
+## Step 1.5: Check existing guides
 
 Compute a slug from the raw query (stripping any --stack/--stacks flags):
 
@@ -680,39 +575,17 @@ If `$LIBRARY/guides/${QUERY_SLUG}.md` exists:
 If no matching guide exists: continue to Step 2.
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add skills/guide/SKILL.md templates/library/guides/.gitkeep skills/ask/SKILL.md
+git add skills/guide/SKILL.md skills/ask/SKILL.md
 git commit -m "feat(#18): /stacks:guide on-demand synthesis + ask guide-first check"
 ```
 
-- [ ] **Step 5: Version bump + CHANGELOG**
+- [ ] **Step 4: Close issue** *(version bump is consolidated at end of Task 4)*
 
 ```bash
-jq --arg v "0.22.0" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
-jq --arg v "0.22.0" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
-```
-
-Prepend to CHANGELOG.md:
-
-```markdown
-## [0.22.0] — 2026-05-10
-
-### Added
-- /stacks:guide: new skill — synthesizes long-form guide from library articles (#18)
-  - `--stacks` flag scopes retrieval to named stacks
-  - `--regenerate` flag rebuilds an existing guide from current articles
-  - Guides written to `library/guides/{slug}.md` with full article attribution and commit SHAs
-- /stacks:ask: checks `library/guides/` before article retrieval and surfaces matching guide (Step 1b)
-- templates/library: scaffold `guides/` directory at library init time
-```
-
-```bash
-git add .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
-git commit -m "chore: bump to 0.22.0, #18 guide CHANGELOG"
-git push
-gh issue close 18 --repo chuggies510/stacks --comment "/stacks:guide skill added in 0.22.0. Guides written to library/guides/{slug}.md with article attribution and commit SHAs. /stacks:ask checks guides first."
+gh issue close 18 --repo chuggies510/stacks --comment "/stacks:guide skill added in 0.20.0. Guides written to library/guides/{slug}.md with article attribution and commit SHAs. /stacks:ask checks guides/ first (Step 1.5)."
 ```
 
 ---
@@ -723,21 +596,20 @@ gh issue close 18 --repo chuggies510/stacks --comment "/stacks:guide skill added
 
 **Files:**
 - Modify: `templates/stack/STACK.md` — add `## Comparison Template` section
-- Create: `templates/stack/comparisons/.gitkeep` — scaffold comparisons/ at stack init time
 - Create: `agents/comparison-synthesizer.md`
-- Modify: `skills/catalog-sources/SKILL.md` — add comparison pre-filter before W1 dispatch
+- Modify: `skills/catalog-sources/SKILL.md` — add comparison pre-filter (Step 4.5) before W1 dispatch
+- Modify: `scripts/regenerate-moc.sh` — add Comparisons section to W4 index rebuild
 - Modify: `templates/stack/index.md` — add Comparisons section
 
 **Acceptance Criteria:**
 - [ ] `templates/stack/STACK.md` has `## Comparison Template` section
-- [ ] `templates/stack/comparisons/.gitkeep` exists
 - [ ] `agents/comparison-synthesizer.md` has correct frontmatter (name, tools, model, description)
 - [ ] comparison-synthesizer writes `comparisons/{slug}.md` (never `articles/`)
 - [ ] comparison-synthesizer reports `COMPARISON_SKIPPED` when source has fewer than 3 criteria
-- [ ] catalog-sources pre-filters `## Comparison:` sources before W1 and dispatches comparison-synthesizer for them
-- [ ] W1-W2 pipeline only processes non-comparison sources
+- [ ] catalog-sources Step 4.5 pre-filters `## Comparison:` sources before W1 and dispatches comparison-synthesizer for them
+- [ ] W1-W2 pipeline only processes non-comparison sources (`NEW_SOURCES_ARR` reassigned after split)
+- [ ] `scripts/regenerate-moc.sh` updated to emit a Comparisons section in index.md when comparisons/ has pages
 - [ ] `templates/stack/index.md` has Comparisons section
-- [ ] Existing stacks that gain comparison pages have their index.md updated by W4 to include a Comparisons section
 
 **Verify:** Manual smoke test in test library:
 ```bash
@@ -784,14 +656,7 @@ Sections for comparison pages (`comparisons/` dir). catalog-sources triggers com
 - Sources
 ```
 
-- [ ] **Step 2: Scaffold comparisons/ in stack template**
-
-```bash
-mkdir -p templates/stack/comparisons
-touch templates/stack/comparisons/.gitkeep
-```
-
-- [ ] **Step 3: Write agents/comparison-synthesizer.md**
+- [ ] **Step 2: Write agents/comparison-synthesizer.md**
 
 Create `agents/comparison-synthesizer.md`:
 
@@ -867,24 +732,32 @@ Comparison table criteria extracted from source: first cost, operating cost, zon
 Source section `## Comparison: adapter-node vs adapter-bun` has only one claim ("adapter-bun is faster on M-series"). One criterion found < 3 minimum.
 
 Report: `COMPARISON_SKIPPED: source.md — insufficient criteria (found 1, minimum 3)`. Do not write any file.
+
+## Example 3: Exactly 3 criteria — page produced
+
+Source section `## Comparison: SQLite vs Postgres` contains exactly 3 extractable criteria: setup complexity, concurrent write behavior, and backup approach.
+
+Output path: `comparisons/sqlite-vs-postgres.md`
+
+3 criteria meets the minimum threshold — produce the page. Comparison table has 3 rows. Decision section: "SQLite for single-process apps, Postgres for concurrent writers."
 ```
 
-- [ ] **Step 4: Add comparison pre-filter to catalog-sources SKILL.md**
+- [ ] **Step 3: Add comparison pre-filter to catalog-sources SKILL.md**
 
-Read `skills/catalog-sources/SKILL.md` and locate the step where incoming source files are enumerated (search for `sources/incoming` to find the enumeration). The pre-filter goes **immediately after** that enumeration and **before** the W1 dispatch.
+Read `skills/catalog-sources/SKILL.md` and locate the step where `NEW_SOURCES_ARR` is built (search for `NEW_SOURCES_ARR` to find it — this is the bash array of incoming source paths used for W1 dispatch). The pre-filter goes **immediately after** that enumeration and **before** the W1 dispatch. In the existing step numbering, this falls after Step 4 (W0 enumeration), so insert as `Step 4.5`.
 
-Add the following as a new step (name it "Step 3b" or appropriate given the surrounding numbering):
+Add the following new step to catalog-sources SKILL.md:
 
 ```markdown
-## Step Xb: Pre-filter comparison sources
+## Step 4.5: Pre-filter comparison sources
 
-Before W1 dispatch, split incoming files into comparison-shaped and standard:
+Before W1 dispatch, split `NEW_SOURCES_ARR` into comparison-shaped and standard:
 
 ```bash
 COMPARISON_FILES=()
 STANDARD_FILES=()
 
-for f in "${INCOMING_FILES[@]}"; do
+for f in "${NEW_SOURCES_ARR[@]}"; do
   if grep -qE '^## Comparison:' "$f"; then
     COMPARISON_FILES+=("$f")
   else
@@ -894,18 +767,17 @@ done
 
 echo "Standard sources: ${#STANDARD_FILES[@]}"
 echo "Comparison sources: ${#COMPARISON_FILES[@]}"
+
+NEW_SOURCES_ARR=("${STANDARD_FILES[@]}")
+N_SOURCES=${#NEW_SOURCES_ARR[@]}
 ```
 
 If COMPARISON_FILES is non-empty: dispatch comparison-synthesizer for each file. Dispatch them in parallel (one agent per file). Wait for all to complete. Collect any `COMPARISON_SKIPPED` reports and include them in the final summary.
 
-Set `INCOMING_FILES=("${STANDARD_FILES[@]}")` so W1-W2 processes only non-comparison sources.
-
 If STANDARD_FILES is empty after pre-filter (all sources were comparison-shaped): skip W1-W2 entirely and go directly to the index regeneration step (W4).
 ```
 
-**Important:** "Step Xb" is a placeholder. Read the current catalog-sources SKILL.md to find the correct step number (the step immediately before W1 dispatch). Insert the pre-filter with a number one decimal above that step (e.g., if W1 is Step 4, insert as Step 3b). Do not renumber existing steps.
-
-- [ ] **Step 5: Update templates/stack/index.md**
+- [ ] **Step 4: Update templates/stack/index.md**
 
 Replace the content of `templates/stack/index.md` with:
 
@@ -925,40 +797,63 @@ Replace the content of `templates/stack/index.md` with:
 *No sources yet. Drop files in `sources/incoming/` to get started.*
 ```
 
-Note: existing stacks have an index.md with a `## Topics` section (pre-wiki-pivot template). The W4 index rebuild in catalog-sources regenerates index.md from current articles — when comparison pages exist, W4 should add a Comparisons section. Verify this by checking the W4 step in catalog-sources and adding comparison listing logic if absent.
+Note: existing stacks have an index.md with a `## Topics` section (pre-wiki-pivot template). The W4 index rebuild regenerates index.md — Step 5 adds Comparisons section support to that rebuild script.
+
+- [ ] **Step 5: Update scripts/regenerate-moc.sh — add Comparisons section**
+
+Read `scripts/regenerate-moc.sh`. This script is invoked at W4 to rebuild each stack's `index.md`. Find the block that writes the `## Articles` section. Immediately after that block (before the `## Sources` section), add logic to emit a `## Comparisons` section when `comparisons/*.md` files exist:
+
+```bash
+# After the Articles section is written, before Sources section:
+comparison_pages=$(find "$STACK_DIR/comparisons" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort)
+if [[ -n "$comparison_pages" ]]; then
+  echo "" >> "$INDEX"
+  echo "## Comparisons" >> "$INDEX"
+  echo "" >> "$INDEX"
+  while IFS= read -r page; do
+    slug=$(basename "$page" .md)
+    title=$(awk '/^title:/{gsub(/^title: /, ""); print; exit}' "$page" 2>/dev/null || echo "$slug")
+    echo "- [$title](comparisons/${slug}.md)" >> "$INDEX"
+  done <<< "$comparison_pages"
+fi
+```
+
+Read the actual script first to confirm variable names (`$STACK_DIR`, `$INDEX`, etc.) and adapt the snippet to match. If the script uses different variable names, substitute accordingly.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add templates/stack/STACK.md templates/stack/comparisons/.gitkeep agents/comparison-synthesizer.md skills/catalog-sources/SKILL.md templates/stack/index.md
+git add templates/stack/STACK.md agents/comparison-synthesizer.md skills/catalog-sources/SKILL.md scripts/regenerate-moc.sh templates/stack/index.md
 git commit -m "feat(#7): comparison page type — comparison-synthesizer + catalog-sources pre-filter"
 ```
 
-- [ ] **Step 7: Version bump + CHANGELOG**
+- [ ] **Step 7: Consolidated version bump + CHANGELOG (all 4 tasks)**
+
+This is the single version bump for the entire Phase 3+4 batch (#40 + #14 + #18 + #7):
 
 ```bash
-jq --arg v "0.23.0" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
-jq --arg v "0.23.0" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
+jq --arg v "0.20.0" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
+jq --arg v "0.20.0" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
 ```
 
 Prepend to CHANGELOG.md:
 
 ```markdown
-## [0.23.0] — 2026-05-10
+## [0.20.0] — 2026-05-10
 
 ### Added
-- Comparison page type: source files with `## Comparison: X vs Y` sections produce `comparisons/{slug}.md` via new `comparison-synthesizer` agent (#7)
-  - Triggered by explicit `## Comparison:` section header (requires ≥3 criteria or page is skipped)
-  - catalog-sources pre-filters comparison-shaped sources before W1; W1-W2 pipeline processes only standard sources
-  - comparison-synthesizer writes structured decision-table pages with Comparison Table, When to Use X/Y, Pitfalls, Decision sections
-- templates/stack: scaffold `comparisons/` directory at stack init time
-- STACK.md template: `## Comparison Template` section documents expected comparison page structure
-- templates/stack/index.md: updated to show Articles and Comparisons sections
+- process-inbox: quality gate — low-quality files route to `library/recycling-bin/` instead of stack incoming dirs. Assessed by reading file body content. Step 6 report includes Recycled section when files are recycled. (#40)
+- scripts/loop.sh: scheduled library maintenance — delegates inbox routing to `/stacks:process-inbox` via `claude -p`, then catalogs stacks with pending incoming files. Enable with `touch $LIBRARY/.loop-enabled`. Add to crontab with explicit PATH including claude's install dir. (#14)
+- /stacks:guide: new skill — synthesizes long-form guide (800-2000 words) from library articles. Writes to `library/guides/{slug}.md` with full article attribution and commit SHAs. `--stacks` scopes to named stacks; `--regenerate` rebuilds from current articles. (#18)
+- /stacks:ask: checks `library/guides/` before article retrieval (Step 1.5) and surfaces existing guide. (#18)
+- Comparison page type: source files with `## Comparison: X vs Y` sections produce `comparisons/{slug}.md` via new `comparison-synthesizer` agent. Requires ≥3 criteria or page is skipped with `COMPARISON_SKIPPED` report. catalog-sources Step 4.5 pre-filters before W1; W1-W2 processes only standard sources. W4 index rebuild now includes Comparisons section. (#7)
+- STACK.md template: `## Comparison Template` section documents expected comparison page structure.
+- templates/stack/index.md: updated to show Articles and Comparisons sections.
 ```
 
 ```bash
 git add .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
-git commit -m "chore: bump to 0.23.0, #7 comparison type CHANGELOG"
+git commit -m "chore: bump to 0.20.0, Phase 3+4 CHANGELOG (#40 #14 #18 #7)"
 git push
-gh issue close 7 --repo chuggies510/stacks --comment "Comparison page type added in 0.23.0. Triggered by source files containing '## Comparison: X vs Y' sections. comparison-synthesizer writes comparisons/{slug}.md with decision table."
+gh issue close 7 --repo chuggies510/stacks --comment "Comparison page type added in 0.20.0. Triggered by source files containing '## Comparison: X vs Y' sections. comparison-synthesizer writes comparisons/{slug}.md with decision table."
 ```
