@@ -228,6 +228,8 @@ if (( N_SOURCES == 0 )); then
 fi
 N_BATCHES_W1=$N_SOURCES
 mkdir -p "$STACK/dev/extractions"
+rm -f "$STACK/dev/extractions"/batch-*-concepts.md
+rm -f "$STACK/dev/extractions"/_dedup*.md
 DISPATCH_EPOCH_W1=$(date +%s)
 ```
 
