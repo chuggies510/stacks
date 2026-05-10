@@ -288,27 +288,6 @@ python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
 source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')
 CONCEPT_SLUGS=($ALL_SLUGS)
 
-# Per-slug split: for each unique slug, write dev/extractions/_dedup-{slug}.md
-# containing only that slug's merged block. The aggregated _dedup.md is the
-# audit trail; the per-slug files are what W2 article-synthesizer agents read.
-for slug in "${CONCEPT_SLUGS[@]}"; do
-  per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
-  awk -v want="$slug" '
-    /^## Concept: / {
-      if (in_block && block) { print block }
-      block = $0 "\n"
-      next
-    }
-    /^slug:[[:space:]]/ {
-      cur=$2
-      in_block=(cur==want)
-      block = block $0 "\n"
-      next
-    }
-    in_block { block = block $0 "\n" }
-    END { if (in_block && block) print block }
-  ' "$DEDUP" > "$per_slug_path"
-done
 
 # Compute extraction_hash per unique slug. Required byte format (stable across
 # stacks; do not change without invalidating every skip list):
@@ -323,7 +302,7 @@ for slug in "${CONCEPT_SLUGS[@]}"; do
 done
 ```
 
-The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus per-slug files. The awk per-slug split mirrors the orchestrator's previous behavior. The `compute-extraction-hash.sh` invocation matches the byte format documented in `agents/article-synthesizer.md`.
+The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug. The `compute-extraction-hash.sh` invocation matches the byte format documented in `agents/article-synthesizer.md`.
 
 ## Step 6.75: W2 — Parent-side parallel article-synthesizer dispatch
 

@@ -93,3 +93,21 @@ with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
     f.write(f"N_UPDATED={len(updated_slugs)}\n")
     f.write("ALL_SLUGS=" + " ".join(sorted(slug_seen)) + "\n")
     f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
+
+# Write one _dedup-{slug}.md per unique slug so article-synthesizer agents each
+# read a self-contained single-concept file rather than parsing _dedup.md.
+for slug in sorted(slug_seen):
+    per_slug_path = os.path.join(extr_dir, f"_dedup-{slug}.md")
+    with open(per_slug_path, "w") as f:
+        f.write(f"## Concept: {slug_title[slug]}\n\n")
+        f.write(f"slug: {slug}\n")
+        f.write(f"title: {slug_title[slug]}\n")
+        f.write("source_paths:\n")
+        for sp in slug_sources[slug]:
+            f.write(f"  - {sp}\n")
+        f.write(f'target_article: {slug_target_article[slug] or ""}\n')
+        f.write(f"tier: {slug_tier[slug]}\n\n")
+        f.write("### Claims\n")
+        for cl in slug_claims[slug]:
+            f.write(cl + "\n")
+        f.write("\n")
