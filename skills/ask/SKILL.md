@@ -45,66 +45,101 @@ Read `$LIBRARY/catalog.md`. This lists all available stacks with names, descript
 
 If catalog.md contains no stack entries (no lines starting with `- [`), tell the user: "No stacks in your library yet. Run /stacks:new-stack from your library repo to create one."
 
-## Step 3: Parse the query
+## Step 3: Parse the query and resolve stack scope
 
-`$ARGUMENTS` contains the full query text.
-
-Check if the first word of `$ARGUMENTS` matches an existing stack directory:
+`$ARGUMENTS` contains the full query text. Parse flags before extracting the query:
 
 ```bash
-FIRST_WORD=$(echo "$ARGUMENTS" | awk '{print $1}')
-if [[ -d "$LIBRARY/$FIRST_WORD" ]]; then
-  STACK="$FIRST_WORD"
-  QUERY=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
+RAW="$ARGUMENTS"
+STACK_SINGLE=""
+STACKS_MULTI=""
+
+# Extract --stack {name}
+if [[ "$RAW" == *"--stack "* ]]; then
+  STACK_SINGLE=$(echo "$RAW" | sed 's/.*--stack[[:space:]]*//' | awk '{print $1}')
+  RAW=$(echo "$RAW" | sed "s/--stack[[:space:]]*${STACK_SINGLE}//")
+fi
+
+# Extract --stacks {a,b,c}
+if [[ "$RAW" == *"--stacks "* ]]; then
+  STACKS_MULTI=$(echo "$RAW" | sed 's/.*--stacks[[:space:]]*//' | awk '{print $1}')
+  RAW=$(echo "$RAW" | sed "s/--stacks[[:space:]]*${STACKS_MULTI}//")
+fi
+
+QUERY=$(echo "$RAW" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+```
+
+Resolve `STACKS_TO_SEARCH` — the list of stack names to search:
+
+```bash
+# -- REPLACE-WITH-QMD when #10 lands: this bash enumeration is the stub.
+# The qmd implementation accepts (query, stacks_to_search[]) and returns
+# (article_path, stack_name, score)[] — replace Step 5 article-mode body only.
+if [[ -n "$STACK_SINGLE" ]]; then
+  [[ -d "$LIBRARY/$STACK_SINGLE" ]] || { echo "ERROR: stack '$STACK_SINGLE' not found"; exit 1; }
+  STACKS_TO_SEARCH=("$STACK_SINGLE")
+elif [[ -n "$STACKS_MULTI" ]]; then
+  IFS=',' read -ra STACKS_TO_SEARCH <<< "$STACKS_MULTI"
+  for s in "${STACKS_TO_SEARCH[@]}"; do
+    [[ -d "$LIBRARY/$s" ]] || { echo "ERROR: stack '$s' not found"; exit 1; }
+  done
 else
-  STACK=""
-  QUERY="$ARGUMENTS"
+  # Default: all stacks from catalog.md
+  mapfile -t STACKS_TO_SEARCH < <(
+    grep '^- \[' "$LIBRARY/catalog.md" \
+    | sed 's|.*\[\([^]]*\)\](\([^/]*\)/).*|\2|'
+  )
+  [[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] \
+    || { echo "No stacks found in catalog.md — run /stacks:new-stack first."; exit 1; }
 fi
 ```
 
-If `STACK` is empty, read the catalog descriptions and use semantic reasoning to pick the best matching stack for the query. If no good match, list stacks and ask the user which to use.
+## Step 4: Read indexes for all stacks in scope
 
-## Step 4: Read the stack index
+For each stack in `STACKS_TO_SEARCH`:
+- Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no index yet" and skip it.
+- Capture any `## Reading Paths` section as retrieval context for that stack.
 
-Read `$LIBRARY/{stack}/index.md`. It has two sections:
-- **Topics**: list of topic guides with descriptions
-- **Sources**: list of ingested sources
+If all stacks were skipped (none had an index), tell the user to run `/stacks:catalog-sources` in the library repo.
 
-If `$LIBRARY/{stack}/index.md` does not exist, tell the user: "Stack `{stack}` has no index yet — it may be newly created. Run /stacks:catalog-sources {stack} from your library repo to populate it." Then stop.
+## Step 5: Retrieve matching articles across stacks
 
-Match the query against topic names and descriptions to identify the 1-3 most relevant topics. Use this preference order: (1) exact keyword match against topic names first, (2) keyword match against topic descriptions, (3) semantic reasoning when no exact matches exist. When multiple topics score similarly, prefer narrower topics over broad overview topics.
+<!-- STACKS-SEARCH STUB — replace this block when #10 (qmd) lands.
+     Contract: input = (QUERY, STACKS_TO_SEARCH[], per-stack article dirs)
+     Output = up to 3 (article_path, stack_name) pairs ranked by relevance.
+     The answer synthesis in Step 6 depends only on these pairs. -->
 
-If the index is empty (no topics yet), tell the user: "Stack '{stack}' has no topics yet. Run /stacks:catalog-sources {stack} from your library repo first."
-
-Also check the index for a `## Reading Paths` section. If present, capture its full content as additional retrieval context. Reading Paths group articles (or topics) that commonly go together for a given concept or workflow. In article mode this context helps match a query to a coherent set of articles rather than isolated entries; in guide mode it may not be present but is used the same way if found.
-
-## Step 5: Read topic guides
-
-Check whether the stack is in article mode or guide mode:
+Check whether each stack in `STACKS_TO_SEARCH` is in article mode or guide mode:
 
 ```bash
-if test -d "$LIBRARY/$STACK/articles" && find "$LIBRARY/$STACK/articles" -maxdepth 1 -name '*.md' | head -1 | grep -q .; then
-  MODE=article
-else
-  MODE=guide
-fi
+for stack in "${STACKS_TO_SEARCH[@]}"; do
+  if find "$LIBRARY/$stack/articles" -maxdepth 1 -name '*.md' 2>/dev/null | grep -q .; then
+    echo "article $stack"
+  else
+    echo "guide $stack"
+  fi
+done
 ```
 
-**Article mode** (`articles/` directory exists and contains at least one `.md` file):
+**Article mode stacks** (those where `articles/` exists and has `.md` files):
 
-Match the query against articles in `$LIBRARY/{stack}/articles/`. Weight matches in this order:
-1. Article `title` frontmatter field — highest weight
-2. Article `tags[]` frontmatter field — high weight
+Score articles across ALL article-mode stacks together. For each article, weight matches in this order:
+1. `title` frontmatter field — highest weight
+2. `tags[]` frontmatter field — high weight
 3. Article slug (filename without `.md`) — medium weight
-4. Reading Paths context extracted in Step 4 — contextual aid: articles grouped in the same Reading Path are considered related and should be preferred together
+4. Reading Paths context from Step 4 — contextual aid
 
-Read up to 3 matching `$LIBRARY/{stack}/articles/{slug}.md` files. If only one matches, read just that one. If more than 3 match, pick the 3 with the closest relevance to the query.
+Select the top 3 articles globally (across all stacks). Read each article file. Track which stack each article came from.
 
-**Guide mode** (no `articles/` directory, or directory is empty) — existing behavior:
+**Guide mode stacks** (those without `articles/`):
 
-Read the matched topic guide files at `$LIBRARY/{stack}/topics/{topic}/guide.md`.
+Score guides from all guide-mode stacks together using the same weighting. Select top 3 guides globally. Track which stack each guide came from.
 
-Read up to 3 guides. If only one matches, read just that one. If more than 3 match, pick the 3 with the closest relevance to the query.
+**Mixed case** (some stacks article mode, some guide mode):
+
+Score article-mode and guide-mode results separately, then interleave by relevance score. Cap at 3 total.
+
+If no matches found across any stack in scope: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}."
 
 ## Step 6: Synthesize answer
 
@@ -123,7 +158,7 @@ Format the response as:
 {synthesized answer with specific citations inline}
 
 **Sources**: {topic guide names that contributed}
-**Stack**: {stack name}
+**Stacks**: {stack name(s) that contributed — use singular "Stack" if only one}
 ```
 
 If no relevant topics are found: "No matching topics found in {stack}. The stack covers: {list topic names from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
