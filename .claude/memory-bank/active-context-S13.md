@@ -24,7 +24,7 @@ Phase 2 execution (from plan): wrote and shipped assert-structure.sh (21 bats te
 
 ### Chat
 
-(filled in Phase 8)
+S12-phase2-ship-phase3-4-plan
 
 ### Changes made
 
