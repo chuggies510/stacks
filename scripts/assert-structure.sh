@@ -21,19 +21,19 @@ case "$type" in
     ;;
   dedup-meta)
     grep -qE '^ALL_SLUGS=' "$path"   || fail "missing ALL_SLUGS key"
-    grep -qE '^ALL_SLUGS=.+' "$path" || fail "ALL_SLUGS has empty value"
+    grep -qE '^ALL_SLUGS=[^[:space:]]' "$path" || fail "ALL_SLUGS has empty value"
     ;;
   article-md)
     grep -qE '^extraction_hash:' "$path" || fail "missing extraction_hash field"
-    grep -qE '^title:'            "$path" || fail "missing title field"
-    grep -qE '^slug:'             "$path" || fail "missing slug field"
+    grep -qE '^title:'           "$path" || fail "missing title field"
+    grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
     ;;
   article-validated)
     grep -qE '\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]' "$path" \
       || fail "no validation marker found"
     ;;
   glossary-md)
-    grep -qE '^\*\*' "$path" || fail "no glossary entries found (expected '**Term**:' format)"
+    grep -qE '^\*\*[^*]' "$path" || fail "no glossary entries found (expected '**Term**:' format)"
     ;;
   invariants-md)
     grep -qE '^[0-9]+\.' "$path" || fail "no numbered invariant entries found"

@@ -77,14 +77,14 @@ run_script() {
 
 @test "article-md: valid file passes" {
   local f="$TEST_TMP/article.md"
-  printf 'extraction_hash: abc123\ntitle: Heat Exchanger Types\nslug: heat-exchanger-types\n' > "$f"
+  printf 'extraction_hash: abc123\ntitle: Heat Exchanger Types\nlast_verified: ""\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 0 ]
 }
 
 @test "article-md: missing extraction_hash fails" {
   local f="$TEST_TMP/article.md"
-  printf 'title: Heat Exchanger Types\nslug: heat-exchanger-types\n' > "$f"
+  printf 'title: Heat Exchanger Types\nlast_verified: ""\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
@@ -92,13 +92,13 @@ run_script() {
 
 @test "article-md: missing title fails" {
   local f="$TEST_TMP/article.md"
-  printf 'extraction_hash: abc123\nslug: heat-exchanger-types\n' > "$f"
+  printf 'extraction_hash: abc123\nlast_verified: ""\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
-@test "article-md: missing slug fails" {
+@test "article-md: missing last_verified fails" {
   local f="$TEST_TMP/article.md"
   printf 'extraction_hash: abc123\ntitle: Heat Exchanger Types\n' > "$f"
   run_script "$f" article-md
