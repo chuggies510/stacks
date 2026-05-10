@@ -1,10 +1,7 @@
 # reconcile-findings.py
-# Purpose: pre-A3 reconcile pass. Closes prior open findings whose articles
-#          were deleted, whose claim text was rewritten out, or whose claim
-#          now carries a [VERIFIED] / [DRIFT] inline mark.
+# Purpose: pre-A3 reconcile pass. Closes prior open findings whose articles were deleted, or whose claim now carries a [VERIFIED] or [DRIFT] inline mark.
 # Usage:   python3 reconcile-findings.py <stack> <audit_date> <stack_head>
-# Output:  rewrites <stack>/dev/audit/findings.md in place. Stable when nothing
-#          to reconcile. Logs ambiguous-match warnings to stderr.
+# Output:  rewrites <stack>/dev/audit/findings.md in place. Logs ambiguous-match warnings to stderr.
 
 import os, re, sys
 
@@ -19,13 +16,15 @@ if not os.path.isfile(findings_path):
 
 raw = open(findings_path).read()
 
-# Split into preamble (frontmatter + section headers up to first item) and items.
-# Items begin at column 0 with `- id:`. Preserve everything between items including
-# section headers, since we rewrite the file in place by re-emitting the
-# preamble + maybe-modified items.
+# Split on `- id:` boundaries. Section headers (`## ...`) between items get
+# attached to the trailing edge of the preceding item block. Acceptable because
+# A3 merge rewrites findings.md from scratch immediately after reconcile, so
+# the post-reconcile file is transient state.
 parts = re.split(r'(?m)^(?=- id:)', raw)
 preamble = parts[0]
 item_blocks = parts[1:]
+
+MARK_PATTERN = re.compile(r'\[VERIFIED\]|\[DRIFT\]|\[UNSOURCED\]|\[STALE\]')
 
 
 def normalize_ws(s):
@@ -48,9 +47,9 @@ def strip_quotes(v):
 
 
 def reconcile(blk):
-    """Return (new_blk, action_taken). action_taken is one of:
+    """Return (new_blk, action). action is one of:
        'unchanged', 'closed-article-missing', 'closed-verified',
-       'closed-drift', 'closed-claim-removed', 'ambiguous'."""
+       'closed-drift', 'ambiguous'."""
     fields = parse_item(blk)
     if fields.get("status") != "open":
         return blk, "unchanged"
@@ -63,7 +62,7 @@ def reconcile(blk):
 
     article_path = f"{articles_dir}/{article_slug}.md"
     if not os.path.isfile(article_path):
-        return _close(blk, fields, "article deleted between audit cycles"), "closed-article-missing"
+        return _close(blk, "article deleted between audit cycles"), "closed-article-missing"
 
     body = open(article_path).read()
     norm_body = normalize_ws(body)
@@ -81,11 +80,10 @@ def reconcile(blk):
         start = idx + 1
 
     if len(occurrences) == 0:
-        # Claim text not found verbatim. This usually means findings-analyst
+        # Claim text not found verbatim. Almost always means findings-analyst
         # paraphrased when extracting (dropped parentheticals, expanded
-        # acronyms, etc.) — not that the claim was rewritten out. Don't close
-        # on this signal; carry forward and let rotate-findings.sh age out
-        # truly-stale items eventually.
+        # acronyms). Don't close on this signal; let rotate-findings.sh age
+        # out truly-stale items eventually.
         return blk, "unchanged"
 
     if len(occurrences) > 1:
@@ -95,49 +93,34 @@ def reconcile(blk):
         )
         return blk, "ambiguous"
 
-    # Single match. Inspect 30 chars FORWARD from end of claim for the first
-    # inline mark. Forward-only is required: validator marks land
-    # end-of-sentence (e.g., "claim text. [VERIFIED]") so the mark immediately
-    # after the matched claim is the one that applies. A bidirectional window
-    # picks up marks belonging to neighboring sentences (the mark from the
-    # preceding paragraph closes against this paragraph's claim).
+    # Forward-only window is required: validator marks land end-of-sentence
+    # ("claim text. [VERIFIED]"). Bidirectional windows pick up marks that
+    # belong to neighboring sentences.
     pos = occurrences[0]
     window_start = pos + len(norm_claim)
     window_end = min(len(norm_body), window_start + 30)
-    window = norm_body[window_start:window_end]
-
-    # Find which mark appears first in the forward window.
-    first_idx = -1
-    first_mark = None
-    for mark in ("[VERIFIED]", "[DRIFT]", "[UNSOURCED]", "[STALE]"):
-        idx = window.find(mark)
-        if idx != -1 and (first_idx == -1 or idx < first_idx):
-            first_idx = idx
-            first_mark = mark
+    m = MARK_PATTERN.search(norm_body, window_start, window_end)
+    first_mark = m.group() if m else None
 
     if first_mark == "[VERIFIED]":
-        note = f"validator marked VERIFIED on {audit_date} pass"
-        return _close(blk, fields, note), "closed-verified"
+        return _close(blk, f"validator marked VERIFIED on {audit_date} pass"), "closed-verified"
     if first_mark == "[DRIFT]":
-        note = f"claim now [DRIFT]; new finding emitted under fresh id by A3"
-        return _close(blk, fields, note), "closed-drift"
+        return _close(blk, "claim now [DRIFT]; new finding emitted under fresh id by A3"), "closed-drift"
 
-    # Still UNSOURCED / STALE / no mark — carry forward.
     return blk, "unchanged"
 
 
-def _close(blk, fields, note):
+def _close(blk, note):
     """Return blk with status flipped to closed and terminal_transitioned_on +
-       note inserted/updated. Preserves all other lines verbatim."""
+       note inserted/updated. Status field is guaranteed present on open items
+       by reconcile()'s gate; only ttoon and note may need to be appended."""
     out_lines = []
-    saw_status = False
     saw_ttoon = False
     saw_note = False
     for line in blk.splitlines():
         if re.match(r'^\s+status:\s', line):
             indent = re.match(r'^(\s+)', line).group(1)
             out_lines.append(f"{indent}status: closed")
-            saw_status = True
         elif re.match(r'^\s+terminal_transitioned_on:\s', line):
             indent = re.match(r'^(\s+)', line).group(1)
             out_lines.append(f"{indent}terminal_transitioned_on: {audit_date}")
@@ -145,14 +128,13 @@ def _close(blk, fields, note):
         elif re.match(r'^\s+note:\s', line):
             indent = re.match(r'^(\s+)', line).group(1)
             existing = strip_quotes(re.sub(r'^\s+note:\s*', '', line).strip())
-            merged = f"{existing}; reconcile: {note}" if existing else f"reconcile: {note}"
+            existing_escaped = existing.replace('\\', '\\\\').replace('"', '\\"')
+            merged = f"{existing_escaped}; reconcile: {note}" if existing_escaped else f"reconcile: {note}"
             out_lines.append(f'{indent}note: "{merged}"')
             saw_note = True
         else:
             out_lines.append(line)
 
-    if not saw_status:
-        out_lines.append("  status: closed")
     if not saw_ttoon:
         out_lines.append(f"  terminal_transitioned_on: {audit_date}")
     if not saw_note:
@@ -182,14 +164,8 @@ for blk in item_blocks:
 new_content = preamble + "".join(reconciled_blocks)
 open(findings_path, "w").write(new_content)
 
-closed_total = (
-    counts["closed-article-missing"]
-    + counts["closed-verified"]
-    + counts["closed-drift"]
-)
 print(
-    f"reconciled: closed_total={closed_total} "
-    f"article_missing={counts['closed-article-missing']} "
+    f"reconciled: article_missing={counts['closed-article-missing']} "
     f"verified={counts['closed-verified']} "
     f"drift={counts['closed-drift']} "
     f"ambiguous={counts['ambiguous']} "

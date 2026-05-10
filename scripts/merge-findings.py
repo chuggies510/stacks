@@ -11,11 +11,8 @@ stack_head = sys.argv[3]
 new_pass = int(sys.argv[4])
 findings_path = f"{stack}/dev/audit/findings.md"
 
-partials = sorted(glob.glob(f"{stack}/dev/audit/_a3-partial-*.md"))
-items = []
-for p in partials:
-    content = open(p).read()
-    # Split at each "- id:" block boundary
+def parse_blocks(content):
+    out = []
     for blk in re.split(r'\n(?=- id:)', content):
         blk = blk.strip()
         if not blk.startswith("- id:"):
@@ -27,10 +24,26 @@ for p in partials:
                 k, v = m.group(1), m.group(2).strip()
                 item[k] = v
         if "id" in item:
-            items.append(item)
+            out.append(item)
+    return out
+
+
+partials = sorted(glob.glob(f"{stack}/dev/audit/_a3-partial-*.md"))
+items = []
+for p in partials:
+    items.extend(parse_blocks(open(p).read()))
 
 TERMINAL = {"applied", "closed", "deferred"}
 by_id = {}
+
+# Seed from post-reconcile findings.md so terminal items survive the merge
+# even when no partial covers them (deleted-article closures from
+# reconcile-findings.py have no batch agent to carry them forward). Partials
+# overlay this base via the terminal-wins precedence below.
+if os.path.isfile(findings_path):
+    for it in parse_blocks(open(findings_path).read()):
+        if it.get("status") in TERMINAL:
+            by_id[it["id"]] = it
 for it in items:
     iid = it["id"]
     cur = by_id.get(iid)

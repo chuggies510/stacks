@@ -1,10 +1,28 @@
+## 0.17.1 — 2026-05-09
+
+Three-lens review patches on the 0.17.0 reconcile pass.
+
+### Fixes
+
+- fix(merge-findings.py): seed the merge's `by_id` map from the post-reconcile `findings.md` before processing partials. Without this seed, a closure produced by reconcile via the deleted-article path had no batch agent to carry it forward and was silently dropped from the merged output. The CHANGELOG entry for 0.17.0 promised this closure path; the seed makes the promise honest. Terminal items from the seed survive when no partial covers them; partials overlay via the existing terminal-wins precedence.
+- fix(reconcile-findings.py): escape backslash and quote characters in existing `note:` field text before re-wrapping in double quotes. Prior implementation produced invalid YAML if a note ever contained a literal `"` (latent — no live findings.md currently has such notes).
+
+### Refactors
+
+- refactor(reconcile-findings.py): collapse manual mark-search loop into a single compiled `re` alternation pattern. Drop the dead `saw_status` fallback branch in `_close()` (status field is guaranteed present on open items by the caller's gate). Drop `closed_total` from the print line (derivable sum of three adjacent fields). Strip the WHAT-comment "Find which mark appears first" — the WHY block above already covers it. Header field-wrap collapsed to single-line-per-field to match `merge-findings.py` and `dedup-extractions.py`.
+
+### Docs
+
+- docs(reconcile-findings.py): drop `closed-claim-removed` from the `reconcile()` docstring return-value enum. The branch was removed during 0.17.0 smoke testing because findings-analyst paraphrases claims when extracting (drops parentheticals, expands acronyms), which made claim-not-found-in-article false-fire. Header rewritten to match actual behavior.
+- docs(CHANGELOG.md): 0.17.0 entry corrected — auto-close handles VERIFIED/DRIFT validation transitions and deleted articles; the "claim rewritten out of article" path is intentionally excluded.
+
 ## 0.17.0 — 2026-05-09
 
 Flywheel automation: pre-A3 reconcile auto-closes prior open findings when validation transitions resolve them. Schema enum narrowed to remove dead values.
 
 ### Features
 
-- feat(audit-stack): pre-A3 reconcile pass via new `scripts/reconcile-findings.py`. Closes prior `open` findings whose claims now carry `[VERIFIED]` or `[DRIFT]`, whose articles were deleted between cycles, or whose claim text was rewritten out of the article. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a structured `note:` line. Closes the manual-bookkeeping gap in the Karpathy-style flywheel: the operator drops a source addressing an open `fetch_source` finding, recatalogs, and the next audit auto-closes the corresponding finding without hand-editing YAML. Ambiguous-match cases (claim text appearing more than once in the article body) are logged to stderr and carried forward unchanged. Findings-analyst agents read the post-reconcile findings.md, so closures are visible to their existing terminal-carry-forward logic without any agent prompt change.
+- feat(audit-stack): pre-A3 reconcile pass via new `scripts/reconcile-findings.py`. Closes prior `open` findings whose claims now carry `[VERIFIED]` or `[DRIFT]` inline marks, or whose articles were deleted between cycles. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a structured `note:` line. Closes the manual-bookkeeping gap in the Karpathy-style flywheel: the operator drops a source addressing an open `fetch_source` finding, recatalogs, and the next audit auto-closes the corresponding finding without hand-editing YAML. Ambiguous-match cases (claim text appearing more than once in the article body) are logged to stderr and carried forward unchanged. Findings-analyst agents read the post-reconcile findings.md, so closures are visible to their existing terminal-carry-forward logic without any agent prompt change. The "claim rewritten out of article" close path is intentionally excluded — findings-analyst paraphrases claims when extracting (drops parentheticals, expands acronyms), so a verbatim-search miss usually means paraphrasing rather than rewrite; see 0.17.1 for the merge seed that completes the deleted-article path.
 
 ### Removed
 
