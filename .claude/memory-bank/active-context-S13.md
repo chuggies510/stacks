@@ -11,7 +11,7 @@ session: 13
 - Plugin at 0.19.0, Phase 2 shipped (#50 assert-structure gates, #5 cross-stack ask)
 - 5 open issues: #40, #14, #18, #10, #7
 - Phase 3+4 plan written, reviewed (a-review), and ready to execute
-- Plan at `docs/superpowers/plans/2026-05-10-stacks-phase3-4.md` (all 4 tasks pending)
+- Plan at `dev/superpowers/plans/2026-05-10-stacks-phase3-4.md` (all 4 tasks pending)
 - Next version bump is 0.20.0, covering all 4 Phase 3+4 tasks as one batch
 
 ---
@@ -36,7 +36,7 @@ S12-phase2-ship-phase3-4-plan
 | /stacks:ask: --stack/--stacks flags, cross-stack scoring, STACKS-SEARCH STUB | committed |
 | 0.19.0 version bump + CHANGELOG | committed |
 | #50 and #5 closed on GitHub | done |
-| docs/superpowers/plans/2026-05-10-stacks-phase3-4.md: Phase 3+4 plan written | committed |
+| dev/superpowers/plans/2026-05-10-stacks-phase3-4.md: Phase 3+4 plan written | committed |
 | Phase 3+4 plan: 10 a-review findings applied (S-01 loop.sh, S-02 version consolidation, S-03 lazy dirs, C-02 variable fix, C-03 commit guard, C-04 regenerate-moc, V-01 example 3, V-04 step naming) | committed |
 
 ### Knowledge extracted
