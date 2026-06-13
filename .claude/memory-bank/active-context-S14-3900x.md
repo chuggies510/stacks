@@ -29,7 +29,7 @@ No-commit thread (the session's later half): walked through the "drop a folder, 
 
 ### Chat
 
-(filled in Phase 8)
+S14-simplify-and-ingest-triage
 
 ### Changes made
 
