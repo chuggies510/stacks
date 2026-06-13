@@ -4,27 +4,27 @@
     {
       "id": 1,
       "subject": "Task 1: Quality gate in process-inbox (#40)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** process-inbox reads file body content and moves low-quality files to `$LIBRARY/recycling-bin/` instead of routing them to a stack's incoming dir.\n\n**Files:**\n- Modify: `skills/process-inbox/SKILL.md`\n- Create: `templates/library/recycling-bin/.gitkeep`\n\n**Acceptance Criteria:**\n- Files with specific technical facts route to stack incoming/ as normal\n- Files with only generic content move to recycling-bin/\n- Step 6 report includes Recycled section when any files recycled\n- `templates/library/recycling-bin/.gitkeep` exists\n\n**Verify:** Manual smoke test — low-quality file goes to recycling-bin/, high-quality file routes to stack incoming/\n\n```json:metadata\n{\"files\": [\"skills/process-inbox/SKILL.md\", \"templates/library/recycling-bin/.gitkeep\"], \"verifyCommand\": \"manual smoke test\", \"acceptanceCriteria\": [\"low-quality files route to recycling-bin/\", \"high-quality files route to stack incoming/\", \"Step 6 report includes Recycled section\", \"recycling-bin/.gitkeep in library template\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Scheduled loop script (#14)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** `scripts/loop.sh` does mechanical inbox routing (keyword scoring) then invokes `catalog-sources` via `claude -p` for each stack that received files. Enable/disable via `.loop-enabled` sentinel.\n\n**Files:**\n- Create: `scripts/loop.sh`\n- Create: `tests/loop.bats`\n\n**Acceptance Criteria:**\n- Exits 0 when `.loop-enabled` absent (disabled)\n- Exits 0 when inbox empty (logs no-op)\n- Routes inbox files by keyword scoring against STACK.md scope (threshold ≥2)\n- Invokes `claude -p \"/stacks:catalog-sources {stack}\"` per routed stack\n- Skips claude when no files routed\n- Logs all activity with ISO-8601 timestamps\n- `bats tests/loop.bats` passes (all 7 tests)\n\n**Verify:** `bats tests/loop.bats` → all 7 pass\n\n```json:metadata\n{\"files\": [\"scripts/loop.sh\", \"tests/loop.bats\"], \"verifyCommand\": \"bats tests/loop.bats\", \"acceptanceCriteria\": [\"disabled when .loop-enabled absent\", \"no-op when inbox empty\", \"routes by keyword score\", \"invokes claude -p per stack\", \"all 7 bats tests pass\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: /stacks:guide on-demand synthesis (#18)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** New `/stacks:guide \"{topic}\"` skill retrieves relevant articles across stacks and synthesizes a structured long-form guide to `$LIBRARY/guides/{slug}.md`. `/stacks:ask` surfaces existing guides before article retrieval.\n\n**Files:**\n- Create: `skills/guide/SKILL.md`\n- Create: `templates/library/guides/.gitkeep`\n- Modify: `skills/ask/SKILL.md` (add Step 1b guide check)\n\n**Acceptance Criteria:**\n- Guide written to `$LIBRARY/guides/{slug}.md` with frontmatter: topic, generated, stacks, articles (with SHAs), excluded\n- `--stacks` flag scopes retrieval to named stacks\n- `--regenerate` overwrites existing guide\n- Guide body 800-2000 words with structured sections\n- `/stacks:ask` checks guides/ before article retrieval (Step 1b)\n\n**Verify:** Manual smoke test — `/stacks:guide \"test topic\"` writes guides/test-topic.md, `/stacks:ask \"test topic\"` surfaces it\n\n```json:metadata\n{\"files\": [\"skills/guide/SKILL.md\", \"templates/library/guides/.gitkeep\", \"skills/ask/SKILL.md\"], \"verifyCommand\": \"manual smoke test\", \"acceptanceCriteria\": [\"guide written with correct frontmatter\", \"--stacks flag scopes retrieval\", \"--regenerate overwrites\", \"ask Step 1b surfaces existing guide\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Comparison page type (#7)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Stacks produce `comparisons/{slug}.md` pages from source files with `## Comparison: X vs Y` sections. catalog-sources pre-filters these before W1 and dispatches comparison-synthesizer.\n\n**Files:**\n- Modify: `templates/stack/STACK.md` (add Comparison Template section)\n- Create: `templates/stack/comparisons/.gitkeep`\n- Create: `agents/comparison-synthesizer.md`\n- Modify: `skills/catalog-sources/SKILL.md` (add pre-filter before W1)\n- Modify: `templates/stack/index.md` (add Comparisons section)\n\n**Acceptance Criteria:**\n- STACK.md template has Comparison Template section\n- comparison-synthesizer writes comparisons/{slug}.md (not articles/)\n- comparison-synthesizer reports COMPARISON_SKIPPED when <3 criteria\n- catalog-sources pre-filters comparison sources before W1 dispatch\n- W1-W2 pipeline only processes non-comparison sources\n- index.md template has Comparisons section\n\n**Verify:** Manual smoke test — source with `## Comparison: X vs Y` + /stacks:catalog-sources → comparisons/x-vs-y.md written\n\n```json:metadata\n{\"files\": [\"templates/stack/STACK.md\", \"templates/stack/comparisons/.gitkeep\", \"agents/comparison-synthesizer.md\", \"skills/catalog-sources/SKILL.md\", \"templates/stack/index.md\"], \"verifyCommand\": \"manual smoke test\", \"acceptanceCriteria\": [\"comparison-synthesizer writes to comparisons/\", \"COMPARISON_SKIPPED when <3 criteria\", \"catalog-sources pre-filters before W1\", \"index.md has Comparisons section\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-10T00:00:00Z"
+  "lastUpdated": "2026-06-13T00:00:00Z"
 }
