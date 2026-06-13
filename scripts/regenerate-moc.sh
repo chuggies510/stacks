@@ -45,6 +45,16 @@ done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || tru
     printf '%s' "${TAG_GROUPS[$tag]}"
     echo ""
   done
+  comparison_pages=$(find "$STACK/comparisons" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort || true)
+  if [[ -n "$comparison_pages" ]]; then
+    echo "## Comparisons"
+    echo ""
+    while IFS= read -r page; do
+      slug=$(basename "$page" .md)
+      echo "- [${slug}](comparisons/${slug}.md)"
+    done <<< "$comparison_pages"
+    echo ""
+  fi
   if [[ -n "$READING_PATHS_BLOCK" ]]; then
     echo ""
     printf '%s\n' "$READING_PATHS_BLOCK"

@@ -1,8 +1,12 @@
 # {Stack Name} Index
 
-## Topics
+## Articles
 
-*No topics yet. Run `/stacks:ingest {stack}` after adding sources.*
+*No articles yet. Run `/stacks:catalog-sources {stack}` after adding sources.*
+
+## Comparisons
+
+*No comparisons yet. Add a source with `## Comparison: X vs Y` sections and run `/stacks:catalog-sources {stack}`.*
 
 ## Sources
 

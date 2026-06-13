@@ -27,6 +27,19 @@ Sections that every topic guide in this stack should follow.
 - Field Notes — practitioner experience, production lessons, design consequences, and observations that don't fit a prescriptive section
 - Sources — which sources contributed, with tier ratings (populated by `/stacks:ingest`)
 
+## Comparison Template
+
+Sections for comparison pages (`comparisons/` dir). catalog-sources triggers comparison-synthesizer when a source file contains a `## Comparison: X vs Y` section header. Minimum 3 criteria required to produce a page.
+
+- Overview — what's being compared and why the choice matters
+- Comparison Table — side-by-side on key criteria (`| Criterion | X | Y |` format)
+- When to Use X — decision guidance, use cases, constraints
+- When to Use Y — decision guidance, use cases, constraints
+- Pitfalls — non-obvious failure modes for each option
+- Field Notes — practitioner experience with each
+- Decision — recommended default if one exists, with conditions
+- Sources
+
 ## Filing Rules
 
 *How to decide where new knowledge goes. For example: "File by system served,

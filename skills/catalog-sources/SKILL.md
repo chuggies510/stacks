@@ -191,6 +191,46 @@ fi
 
 Missing `findings.md` is a no-op; skip list is empty on the first run.
 
+## Step 5.5: W0c — Pre-filter comparison sources
+
+Before W1 dispatch, split the new-source set into comparison-shaped and standard. A source is comparison-shaped if it contains a `## Comparison: X vs Y` section header:
+
+```bash
+COMPARISON_FILES=()
+STANDARD_FILES=()
+while IFS= read -r f; do
+  [[ -z "$f" ]] && continue
+  if grep -qE '^## Comparison:' "$f"; then
+    COMPARISON_FILES+=("$f")
+  else
+    STANDARD_FILES+=("$f")
+  fi
+done <<< "$NEW_SOURCES"
+
+echo "Standard sources: ${#STANDARD_FILES[@]}"
+echo "Comparison sources: ${#COMPARISON_FILES[@]}"
+```
+
+If `COMPARISON_FILES` is non-empty, dispatch one `stacks:comparison-synthesizer` agent per file in a single message (parallel). Each prompt names the absolute source path, `$STACK/STACK.md`, and the output directory `$STACK/comparisons/` (the agent derives the slug from the `## Comparison:` heading). Each agent writes `$STACK/comparisons/{slug}.md` or reports `COMPARISON_SKIPPED` when the source has fewer than 3 criteria. Wait for all to complete and collect any `COMPARISON_SKIPPED` reports for the final summary.
+
+After the pages are written, file each comparison source that produced a page out of `sources/incoming/` to its publisher directory (same publisher inference as W3 Step 8: `publisher:` frontmatter, else `unknown`). Sources reported `COMPARISON_SKIPPED` stay in `incoming/` for the operator to fix.
+
+Reassign the new-source set to standard-only so W1–W2 ignore comparison sources:
+
+```bash
+NEW_SOURCES=$(printf '%s\n' "${STANDARD_FILES[@]}")
+```
+
+If `STANDARD_FILES` is empty (every new source was a comparison): the article pipeline has nothing to do. Skip Steps 6 through 8, regenerate the index so the new comparison pages appear, commit the stack, and stop:
+
+```bash
+"$SCRIPTS_DIR/regenerate-moc.sh" "$STACK"
+git add "$STACK/"
+git commit -m "feat($STACK): ${#COMPARISON_FILES[@]} comparison page(s)"
+```
+
+Otherwise continue to Step 6 with the standard sources; W4 (Step 9) regenerates the index and picks up the new comparison pages.
+
 ## Step 6: W1 — Parent-side parallel concept-identifier dispatch
 
 The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
@@ -394,7 +434,7 @@ On non-zero exit, halt the catalog pipeline and surface the `TAG_DRIFT:` stderr 
 
 ## Step 8: W3 — Source filing
 
-Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 assert-written gates. Failed articles block their sources' filing at W3 below.
+Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 assert-written gates. Failed articles block their sources' filing at W3 below. (Comparison sources are filed at W0c, Step 5.5; sources reported `COMPARISON_SKIPPED` stay in `incoming/` and are skipped here.)
 
 ```bash
 INCOMING_FILES=$(find "$STACK/sources/incoming" -type f ! -name ".gitkeep" 2>/dev/null)
