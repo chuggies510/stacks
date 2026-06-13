@@ -36,7 +36,7 @@ stacks/          ← this repo. the tool. public. knows nothing about you.
   catalog.md     ← what stacks you have
   rust-async/
     STACK.md     ← schema: source tiers, topic template, filing rules
-    index.md     ← what's been ingested
+    index.md     ← map of contents, regenerated each catalog run
     sources/     ← raw material goes in here
     articles/    ← synthesized article-per-concept entries come out here
 ```
@@ -79,14 +79,16 @@ Query from anywhere:
 
 ## skills
 
-| skill | what it does |
-|-------|-------------|
-| `/stacks:init-library {path}` | create a knowledge library with private GitHub repo |
-| `/stacks:new-stack {name}` | scaffold a new stack from templates |
-| `/stacks:catalog-sources {stack}` | identify concepts in new sources, write article-per-concept wiki entries |
-| `/stacks:ask {query}` | answer a question from your curated articles (works from any repo) |
-| `/stacks:audit-stack {stack}` | validate articles against sources, report drift/unsourced/stale claims |
-| `/stacks:process-inbox` | route queued inbox files to the matching stack's incoming dir |
+| skill | what it does | run from |
+|-------|-------------|----------|
+| `/stacks:init-library {path}` | create a knowledge library + private GitHub repo | anywhere |
+| `/stacks:new-stack {name}` | scaffold a new stack from templates | inside the library |
+| `/stacks:catalog-sources {stack}` | identify concepts in new sources, write one article per concept | inside the library |
+| `/stacks:audit-stack {stack}` | validate articles against sources, report drift / unsourced / stale | inside the library |
+| `/stacks:ask {query}` | answer a question from your curated articles | anywhere |
+| `/stacks:process-inbox` | route queued inbox files to the matching stack | anywhere |
+
+**anywhere** = the skill locates your library through `~/.config/stacks/config.json` (written by `init-library`), so it runs from any repo. **inside the library** = run it from a session opened in your library repo; it acts on the stack you name in the current directory. `ask` and `process-inbox` both read the configured library, which is why neither needs you to be inside it.
 
 ---
 
