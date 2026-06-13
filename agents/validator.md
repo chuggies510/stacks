@@ -62,7 +62,7 @@ Result: source directly contradicts the 30% figure. Mark as `[DRIFT]`.
 
 Output in article: `Minimum VAV box airflow should be set to 30% of design maximum. [pnnl-vav-guide] [DRIFT]`
 
-Note in the edit: the article's 30% figure conflicts with the source's 20%-or-lower guidance. findings-analyst will see this as a resynthesize candidate.
+Note: the article's 30% figure conflicts with the source's 20%-or-lower guidance. The audit drift report will list this article under DRIFT.
 
 ## Example 3: UNSOURCED claim
 
@@ -74,4 +74,4 @@ Result: no source found. Mark as `[UNSOURCED]`.
 
 Output in article: `Cycles of concentration above 7 are rarely achievable in practice. [UNSOURCED]`
 
-findings-analyst will flag this as a potential fetch_source or gap item.
+The audit drift report will list this article under UNSOURCED.

@@ -32,12 +32,6 @@ case "$type" in
     grep -qE '\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]' "$path" \
       || fail "no validation marker found"
     ;;
-  glossary-md)
-    grep -qE '^\*\*[^*]' "$path" || fail "no glossary entries found (expected '**Term**:' format)"
-    ;;
-  invariants-md)
-    grep -qE '^[0-9]+\.' "$path" || fail "no numbered invariant entries found"
-    ;;
   *)
     fail "unknown type: $type"
     ;;

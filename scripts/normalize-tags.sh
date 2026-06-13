@@ -39,7 +39,7 @@ shopt -s nullglob
 for article in "$articles_dir"/*.md; do
   slug=$(basename "$article" .md)
 
-  # Parse frontmatter tags: accept block list or inline flow list (synthesizer may emit either).
+  # Parse frontmatter tags: accept block list or inline flow list (article-synthesizer may emit either).
   tags=$(awk '
     BEGIN { in_fm = 0; in_tags = 0; fm_count = 0 }
     /^---[[:space:]]*$/ {

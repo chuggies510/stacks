@@ -42,7 +42,7 @@ make_concept_batch() {
 @test "fails when file is present but stale (mtime <= epoch)" {
   local f="$TEST_TMP/batch-1-concepts.md"
   make_concept_batch "$f"
-  # FUTURE_EPOCH is after the file's mtime, so assert-written trips.
+  # FUTURE_EPOCH is after the file's mtime, so the write check trips.
   run bash "$SCRIPT" "$FUTURE_EPOCH" "concept-identifier" concept-batch "$f"
   [ "$status" -eq 1 ]
   [[ "$output" == *"AGENT_WRITE_FAILURE"* ]]

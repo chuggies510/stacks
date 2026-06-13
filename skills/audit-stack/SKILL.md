@@ -1,17 +1,16 @@
 ---
 name: audit-stack
 description: |
-  Use when the user wants to validate articles, synthesize stack-root artifacts,
-  and produce structured findings for a knowledge stack. Runs the A1-A5 audit
-  pipeline: validator marks article claims inline, synthesizer produces glossary
-  and invariants, findings-analyst emits structured items, convergence check
-  decides whether to loop, and archive fires on convergence. Must be run from
-  within a library repo.
+  Use when the user wants to check a knowledge stack's articles against their
+  cited sources. Dispatches the validator agent to mark each claim inline
+  (VERIFIED/DRIFT/UNSOURCED/STALE), then writes a fresh drift report listing
+  every flagged claim. Stateless: each run regenerates the report from scratch,
+  no carry-forward ledger. Must be run from within a library repo.
 ---
 
 # Audit Stack
 
-Validate articles against sources, synthesize cross-cutting artifacts, produce structured findings, check convergence, and archive on completion.
+Validate a stack's articles against their cited sources, then report what drifted, what is unsourced, and what is stale. Each run is independent: the validator re-marks every article and the report is rebuilt from the current marks. There is no carry-forward ledger and no multi-pass loop.
 
 ## Step 0: Telemetry
 
@@ -43,445 +42,85 @@ if [[ "$ARTICLE_COUNT" -lt 1 ]]; then
   echo "ERROR: No articles found in $STACK/articles/. Run /stacks:catalog-sources $STACK first."
   exit 1
 fi
+SCRIPTS_DIR="$STACKS_ROOT/scripts"
 ```
 
 ## Step 2: Read STACK.md
 
-Locate plugin helpers via the shared root resolver. `STACKS_ROOT` was set in Step 0; derive sibling paths from it:
+Read `$STACK/STACK.md` for the source-hierarchy section. The validator needs it to resolve conflicts when two sources disagree (higher-tier source wins → lower-tier claim marked `[STALE]`).
+
+## Step 3: A1 — Validate articles against sources
+
+Dispatch the `stacks:validator` agent over the articles. One agent unless the article count exceeds the cap (the cap bounds how many articles a single agent re-reads in one pass, and — when sliced — how many subagents spawn at once). Slice inline with the same `${ARRAY[@]:i:CAP}` idiom catalog W2 uses.
 
 ```bash
-SCRIPTS_DIR="$STACKS_ROOT/scripts"
-WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
-AGENTS_DIR="$STACKS_ROOT/agents"
-```
-
-Read `$WAVE_ENGINE` for the A1-A5 orchestration contract.
-
-Read `$STACK/STACK.md` to extract:
-- Source hierarchy (for validator and synthesizer context)
-- `MAX_AUDIT_PASSES` value. Parse with:
-
-```bash
-MAX_AUDIT_PASSES=$(grep -oP '(?<=MAX_AUDIT_PASSES:\s)\d+' "$STACK/STACK.md" 2>/dev/null || echo "3")
-```
-
-## Step 3: Pass loop controller
-
-Initialize convergence tracking:
-
-```bash
-prev_empty=0
-converged=0
-mkdir -p "$STACK/dev/audit/closed"
-```
-
-Run the pass loop. Each iteration dispatches A1 through A3, then runs A4 to check convergence. The loop runs until convergence is reached or the pass budget is exhausted.
-
-The `pass_counter` is managed by the findings-analyst agent, which increments it in the `dev/audit/findings.md` frontmatter each pass. After A3 completes, read `pass_counter` from the frontmatter:
-
-```bash
-pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md" 2>/dev/null || echo "0")
-```
-
-The pass loop continues through Steps 4-8 below. At A4 (Step 8), the loop either: sets `converged=1` and breaks, or increments `prev_empty` accordingly and checks whether `pass_counter >= MAX_AUDIT_PASSES`. If the budget cap is reached without convergence, set `converged=1` and break (budget-cap convergence; findings are still archived at A5).
-
-## Step 4: A1 — Parent-side parallel validator dispatch
-
-The parent skill (this session) shards articles directly and dispatches `validator` agents in parallel. The `validator-orchestrator` agent is **deprecated for this skill**: nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent do the deterministic merge.
-
-**Batch size: ≤3 articles per validator agent.** Per-agent isolation matters more than minimizing dispatch count. Each validator reads its 1-3 articles plus the full `$STACK/sources/` tree and writes inline VERIFIED/DRIFT/UNSOURCED/STALE marks. Bundling many unrelated articles into one agent invites cross-article confusion and source misattribution. The previous 15-per-shard cap was a workaround for a problem this design doesn't have.
-
-```bash
-ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
-N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
-BATCH_SIZE=3
-N_BATCHES=$(( (N_ARTICLES + BATCH_SIZE - 1) / BATCH_SIZE ))
+mapfile -t ARTICLES < <(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
+N_ARTICLES=${#ARTICLES[@]}
+CAP=25
 DISPATCH_EPOCH=$(date +%s)
 mkdir -p "$STACK/dev/audit"
-
-# Build batch files: dev/audit/_a1-batch-{NN}.txt with one article path per line.
-echo "$ARTICLES" > /tmp/_stacks-a1-articles.tmp
-bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a1-articles.tmp "$BATCH_SIZE" "$STACK/dev/audit/_a1-batch-"
 ```
 
-**Per-batch citation graph:** for each batch, resolve which sources its articles cite and write the resolved absolute paths to `dev/audit/_a1-sources-{NN}.txt`. Pass that file to the matching validator. Restores the per-batch source union from 0.13.0 #34 lost in the 0.14.0 refactor: validator prompts grow with article count AND source count, so each shard must see only what its articles cite, not the full tree.
+**Dispatch.** Each validator gets: the absolute article paths in its slice, the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`), the source-hierarchy context from STACK.md, the stack root, and `$DISPATCH_EPOCH`. The validator strips prior-cycle marks, writes fresh inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks, and sets `last_verified` to today.
+
+- **N_ARTICLES ≤ CAP:** one `Agent` call (subagent_type `stacks:validator`) over all of `${ARTICLES[@]}`.
+- **N_ARTICLES > CAP:** in a single message, emit one `Agent` call per slice `${ARTICLES[@]:i:CAP}` (i = 0, CAP, 2·CAP, …). Parallel dispatch — never sequential.
+
+**Gate.** After all validators return, the parent re-runs the write-or-fail + marker-shape gate inline over every article:
 
 ```bash
-# slug -> path map of all sources excluding incoming/ and trash/.
-# Slug is the basename minus .md (the catalog filer's filename convention).
-declare -A SOURCE_MAP
-while IFS= read -r src; do
-  slug=$(basename "$src" .md)
-  SOURCE_MAP[$slug]="$src"
-done < <(find "$STACK/sources" -type f -name '*.md' \
-           -not -path "*/incoming/*" -not -path "*/trash/*" 2>/dev/null)
-
-for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
-  batch_id=$(basename "$batch" .txt | sed 's/_a1-batch-//')
-  union="$STACK/dev/audit/_a1-sources-$batch_id.txt"
-  : > "$union"
-  while IFS= read -r article; do
-    [[ -z "$article" ]] && continue
-    # Slugs from frontmatter `sources:` (basename of each path entry, minus .md).
-    # Match list entries at any leading-whitespace indent because article frontmatter
-    # uses two-space-indented `  - path/to/source.md`.
-    awk '/^sources:/{flag=1;next} /^[A-Za-z]/{flag=0} flag && /^[[:space:]]*-[[:space:]]/{print}' "$article" \
-      | sed -E 's|^[[:space:]]*-[[:space:]]*||; s|^.*/||; s|\.md$||'
-    # Slugs from inline [slug] refs in the body.
-    grep -oE '\[[a-z0-9][a-z0-9-]*\]' "$article" | tr -d '[]'
-  done < "$batch" | sort -u | while read -r slug; do
-    [[ -n "${SOURCE_MAP[$slug]}" ]] && echo "${SOURCE_MAP[$slug]}"
-  done | sort -u > "$union"
-  # Fallback: if a batch has zero resolvable citations, give it the full tree
-  # so the validator still has a reference surface (matches 0.13.0 behavior).
-  if [[ ! -s "$union" ]]; then
-    find "$STACK/sources" -type f -name '*.md' \
-      -not -path "*/incoming/*" -not -path "*/trash/*" > "$union"
-  fi
-done
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "validator-gate" article-validated "${ARTICLES[@]}"
 ```
 
-**Dispatch:** in a single message, emit one `Agent` tool call per batch (subagent_type `stacks:validator`). Each prompt passes (a) the absolute article paths from `_a1-batch-NN.txt`, (b) the absolute source paths from `_a1-sources-NN.txt` (the per-batch source union), (c) the stack root, and (d) `$DISPATCH_EPOCH`. Tell each validator to use `assert-written.sh "$ARTICLE_PATH" "$DISPATCH_EPOCH" "validator"` for each article it edits, and to fail loudly if a gate trips. Parallel dispatch is mandatory — sequential dispatch reintroduces the wall-clock problem the orchestrator was meant to solve.
+A non-zero exit means an article was not freshly written or carries no validation marker — surface the failing paths and stop.
 
-Note on stale frontmatter paths: catalog-sources W3 moves files out of `sources/incoming/` to publisher dirs but does not rewrite article frontmatter `sources:` paths. The slug→path map above resolves correctly because it indexes by basename, not by the stored path. Validators receive resolved paths, not stale ones.
+## Step 4: Drift report
 
-**Gate:** after all validator agents return, the parent re-runs the gate inline:
+Rebuild `dev/audit/report.md` from the current marks. The report is regenerated every run; it is not a ledger.
 
 ```bash
-A1_ARTICLE_PATHS=()
-for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
-  while IFS= read -r article; do
-    [[ -z "$article" ]] && continue
-    A1_ARTICLE_PATHS+=("$article")
-  done < "$batch"
-done
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "validator-parent-gate" article-validated "${A1_ARTICLE_PATHS[@]}"
+REPORT="$STACK/dev/audit/report.md"
+TODAY=$(date +%Y-%m-%d)
+count() { grep -rohE "\\[$1\\]" "$STACK/articles" 2>/dev/null | wc -l | tr -d ' '; }
+{
+  echo "# $STACK — audit drift report ($TODAY)"
+  echo
+  echo "Regenerated fresh each audit. Not a persistent ledger."
+  echo
+  echo "VERIFIED: $(count VERIFIED)  DRIFT: $(count DRIFT)  UNSOURCED: $(count UNSOURCED)  STALE: $(count STALE)"
+  echo
+  echo "## Flagged claims"
+  echo
+  flagged=0
+  for art in "$STACK"/articles/*.md; do
+    [[ -e "$art" ]] || continue
+    slug=$(basename "$art" .md)
+    while IFS= read -r line; do
+      flagged=1
+      mark=$(echo "$line" | grep -oE '\[(DRIFT|UNSOURCED|STALE)\]' | head -1)
+      claim=$(echo "$line" | sed -E 's/^[0-9]+://; s/^[[:space:]]+//')
+      echo "- \`$slug\` $mark — $claim"
+    done < <(grep -nE '\[(DRIFT|UNSOURCED|STALE)\]' "$art")
+  done
+  [[ "$flagged" -eq 0 ]] && echo "_None. Every cited claim verified against its source._"
+} > "$REPORT"
+echo "Wrote $REPORT"
 ```
 
-**Summary write:** the parent writes `_a1-summary.json` itself:
-
-```bash
-jq -n \
-  --argjson n_articles "$N_ARTICLES" \
-  --argjson n_batches "$N_BATCHES" \
-  --argjson batch_size "$BATCH_SIZE" \
-  --argjson epoch "$DISPATCH_EPOCH" \
-  '{schema_version:1, wave:"a1", status:"ok",
-    counts:{n_articles:$n_articles, n_batches:$n_batches, articles_per_agent:$batch_size},
-    epochs:{dispatch_epoch:$epoch}}' \
-  > "$STACK/dev/audit/_a1-summary.json"
-```
-
-Cleanup batch and per-batch sources files (`rm "$STACK"/dev/audit/_a1-batch-*.txt "$STACK"/dev/audit/_a1-sources-*.txt`) after summary writes.
-
-## Step 4.5: A1b — Wikilink pass (post-validator restore)
-
-```bash
-"$SCRIPTS_DIR/wikilink-pass.sh" "$STACK/articles/" "$STACK/glossary.md"
-```
-
-Validator agents strip `[[wikilinks]]` from sentences they rewrite (the marks land inline and the surrounding text is normalized without the link syntax). Running wikilink-pass.sh here restores them before A2 reads the articles; otherwise A2 synthesizes from a partially de-linked article set and A2b's pass adds fewer links than intended. A no-op if `glossary.md` is absent (first-pass case: glossary hasn't been written yet).
-
-## Step 5: A2 — Parent-side parallel synthesizer dispatch + merge
-
-Synthesizer needs cross-article view to dedup glossary terms, find independent-corroboration invariants, and surface contradictions. So A2 keeps the shard-then-merge pattern, but driven from the parent (not via `synthesizer-orchestrator`, which is **deprecated for this skill**: same root cause as A1).
-
-**Batch size: ≤10 articles per synthesizer shard.** Smaller than the prior 30-cap because per-agent attention to each article matters: a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only (no sources tree), so per-agent context stays small.
-
-**Phase A — shard fan-out:**
-
-```bash
-ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
-N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
-BATCH_SIZE_A2=10
-N_BATCHES_A2=$(( (N_ARTICLES + BATCH_SIZE_A2 - 1) / BATCH_SIZE_A2 ))
-DISPATCH_EPOCH=$(date +%s)
-echo "$ARTICLES" > /tmp/_stacks-a2-articles.tmp
-bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a2-articles.tmp "$BATCH_SIZE_A2" "$STACK/dev/audit/_a2-batch-"
-```
-
-In a single message, dispatch one `stacks:synthesizer` agent per batch. Each prompt: stack root, batch file path, output path `dev/audit/_a2-partial-{NN}.md` (a single markdown file with `## Glossary`, `## Invariants`, `## Contradictions` sections covering only that shard's articles), and `$DISPATCH_EPOCH`. The agent must call `assert-written.sh "$PARTIAL_PATH" "$DISPATCH_EPOCH" "synthesizer"` after writing.
-
-**Gate Phase A:**
-
-```bash
-A2_PARTIAL_PATHS=()
-for i in $(seq -f "%02g" 0 $((N_BATCHES_A2 - 1))); do
-  A2_PARTIAL_PATHS+=("$STACK/dev/audit/_a2-partial-$i.md")
-done
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "synthesizer-parent-gate" - "${A2_PARTIAL_PATHS[@]}"
-```
-
-**Phase B — merge pass:** dispatch ONE `stacks:synthesizer` agent (single Task call, not parallel). Prompt it to read all `dev/audit/_a2-partial-*.md` files, apply dedup + independent-corroboration + tier-hierarchy resolution across shards, and write the three final stack-root files: `$STACK/glossary.md`, `$STACK/invariants.md`, `$STACK/contradictions.md`. Each must be gated with `assert-written.sh ... "$DISPATCH_EPOCH" "synthesizer-merge"`.
-
-If `N_BATCHES_A2 == 1`, skip Phase B and have the single Phase A agent write the three stack-root files directly instead of a partial.
-
-**Gate Phase B + summary write:**
-
-```bash
-for f in glossary.md invariants.md contradictions.md; do
-  if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/$f" "$DISPATCH_EPOCH" "synthesizer-merge-gate" 2>/dev/null; then
-    echo "AGENT_WRITE_FAILURE: A2 stack-root $f ungated"; exit 1
-  fi
-done
-"$SCRIPTS_DIR/assert-structure.sh" "$STACK/glossary.md" glossary-md "synthesizer-merge-gate" \
-  || { echo "STRUCTURE_FAILURE: glossary.md has no bold term entries"; exit 1; }
-"$SCRIPTS_DIR/assert-structure.sh" "$STACK/invariants.md" invariants-md "synthesizer-merge-gate" \
-  || { echo "STRUCTURE_FAILURE: invariants.md has no numbered entries"; exit 1; }
-G_TERMS=$(grep -c '^\*\*' "$STACK/glossary.md" 2>/dev/null || echo 0)
-INV_COUNT=$(grep -c '^[0-9]\+\.' "$STACK/invariants.md" 2>/dev/null || echo 0)
-CON_COUNT=$(grep -c '^## ' "$STACK/contradictions.md" 2>/dev/null || echo 0)
-jq -n \
-  --argjson n_articles "$N_ARTICLES" \
-  --argjson n_batches "$N_BATCHES_A2" \
-  --argjson g "$G_TERMS" --argjson i "$INV_COUNT" --argjson c "$CON_COUNT" \
-  --argjson epoch "$DISPATCH_EPOCH" \
-  '{schema_version:1, wave:"a2", status:"ok",
-    counts:{n_articles:$n_articles, n_batches:$n_batches,
-            glossary_terms:$g, invariants:$i, contradictions:$c},
-    epochs:{dispatch_epoch:$epoch}}' \
-  > "$STACK/dev/audit/_a2-summary.json"
-rm "$STACK"/dev/audit/_a2-batch-*.txt
-```
-
-After A2 succeeds the three stack-root files are present and gated; proceed to A2b.
-
-## Step 6: A2b — Wikilink pass
-
-```bash
-"$SCRIPTS_DIR/wikilink-pass.sh" "$STACK/articles/" "$STACK/glossary.md"
-```
-
-This is the same shared helper used by catalog-sources at W2b. It reads glossary bold terms and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded. The pass is a no-op if `glossary.md` is absent, but at this point in the pipeline `glossary.md` was just written by A2.
-
-## Step 7: A3 — Parent-side parallel findings-analyst dispatch + deterministic merge
-
-The `findings-analyst-orchestrator` agent is **deprecated for this skill**: same root cause as A1 and A2. Parent shards directly, dispatches in parallel, and merges with awk in the parent process (the merge is deterministic terminal-wins-by-id; no agent needed).
-
-**Pre-A3 reconcile pass.** Before sharding articles, the parent runs `scripts/reconcile-findings.py` against the prior `dev/audit/findings.md` (no-op if absent). The script closes prior open findings whose claims now carry a `[VERIFIED]` or `[DRIFT]` mark, whose articles were deleted between cycles, or whose claim text was rewritten out of the article. Closures land as `status: closed` with `terminal_transitioned_on: $AUDIT_DATE` and a `note:` line. Findings-analyst agents then read the post-reconcile findings.md as their carry-forward input — closures are visible to their existing terminal-carry-forward logic without any agent prompt change.
-
-```bash
-PRIOR_FINDINGS="$STACK/dev/audit/findings.md"
-if [[ -f "$PRIOR_FINDINGS" ]]; then
-  AUDIT_DATE=$(date +%Y-%m-%d)
-  STACK_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
-  python3 "$SCRIPTS_DIR/reconcile-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD"
-fi
-```
-
-**Batch size: ≤3 articles per findings-analyst agent**, matching A1. Each agent reads its 1-3 articles' inline marks, the stack-level `contradictions.md`, the prior `dev/audit/findings.md` (for carry-forward of terminal-status items by id), and writes a partial findings file covering only the items it identifies.
-
-```bash
-ARTICLES=$(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
-N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
-BATCH_SIZE_A3=3
-N_BATCHES_A3=$(( (N_ARTICLES + BATCH_SIZE_A3 - 1) / BATCH_SIZE_A3 ))
-DISPATCH_EPOCH=$(date +%s)
-echo "$ARTICLES" > /tmp/_stacks-a3-articles.tmp
-bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a3-articles.tmp "$BATCH_SIZE_A3" "$STACK/dev/audit/_a3-batch-"
-```
-
-**Dispatch:** in a single message, one `stacks:findings-analyst` agent per batch. Each prompt: stack root, batch file, output partial path `dev/audit/_a3-partial-{NN}.md`, prior `dev/audit/findings.md` path (read-only for carry-forward), `dev/audit/contradictions.md`, and `$DISPATCH_EPOCH`. The agent writes its partial and gates via `assert-written.sh`.
-
-The canonical findings.md schema (item shape, status enum, resolvable_by enum, carry-forward rules) lives in `agents/findings-analyst.md`. The merged file's frontmatter remains:
-
-```yaml
----
-audit_date: YYYY-MM-DD
-stack_head: <git sha>
-pass_counter: <int>
-schema_version: 4
----
-```
-
-**Gate partials:**
-
-```bash
-A3_PARTIAL_PATHS=()
-for i in $(seq -f "%02g" 0 $((N_BATCHES_A3 - 1))); do
-  A3_PARTIAL_PATHS+=("$STACK/dev/audit/_a3-partial-$i.md")
-done
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "findings-analyst-parent-gate" - "${A3_PARTIAL_PATHS[@]}"
-```
-
-**Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
-
-The merge runs as inline python rather than awk: the prior awk used gawk's 3-arg `match($i, /pat/, m)` form which silently fails on mawk (Debian/Ubuntu/Mint default), producing zero-merged findings while the gate still passes (mtime advanced even though content is empty). Python is portable and the section-grouping logic is clearer in code than in nested awk.
-
-```bash
-PRIOR_FINDINGS="$STACK/dev/audit/findings.md"
-PRIOR_PASS_COUNTER=$(grep -oP '(?<=pass_counter:\s)\d+' "$PRIOR_FINDINGS" 2>/dev/null || echo 0)
-NEW_PASS_COUNTER=$((PRIOR_PASS_COUNTER + 1))
-STACK_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
-AUDIT_DATE=$(date +%Y-%m-%d)
-
-# Merge partials: dedup by id with terminal precedence,
-# group by action into the 4 canonical sections, write findings.md.
-python3 "$SCRIPTS_DIR/merge-findings.py" "$STACK" "$AUDIT_DATE" "$STACK_HEAD" "$NEW_PASS_COUNTER"
-
-# Gate and counts
-"$SCRIPTS_DIR/assert-written.sh" "$PRIOR_FINDINGS" "$DISPATCH_EPOCH" "findings-merge" || { echo "AGENT_WRITE_FAILURE: merged findings ungated"; exit 1; }
-NEW_ITEMS=$(grep -c '^- id:' "$PRIOR_FINDINGS")
-
-jq -n \
-  --argjson n_articles "$N_ARTICLES" \
-  --argjson n_batches "$N_BATCHES_A3" \
-  --argjson new_items "$NEW_ITEMS" \
-  --argjson epoch "$DISPATCH_EPOCH" \
-  '{schema_version:1, wave:"a3", status:"ok",
-    counts:{n_articles:$n_articles, n_batches:$n_batches,
-            new_items:$new_items},
-    epochs:{dispatch_epoch:$epoch}}' \
-  > "$STACK/dev/audit/_a3-summary.json"
-rm "$STACK"/dev/audit/_a3-batch-*.txt "$STACK"/dev/audit/_a3-partial-*.md
-```
-
-The deterministic-merge approach removes a class of failures the prior orchestrator pattern introduced: cross-shard id collisions resolved by an agent's judgment instead of by code. Carry-forward of terminal-status items from the prior `findings.md` is the responsibility of each `findings-analyst` agent (it reads the prior file); the parent merge is purely about combining the partials.
-
-After A3 succeeds, read `pass_counter` from the written `findings.md` for the loop controller (A4 reads it too):
-
-```bash
-pass_counter=$(grep -oP '(?<=pass_counter:\s)\d+' "$STACK/dev/audit/findings.md" 2>/dev/null || echo "0")
-```
-
-## Step 8: A4 — Convergence check
-
-Count open work in the current findings file. Terminal statuses are `applied`, `closed`, `deferred`.
-
-```bash
-FINDINGS="$STACK/dev/audit/findings.md"
-
-# Count items with status: open
-open_count=$(grep -c '^\s*status:\s*open\s*$' "$FINDINGS" 2>/dev/null || echo "0")
-
-# Count items resolvable within audit-stack's own scope (resynthesize, noop) that are still open. Items with resolvable_by: catalog-sources (fetch_source) or resolvable_by: external (research_question) are out of audit-stack's domain and do not block convergence.
-generative_open=$(awk '
-  /^- id:/ {
-    if (in_item && resolvable_by == "audit-stack" && status != "terminal") count++
-    in_item=1; resolvable_by=""; status=""
-    next
-  }
-  in_item && /resolvable_by: audit-stack/ { resolvable_by="audit-stack" }
-  in_item && /status: (applied|closed|deferred)/ { status="terminal" }
-  END {
-    if (in_item && resolvable_by == "audit-stack" && status != "terminal") count++
-    print count+0
-  }
-' "$FINDINGS" 2>/dev/null || echo "0")
-
-# Determine empty-pass: only items audit-stack can act on count.
-# fetch_source items resolve via catalog-sources; research_question items
-# resolve externally. Neither blocks convergence — looping A1/A2/A3 cannot
-# change them, so requiring open_count==0 makes the loop run to budget cap
-# on any stack with unresolved out-of-scope items.
-if [[ "$generative_open" -eq 0 ]]; then
-  empty_pass=1
-else
-  empty_pass=0
-fi
-```
-
-Apply convergence logic:
-
-```bash
-if [[ "$empty_pass" -eq 1 ]]; then
-  if [[ "$pass_counter" -eq 1 ]]; then
-    # First pass empty: there were never any audit-stack-resolvable items,
-    # so there is nothing prior-pass resynthesize actions could have changed
-    # for a second pass to verify. Short-circuit. The "2 consecutive empty"
-    # rule below exists to confirm the prior pass's resynthesize actions
-    # actually closed open items; with zero such actions, that confirmation
-    # is trivially satisfied.
-    echo "Pass 1 complete: empty pass on first execution (open=$open_count, generative_open=$generative_open). No audit-stack-resolvable work; converging immediately."
-    converged=1
-  elif [[ "$prev_empty" -eq 1 ]]; then
-    # 2 consecutive empty passes: convergence (validator changes from prior
-    # resynthesize actions did not surface new generative work).
-    converged=1
-  else
-    prev_empty=1
-    echo "Pass $pass_counter complete: empty pass (open=$open_count, generative_open=$generative_open). Running one more pass to confirm convergence."
-  fi
-else
-  prev_empty=0
-  echo "Pass $pass_counter complete: open=$open_count, generative_open=$generative_open (fetch_source + research_question)."
-  if [[ "$pass_counter" -ge "$MAX_AUDIT_PASSES" ]]; then
-    echo "Budget cap reached ($MAX_AUDIT_PASSES passes). Treating as converged."
-    converged=1
-  else
-    echo "Continuing to next pass (pass $((pass_counter + 1)) of $MAX_AUDIT_PASSES)."
-  fi
-fi
-```
-
-If `converged=0` and the budget has not been reached, loop back to Step 4 (next pass begins at A1). If `converged=1`, proceed to Step 8.5.
-
-## Step 8.5: Rotate stale terminal findings
-
-This step runs only when `converged=1` (per the A4 decision above). It runs before A5 archive so the archive snapshot reflects the post-rotation active file.
-
-Items in a terminal status (`applied`, `closed`, `deferred`) for ≥ `ROTATION_CYCLES` distinct audit cycles (default 3, parsed from `STACK.md`) are moved from the active `dev/audit/findings.md` to `dev/audit/findings-archive.md`. The archive is append-only, chronological, and operator-readable. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set.
-
-```bash
-# Compute audit_date once here; reused in Step 9 (archive).
-audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/dev/null | head -1)
-if [[ -z "$audit_date" ]]; then
-  audit_date=$(date +%Y-%m-%d)
-fi
-# Capture epoch BEFORE the rotate script writes. assert-written.sh requires
-# strictly mtime > epoch, so passing DISPATCH_EPOCH would trip on same-second
-# writes (rotate-findings.sh is synchronous and finishes well within a clock
-# second on SSDs). Subtract 1 to widen the window without weakening the gate.
-DISPATCH_EPOCH=$(($(date +%s) - 1))
-ROTATION_OUTPUT=$(bash "$SCRIPTS_DIR/rotate-findings.sh" "$STACK" "$audit_date")
-echo "$ROTATION_OUTPUT"
-rotated_count=$(echo "$ROTATION_OUTPUT" | grep -oP '(?<=rotated_items=)\d+' || echo "0")
-if [[ "$rotated_count" -gt 0 ]]; then
-  "$SCRIPTS_DIR/assert-written.sh" "$STACK/dev/audit/findings-archive.md" "${DISPATCH_EPOCH}" "rotate-findings"
-fi
-```
-
-The assert-written gate fires only when the script reports a non-zero rotation, so zero-rotation runs (common during the stack's first terminal accumulation years) are no-ops.
-
-## Step 9: A5 — Archive on convergence
-
-This step runs only when `converged=1`.
-
-`audit_date` was set in Step 8.5; use it directly:
-
-```bash
-mkdir -p "$STACK/dev/audit/closed"
-cp "$STACK/dev/audit/findings.md" "$STACK/dev/audit/closed/${audit_date}-findings.md"
-```
-
-The archived file at `dev/audit/closed/{audit_date}-findings.md` is the historical record. The active `dev/audit/findings.md` remains in place and carries forward into the next catalog-sources W0b pass (feedback flywheel: terminal-status items become the skip list; open items remain open work for the next cycle).
-
-## Step 10: Log and commit
+## Step 5: Log and commit
 
 Prepend an entry to `$STACK/log.md`:
 
 ```markdown
-## [YYYY-MM-DD] audit-stack | pass_counter={N}, converged={true/false}
-open_items_at_close={count}. Archived: dev/audit/closed/{audit_date}-findings.md
-Glossary: {term-count} terms. Invariants: {rule-count} rules. Contradictions: {contradiction-count}.
+## [YYYY-MM-DD] audit-stack
+VERIFIED={v} DRIFT={d} UNSOURCED={u} STALE={s}. Report: dev/audit/report.md
 ```
 
-Before writing, extract counts from the synthesized files:
-- Glossary: count `**Term**:` lines in `$STACK/glossary.md`
-- Invariants: count numbered rule lines (lines matching `^\d+\.`) in `$STACK/invariants.md`
-- Contradictions: count `## ` section headers in `$STACK/contradictions.md`
-
-Then commit:
+Then commit the re-marked articles and the report:
 
 ```bash
-git add "$STACK/glossary.md" "$STACK/invariants.md" "$STACK/contradictions.md" \
-        "$STACK/articles/" "$STACK/dev/audit/" "$STACK/log.md"
-git commit -m "audit($STACK): pass ${pass_counter}, converged=${converged}"
+git add "$STACK/articles/" "$STACK/dev/audit/report.md" "$STACK/log.md"
+git commit -m "audit($STACK): drift report — D={d} U={u} S={s}"
 ```
 
-Present a summary to the user:
-- Pass count completed and convergence outcome
-- Validator findings: VERIFIED/DRIFT/UNSOURCED/STALE mark counts across all articles
-- Synthesized artifacts: glossary term count, invariant count, contradiction count
-- Findings: open item count at close, fetch_source vs resynthesize vs research_question breakdown
-- Archive path (if converged) or next recommended action (if budget-capped without convergence)
+Present a summary to the user: the four mark counts, the count of flagged claims, and the report path. If DRIFT or STALE counts are non-zero, name the most affected articles so the operator knows where to re-catalog or fix sources.

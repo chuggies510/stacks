@@ -144,40 +144,6 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
-# ── glossary-md ────────────────────────────────────────────────────────────────
-
-@test "glossary-md: valid file passes" {
-  local f="$TEST_TMP/glossary.md"
-  printf '**Heat Exchanger**: A device that transfers heat.\n' > "$f"
-  run_script "$f" glossary-md
-  [ "$status" -eq 0 ]
-}
-
-@test "glossary-md: missing bold entries fails" {
-  local f="$TEST_TMP/glossary.md"
-  printf '# Glossary\nno bold terms here\n' > "$f"
-  run_script "$f" glossary-md
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
-}
-
-# ── invariants-md ──────────────────────────────────────────────────────────────
-
-@test "invariants-md: valid file passes" {
-  local f="$TEST_TMP/invariants.md"
-  printf '1. Heat flows from hot to cold.\n2. Entropy always increases.\n' > "$f"
-  run_script "$f" invariants-md
-  [ "$status" -eq 0 ]
-}
-
-@test "invariants-md: missing numbered entries fails" {
-  local f="$TEST_TMP/invariants.md"
-  printf '# Invariants\nno numbered entries\n' > "$f"
-  run_script "$f" invariants-md
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
-}
-
 # ── unknown type ───────────────────────────────────────────────────────────────
 
 @test "unknown type fails" {
