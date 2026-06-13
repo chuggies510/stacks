@@ -1,3 +1,21 @@
+## 0.21.0 — 2026-06-13
+
+**Cut stacks down to the one thing it's for: drop a source in, ask a question, get a grounded answer.** Everything that didn't serve that path is gone. The plugin is roughly half its former size (16 files deleted). Breaking: skills and the audit findings ledger were removed, so libraries built against the old audit format lose their `findings.md` flywheel (articles and sources are untouched).
+
+### Removed
+
+- **Audit is now a stateless drift report.** `audit-stack` validates each article against its cited sources (inline VERIFIED/DRIFT/UNSOURCED/STALE marks) and writes a fresh `dev/audit/report.md` listing what drifted. Gone: the `synthesizer` and `findings-analyst` agents, the `glossary.md`/`invariants.md`/`contradictions.md` artifacts, the `findings.md` carry-forward ledger, the convergence pass-loop, and the `reconcile`/`rotate`/`merge-findings` scripts. Each run stands alone — no state to drift. (audit-stack 487 → ~120 lines)
+- **Dropped the extraction-hash skip-list flywheel** from catalog. Catalog no longer reads prior findings to skip unchanged concepts (W0b), no longer computes or stores `extraction_hash`, and no longer writes the `_w1-w2-summary.json` envelope it immediately read back (the parent already holds the counts as shell vars). (`compute-extraction-hash.sh` deleted; `concept-identifier`, `article-synthesizer`, `assert-structure.sh`, `ask` lose their hash coupling)
+- **Cut the wikilink/Obsidian integration.** No consumer rendered `[[wikilinks]]`, so the W2b wikilink pass, the `glossary`-driven linker, and the Obsidian setup doc are gone. (`wikilink-pass.sh`, `references/obsidian.md` deleted; `references/wave-engine.md` and `references/refresh-procedure.md` deleted as orphaned/duplicative)
+- **Reverted three 0.20.0 features that didn't earn their keep:** on-demand guide synthesis (`#18`), comparison pages (`#7`), and the inbox quality gate (`#40`). `skills/guide/`, `agents/comparison-synthesizer.md`, `skills/extract-reddit/`, and `extract-reddit-thread.py` are deleted; process-inbox is back to routing-only. The scheduled maintenance loop (`#14`, `scripts/loop.sh`) is **kept**.
+- **Gate-fold:** `assert-written.sh` (the write-or-fail size+mtime check) was inlined into its only caller, `gate-batch.sh`. `shard-batches.sh` is gone — both pipelines now slice batches inline with `${ARRAY[@]:i:CAP}`.
+
+### Changed
+
+- catalog-sources keeps its core path: enumerate sources → identify concepts (W1) → dedup (W1b) → synthesize articles (W2, inline wave-cap) → file sources (W3) → regenerate the Map of Contents (W4).
+- Agent roster: 5 workers → 3 (concept-identifier, article-synthesizer, validator).
+- Article frontmatter no longer carries `extraction_hash`; the `article-md` structure gate and the `ask` filing template drop the field.
+
 ## 0.20.0 — 2026-06-13
 
 Phase 3+4: inbox quality gate, scheduled maintenance loop, on-demand guide synthesis, and a comparison page type.

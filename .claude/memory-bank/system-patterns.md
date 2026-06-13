@@ -5,7 +5,7 @@
 Three-layer plugin:
 
 1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a SKILL.md with a procedural walkthrough.
-2. **Agents**: 5 workers (`concept-identifier`, `article-synthesizer`, `validator`, `synthesizer`, `findings-analyst`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly.
+2. **Agents**: 3 workers (`concept-identifier`, `article-synthesizer`, `validator`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly — there are no orchestrator agents.
 3. **Templates** (scaffolding): `templates/library/` and `templates/stack/` are copied into user repos to bootstrap structure.
 
 The plugin itself holds no knowledge. It manipulates user-owned library repos.
@@ -16,38 +16,31 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 `/stacks:init-library {path}` → copy `templates/library/` to path → create private GitHub repo → write `~/.config/stacks/config.json` pointing at the new library.
 
 ### Stack creation
-`/stacks:new-stack {name}` (from within a library) → copy `templates/stack/` to `stacks/{name}/` → register in library's `catalog.md`.
+`/stacks:new-stack {name}` (from within a library) → copy `templates/stack/` to `{name}/` → register in library's `catalog.md`.
 
 ### Catalog pipeline (W0 → W4)
-`/stacks:catalog-sources [stack]` → W0 enumerate `sources/incoming/` → W0b prior-findings skip list from `dev/audit/findings.md` → W1 concept-identifier (parallel per batch, `SOURCES_PER_AGENT=10` baseline with small-stack bypass to 1-per-agent; slug immutability enforced; writes `dev/extractions/{batch_id}-concepts.md`) → W1b bash slug-collision dedup (merges `source_paths[]` across shared slugs) and `extraction_hash` computation via `scripts/compute-extraction-hash.sh` (sha256 of sorted source paths joined by `|` then slug) → W2 article-synthesizer (parallel per unique concept, strip-on-rewrite rule; copies `extraction_hash` verbatim into frontmatter) → W2b deterministic wikilink pass → W2b-post tag drift check (`scripts/normalize-tags.sh`) halts on out-of-vocab tags against `STACK.md` `allowed_tags:` — skipped if `allowed_tags:` absent → W3 source filing → W4 MoC regeneration preserving `## Reading Paths`.
+`/stacks:catalog-sources [stack]` → W0 enumerate `sources/incoming/` (these ARE the new-source set; a paren-in-filename gate fails early) → W1 concept-identifier (parallel, 1 source per agent for source isolation; slug immutability enforced; writes `dev/extractions/{batch_id}-concepts.md`) → W1b `dedup-extractions.py` slug-collision dedup (merges `source_paths[]` across shared slugs, writes one self-contained `_dedup-{slug}.md` per slug plus `_dedup-meta.txt` of counts the parent sources) → W2 article-synthesizer (parallel per unique concept, strip-on-rewrite rule; inline wave-cap of 25 agents per wave) → W2 tag drift check (`normalize-tags.sh`) halts on out-of-vocab tags against `STACK.md` `allowed_tags:`, skipped if absent → W3 source filing to publisher dirs → W4 MoC regeneration (`regenerate-moc.sh`) preserving `## Reading Paths`.
 
 ### Inbox routing
-`/stacks:process-inbox` (from any repo) → read library's `inbox/*.md` → classify each against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched.
+`/stacks:process-inbox` (from any repo) → read library's `inbox/*.md` → classify each against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only (no quality gate).
 
-### Audit pipeline (A1 → A5) with convergence loop
-`/stacks:audit-stack {stack}` → A1 validator inline-marks articles `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` (strips prior-cycle marks first, updates `last_verified` frontmatter; excludes `sources/incoming/` and `sources/trash/`) → A2 synthesizer produces `glossary.md`, `invariants.md`, `contradictions.md` at stack root → A2b shared wikilink pass → A3 findings-analyst writes `dev/audit/findings.md` per locked schema v2 (four sections: New Acquisitions, Articles to Re-Synthesize, Research Questions, Deferred; id = SHA256; status enum with terminal `failed`; carry-forward) → A4 bash convergence check: `generative_open` = non-terminal items with `action: fetch_source` OR `action: research_question` (2 consecutive empty passes OR `MAX_AUDIT_PASSES` cap, default 3) → A5 on convergence `cp` to `dev/audit/closed/{audit_date}-findings.md` so active `findings.md` persists for the next catalog cycle.
+### Audit pipeline (stateless drift report)
+`/stacks:audit-stack {stack}` → A1 dispatch the `validator` agent over articles (one agent unless article count exceeds the 25 cap, then inline `${ARTICLES[@]:i:CAP}` slices in parallel). Each validator strips prior-cycle marks, re-marks every claim `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` against its cited sources (excludes `sources/incoming/` and `sources/trash/`), and updates `last_verified`. Parent re-gates each article via `gate-batch.sh ... article-validated`. → bash drift report: grep the marks across `articles/*.md`, write `dev/audit/report.md` (counts + every flagged claim). → log + commit.
 
-### Feedback flywheel
-Catalog reads findings.md at W0b (skip list from terminal statuses; driving acquisitions from open items). Audit writes findings.md at A3 (carry-forward preserves terminal statuses by id). A5 uses cp (not mv) — findings.md is the persistent baseline that closes the loop.
+Each audit run is independent: the validator re-marks from scratch and the report is rebuilt from the current marks. There is no `findings.md` ledger, no carry-forward, no convergence pass-loop, and no glossary/invariants/contradictions synthesis — those (and the catalog↔audit extraction-hash flywheel) were removed in 0.21.0.
 
 ### Lookup
-`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + indexes → detect article-mode vs guide-mode via `articles/` directory presence → extract `## Reading Paths` context from `index.md` → load up to 3 matching articles (article mode) or topic guides (guide mode) → synthesize answer → optional Step 7 file-result-back branches on the same MODE flag (article mode writes `articles/{slug}.md` with `extraction_hash: ""`; guide mode writes `topics/{topic}/guide.md`).
+`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all stacks) → extract `## Reading Paths` context → score and load up to 3 matching articles across the scoped stacks → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
 
 ## Parent-side sharded dispatch
 
-All scale-sensitive waves (audit A1/A2/A3, catalog W1/W2) are sharded and dispatched directly by the parent skill (`catalog-sources` or `audit-stack`), not by an orchestrator agent. The orchestrator agents that previously owned this work were deprecated because nested Task dispatch was unreliable: when the harness dropped Task on a nested call, the orchestrator silently fell back to inline execution and bundled every shard's work into one context, hitting "Prompt is too long" on stacks the sharding was meant to keep below the ceiling. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent run all deterministic pieces (dedup, per-slug split, hash compute, wave gating) as code in the parent process.
+The scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched directly by the parent skill, not by an orchestrator agent. Orchestrator agents were removed because nested Task dispatch was unreliable: when the harness dropped Task on a nested call, the orchestrator silently fell back to inline execution and bundled every shard into one context, hitting "Prompt is too long" on exactly the stacks sharding was meant to keep below the ceiling. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent run all deterministic pieces (dedup, per-slug split, wave gating) as code.
 
-Per-batch caps: ≤3 articles per validator shard (A1) and per findings-analyst shard (A3); ≤10 articles per synthesizer shard (A2); 1 source per concept-identifier agent (W1); 25 agents per W2 wave. The rationale in each case is bounded per-agent context: validator and findings-analyst prompts grow with both article count and source count so the cap is tight; synthesizer reads article bodies only so the cap is looser; concept-identifier isolates one source per agent to prevent concept-bleed.
-
-A2 and A3 use a two-phase reduce when sharding fires: shards emit partials (`_a{2,3}-partial-{NN}.md`), then A2 re-dispatches one `synthesizer` agent in merge mode (tier-aware glossary merge, independent-corroboration check) while A3 merges partials with inline python in the parent (terminal-wins precedence by id). Single-shard fast paths skip the partials-merge step when the article count fits one shard. The parent runs the `assert-written.sh` gate loop after each fan-in, then emits the per-wave summary JSON itself. See `references/wave-engine.md`.
-
-### Unified summary-JSON contract
-
-The parent skill writes `dev/{audit,extractions}/_{wave}-summary.json` after each wave's fan-in completes. Envelope: `{schema_version: 1, wave, status, counts{...}, epochs{...}}`. Main-session gates verify the file exists and is non-empty, then `jq -e` nested `.counts.FIELD` paths (never `jq -e '.a and .b'` since `0` is jq-falsy — test field types instead). Schema-version checks let future field additions ship without breaking older gates. See `references/wave-engine.md` § Summary-JSON contract.
+Per-wave bounds: 1 source per concept-identifier agent (W1, prevents concept-bleed across sources); 25 agents per W2 wave; 25 articles per validator agent (audit A1), sliced into more agents above that. All sharding uses the inline `${ARRAY[@]:i:CAP}` idiom — there is no `shard-batches.sh`. The parent runs the `gate-batch.sh` write-or-fail + structure gate after each fan-in.
 
 ## Write-or-fail gate
 
-Every agent-producing wave pairs `test -s` with `stat -c %Y > dispatch_epoch` via `scripts/assert-written.sh`. Caller captures `DISPATCH_EPOCH=$(date +%s)` immediately before dispatch. Both checks needed: size alone misses stale pre-existing files, mtime alone misses empty writes. Gate enumerates expected file paths; never a directory path (dir mtime does not advance on in-place file edits).
+Every agent-producing wave gates through `gate-batch.sh {epoch} {label} {kind} {path}...`. The caller captures `DISPATCH_EPOCH=$(date +%s)` immediately before dispatch; after fan-in each expected path must be non-empty AND have mtime strictly newer than the epoch (size+mtime check, folded into gate-batch in 0.21.0 from the former standalone `assert-written.sh`), then pass the `assert-structure.sh` content-shape check for `{kind}` (`-` skips structure). Both halves matter: size alone misses a stale pre-existing file, mtime alone misses an empty write. The gate enumerates expected file paths, never a directory (dir mtime does not advance on in-place file edits). A sub-agent returns only text, no exit code, so this file-based gate is how the parent confirms the agent actually produced output.
 
 ## Slug immutability invariant
 
@@ -64,6 +57,5 @@ This mirrors the ChuggiesMart pattern — same mechanism, single-plugin variant.
 
 ## Known Weak Spots
 
-- W1b dedup and W4 MoC generator depend on gawk (nested arrays); mawk fallback noted in catalog-sources SKILL.md but not implemented.
-- Audit-stack outer pass loop re-enters Steps 4-8 textually; not all model variants will execute the loop deterministically without the operator re-invoking.
-(Epic #38 closed all six prior audit follow-ups — A2/A3 orchestrators, validator source sharding, W2 wave cap, schema-versioned summary contract, findings rotation. Remaining weak spots are the gawk dependency and the textual outer-pass loop listed above.)
+- W4 MoC generator (`regenerate-moc.sh`) and the tag parse in `normalize-tags.sh` use `awk`; not exercised against mawk-only environments.
+- `gate-batch.sh` uses Linux `stat -c %Y`; macOS/BSD `stat` syntax differs and is unsupported.

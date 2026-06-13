@@ -6,12 +6,12 @@
 |----------------|---------|
 | `.claude-plugin/plugin.json` | Plugin identity and version |
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
-| `agents/` | 5 worker subagent definitions: concept-identifier, article-synthesizer, validator, synthesizer, findings-analyst |
+| `agents/` | 3 worker subagent definitions: concept-identifier, article-synthesizer, validator |
 | `skills/{name}/SKILL.md` | User-invocable skills: ask, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
-| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh) plus pipeline helpers (assert-written.sh, assert-structure.sh, gate-batch.sh, shard-batches.sh, collision-dest.sh, wikilink-pass.sh, telemetry.sh) |
+| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, locate-plugin-root.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
-| `references/` | Reference docs: `wave-engine.md` (catalog + audit wave tables, gate contract, feedback flywheel), `refresh-procedure.md`, topic template |
+| `references/` | `default-topic-template.md` (the only reference doc; wave-engine/refresh-procedure/obsidian were removed in 0.21.0) |
 | `dev/` | Planning and feature-dev artifacts (not shipped with plugin) |
 | `CHANGELOG.md` | Version history |
 | `README.md` | User-facing readme |
@@ -20,12 +20,11 @@
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/assert-written.sh {path} {dispatch_epoch} {agent_label}` | Write-or-fail gate: `test -s` + `stat -c %Y > dispatch_epoch`. Linux-only. Fixed `AGENT_WRITE_FAILURE` error string. |
-| `scripts/wikilink-pass.sh {articles-dir} {glossary-path}` | Deterministic wikilink injection. Reads bold terms from glossary, wraps first case-insensitive occurrence per term per article, preserves capitalization, skips self-links and already-wrapped. No-op when glossary absent. |
-| `scripts/compute-extraction-hash.sh` (stdin→stdout) | Pipes stdin through `sha256sum \| awk '{print $1}'`. Called by W1b on `echo -n "{sorted-source-paths}\|{slug}"` (paths joined by `\|`, trailing `\|`, then slug). Emits bare 64-hex digest. Anchors the catalog→audit→catalog skip-list flywheel. |
-| `scripts/normalize-tags.sh {stack_root}` | Reads `allowed_tags:` block-list from `{stack_root}/STACK.md`, greps every `articles/*.md` frontmatter `tags:` against it, halts with `TAG_DRIFT: {slug}: {tag}` on stderr per offender (exit 1). Exits 0 with backward-compat warning when `allowed_tags:` absent/empty. Runs as W2b-post in catalog pipeline. |
-| `scripts/gate-batch.sh {epoch} {label} {kind} {path}...` | Shared write-or-fail + structure gate loop (0.19.1). Runs assert-written then assert-structure on each path, aggregates failures, exits 1 with `AGENT_WRITE_FAILURE: {label} batches ungated:`. Pass `-` as `{kind}` to skip the structure check. 5 call sites across catalog (W1, W2) and audit (A1, A2, A3). Covered by `tests/gate-batch.bats`. |
-| `scripts/shard-batches.sh {list_file} {batch_size} {out_prefix}` | Shards a newline list into `{out_prefix}NN.txt` (two-digit zero-padded) via `int((NR-1)/bs)` awk. 3 call sites: audit A1/A2/A3 article batches. Filename format must match the downstream `{out_prefix}*.txt` glob. |
+| `scripts/gate-batch.sh {epoch} {label} {kind} {path}...` | Shared write-or-fail + structure gate loop. Each path must be non-empty AND mtime strictly newer than `{epoch}` (the size+mtime check, folded in 0.21.0 from the former assert-written.sh), then `assert-structure.sh {path} {kind}`; aggregates failures, exits 1 with `AGENT_WRITE_FAILURE: {label} batches ungated:`. Pass `-` as `{kind}` to skip the structure check. Call sites: catalog W1/W2, audit A1. Covered by `tests/gate-batch.bats`. |
+| `scripts/assert-structure.sh {path} {kind} {label}` | Content-shape gate. Kinds: `concept-batch`/`dedup-md` (`## Concept:` header), `dedup-meta` (`ALL_SLUGS=`), `article-md` (`title:` + `last_verified:`), `article-validated` (a `[VERIFIED\|DRIFT\|UNSOURCED\|STALE]` mark). Covered by `tests/assert-structure.bats`. |
+| `scripts/dedup-extractions.py {extr_dir} {dedup_path}` | W1b dedup: merges concept blocks across `batch-*-concepts.md` by slug (union of `source_paths[]`, first-seen order), writes `_dedup.md`, one `_dedup-{slug}.md` per slug, and `_dedup-meta.txt` (`ALL_SLUGS`/`UPDATED_SLUGS`/`N_NEW`/`N_UPDATED`/`N_UNIQUE_CONCEPTS`/`INPUT_BLOCKS` for the caller to source). |
+| `scripts/normalize-tags.sh {stack_root}` | Reads `allowed_tags:` block-list from `{stack_root}/STACK.md`, greps every `articles/*.md` frontmatter `tags:` against it, halts with `TAG_DRIFT: {slug}: {tag}` on stderr per offender (exit 1). Exits 0 with backward-compat warning when `allowed_tags:` absent/empty. Runs as the W2 tag-drift check in catalog. |
+| `scripts/regenerate-moc.sh {stack_root}` | Rebuilds `index.md` (Map of Contents) from article frontmatter, grouping by `tags[0]`; preserves the `## Reading Paths` section verbatim. W4 in catalog. |
 | `scripts/collision-dest.sh {dir} {filename}` | Echoes a non-colliding path in `{dir}` for `{filename}`, appending `-1`, `-2`, ... before the extension until free. Shared by catalog source filing and process-inbox routing. |
 
 ## CLI Commands
@@ -55,9 +54,9 @@ Pure markdown + bash plugin. No package manager, no build step. No `package.json
 
 Runtime dependencies:
 - `jq` (version file parsing, known_marketplaces.json fallback)
-- `gawk` (GNU awk, for W1b nested-array dedup)
-- `perl` (wikilink-pass.sh regex substitution)
-- Linux `stat -c %Y` (mtime extraction; macOS/BSD not supported)
+- `python3` (W1b dedup: `dedup-extractions.py`)
+- `awk` (W4 MoC `regenerate-moc.sh`, tag parse in `normalize-tags.sh`)
+- Linux `stat -c %Y` (mtime extraction in `gate-batch.sh`; macOS/BSD not supported)
 
 Consumers of this plugin:
 - `~/.claude/settings.json` — `extraKnownMarketplaces` + `enabledPlugins` entries written by install.sh
