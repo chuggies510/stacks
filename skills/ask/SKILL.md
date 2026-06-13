@@ -39,24 +39,6 @@ fi
 echo "Library: $LIBRARY"
 ```
 
-## Step 1.5: Check existing guides
-
-Compute a slug from the raw query (stripping any --stack/--stacks flags):
-
-```bash
-QUERY_RAW="$ARGUMENTS"
-QUERY_RAW=$(echo "$QUERY_RAW" | sed 's/--stack[[:space:]]*[^[:space:]]*//' | sed 's/--stacks[[:space:]]*[^[:space:]]*//')
-QUERY_SLUG=$(echo "$QUERY_RAW" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | tr ' ' '-' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
-```
-
-If `$LIBRARY/guides/${QUERY_SLUG}.md` exists:
-- Read the guide file
-- Tell the user: "Returning existing guide for '{QUERY_SLUG}' (generated: {date from frontmatter}). Run `/stacks:guide --regenerate '{query}'` to synthesize a fresh guide from current articles."
-- Display the guide content
-- Stop — do not proceed to article retrieval.
-
-If no matching guide exists: continue to Step 2.
-
 ## Step 2: Read the catalog
 
 Read `$LIBRARY/catalog.md`. This lists all available stacks with names, descriptions, and counts.
