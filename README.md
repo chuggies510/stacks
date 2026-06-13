@@ -99,7 +99,9 @@ Listed in lifecycle order: set up, route and ingest, maintain, query.
 **catalog-sources** (run when you add sources):
 
 ```
-sources/incoming/  →  [concept-identifier × N]  →  dev/extractions/
+sources/incoming/  →  convert-sources (PDF/Office → text; skip+report images/scans)
+                              ↓
+              [source-extractor × N]  →  dev/extractions/
                               ↓
               [article-synthesizer × N]  →  articles/{slug}.md
                               ↓
@@ -121,7 +123,7 @@ Three specialized agents power the pipeline:
 
 | agent | role | used by |
 |-------|------|---------|
-| concept-identifier | identify concepts and extract claims from one source | catalog-sources |
+| source-extractor | read one source, extract concepts and claims, map to article slugs, assign tiers | catalog-sources |
 | article-synthesizer | write/update an article-per-concept wiki entry | catalog-sources |
 | validator | verify article claims against source material, apply inline marks | audit-stack |
 

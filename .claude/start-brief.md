@@ -1,14 +1,14 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
 Distilled 2026-06-13 from:
-  tech-context.md @ 3dce5c536059e98484a10b15e2dc2f8352c8ba45
-  system-patterns.md @ f95f45f4c97916e2585e785fb35c1159097be195
+  tech-context.md @ e89bc4bdf7d7f8645e06a6292a09e312087eba67
+  system-patterns.md @ 08b7448d728c8a1e4a2d40a6765402f700e381aa
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
 # stacks Start Brief
 
-Claude Code plugin for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:ask` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
+Claude Code plugin (v0.22.0) for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:ask` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
 
 ## Tech context
 
@@ -18,7 +18,7 @@ Claude Code plugin for building and maintaining curated domain knowledge librari
 - `bash scripts/install.sh` writes `extraKnownMarketplaces` + `enabledPlugins` entries into `~/.claude/settings.json`. Mirrors the ChuggiesMart pattern.
 - Update mechanism is `git pull`. Restart Claude Code to pick up changes.
 - Version sync: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` versions must match on every change, or the launcher shows stale versions. Bump both plus a CHANGELOG entry per change.
-- Repo: `git@github.com:chuggies510/stacks.git`. Issues: `gh issue list --state open`. Current version 0.21.0.
+- Repo: `git@github.com:chuggies510/stacks.git`. Issues: `gh issue list --state open`. Current version 0.22.0.
 
 ### Config consumers
 
@@ -28,7 +28,8 @@ Claude Code plugin for building and maintaining curated domain knowledge librari
 ### Tooling and dependencies
 
 - Pure markdown + bash plugin. No package manager, no build step, no `package.json`/`pyproject.toml`.
-- Runtime deps: `jq` (version/marketplace parsing), `python3` (W1b dedup, `dedup-extractions.py`), `awk` (W4 MoC + tag parse), Linux `stat -c %Y` for mtime (macOS/BSD not supported).
+- Core runtime deps: `jq` (version/marketplace parsing), `python3` (W1b dedup, `dedup-extractions.py`), `awk` (W4 MoC + tag parse), Linux `stat -c %Y` for mtime (macOS/BSD not supported).
+- Document-ingest deps (convert stage only): `uv` + `pdfplumber` (PDF→text, pdfplumber fetched ephemerally via `uv run --no-project --with`, no install), `pandoc` (.docx→text), `libreoffice` (spreadsheets/slides/legacy Office→text, headless). Each tool runs only for its formats; a missing tool skips that file with a report, never crashes the pipeline.
 - Tests: `bats` (`tests/gate-batch.bats`, `tests/assert-structure.bats`).
 - Skill frontmatter is only `name` + `description` (description starts "Use when..."). No `version`/`allowed-tools`/`thinking`. Agent frontmatter: `tools`, `model`, `description`, 3+ worked examples in the prompt.
 
@@ -51,18 +52,18 @@ rm -rf ~/tmp/test-library      # do not commit test library content
 Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned library repos.
 
 1. Skills (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a `skills/{name}/SKILL.md` procedural walkthrough.
-2. Agents: 3 workers — `concept-identifier`, `article-synthesizer`, `validator`. No orchestrator agents.
+2. Agents: 3 workers — `source-extractor`, `article-synthesizer`, `validator`. No orchestrator agents.
 3. Templates: `templates/library/` and `templates/stack/` copied into user repos to bootstrap structure.
 
 ### File conventions
 
 - `agents/` subagent definitions. `skills/{name}/SKILL.md`. `scripts/` lifecycle (install/uninstall/update/init/locate-plugin-root/loop) plus pipeline helpers. `templates/library|stack/`. `references/` holds only `default-topic-template.md`. `dev/` planning artifacts (not shipped).
 - Articles are flat (no typed subdirs), 300-800 words (stretch 1200), plain markdown with inline `[source-slug]` citations.
-- Pipeline helpers: `gate-batch.sh {epoch} {label} {kind} {path}...` (write-or-fail size+mtime + `assert-structure.sh` content-shape, `-` skips structure); `dedup-extractions.py {extr_dir} {dedup_path}` (W1b slug merge); `normalize-tags.sh {root}` (halts on out-of-vocab tags vs `STACK.md` `allowed_tags:`); `regenerate-moc.sh {root}` (W4 MoC, preserves `## Reading Paths`); `collision-dest.sh {dir} {file}` (non-colliding filename).
+- Pipeline helpers: `gate-batch.sh {epoch} {label} {kind} {path}...` (write-or-fail size+mtime + `assert-structure.sh` content-shape, `-` skips structure); `convert-sources.sh` (Step 3.5 non-text→text); `dedup-extractions.py {extr_dir} {dedup_path}` (W1b slug merge); `normalize-tags.sh {root}` (halts on out-of-vocab tags vs `STACK.md` `allowed_tags:`); `regenerate-moc.sh {root}` (W4 MoC, preserves `## Reading Paths`); `collision-dest.sh {dir} {file}` (non-colliding filename).
 
-### Catalog pipeline (W0 to W4)
+### Catalog pipeline (convert → W0 to W4)
 
-`/stacks:catalog-sources [stack]`: W0 enumerate `sources/incoming/` (new-source set; paren-in-filename gate fails early) → W1 `concept-identifier` parallel, 1 source per agent for isolation, slug immutability, writes `dev/extractions/{batch_id}-concepts.md` → W1b `dedup-extractions.py` merges `source_paths[]` across shared slugs, writes one `_dedup-{slug}.md` per slug plus `_dedup-meta.txt` → W2 `article-synthesizer` parallel per unique concept, strip-on-rewrite, 25-agent wave cap → W2 tag-drift check (`normalize-tags.sh`, skipped if `allowed_tags:` absent) → W3 source filing to publisher dirs → W4 MoC regeneration (`regenerate-moc.sh`).
+`/stacks:catalog-sources [stack]`: Step 3.5 convert (`convert-sources.sh`, runs BEFORE enumeration: PDF→pdfplumber, .docx→pandoc, spreadsheets/slides/legacy Office→libreoffice; images/scanned-PDFs/unknown-binaries skipped + reported; converted originals archived to gitignored `sources/.raw/`; the source-extractor only ever sees readable text, never a raw binary) → W0 enumerate `sources/incoming/` (new-source set; paren-in-filename gate fails early) → W1 `source-extractor` parallel, 1 source per agent for isolation, slug immutability, writes `dev/extractions/{batch_id}-concepts.md` → W1b `dedup-extractions.py` merges `source_paths[]` across shared slugs, writes one `_dedup-{slug}.md` per slug plus `_dedup-meta.txt` → W2 `article-synthesizer` parallel per unique concept, strip-on-rewrite, 25-agent wave cap → W2 tag-drift check (`normalize-tags.sh`, skipped if `allowed_tags:` absent) → W3 source filing to publisher dirs → W4 MoC regeneration (`regenerate-moc.sh`).
 
 ### Audit pipeline (stateless drift report)
 

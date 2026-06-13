@@ -1,3 +1,18 @@
+## 0.22.0 — 2026-06-13
+
+**Stacks can now swallow the documents it exists for — PDFs, Word, Excel — instead of only hand-written markdown.** Before, the extractor read whatever file it was handed straight with the Read tool: a long PDF stopped at ~20 pages with no warning, and a `.docx` (zipped XML) came back as garbled bytes. A knowledge base built on silently-incomplete extraction reads as authoritative while being wrong. Now a conversion stage turns every document into full readable text before extraction, and anything it can't convert (images, scanned PDFs, unknown binaries) is skipped and reported, never garbled. (#55)
+
+### Added
+
+- **`scripts/convert-sources.sh`** — single type-aware conversion stage. PDF → `pdfplumber` text (whole document, no page cap; multi-column layout preserved, then blank-line runs squeezed); `.docx` → `pandoc`; spreadsheets/slides/legacy Office → `libreoffice` headless. Images, scanned PDFs (no text layer), and unknown binaries are skipped with a per-file reason. Converted originals are archived to `sources/.raw/` (gitignored), so provenance survives without bloating the article repo. Missing tool → that file is skipped-and-reported, never a crash. (`scripts/convert-sources.sh`, `tests/convert-sources.bats` — 6 cases incl. a real PDF round-trip)
+- catalog-sources Step 3.5 runs the converter on each stack's `sources/incoming/` before W0 enumeration, so the extractor agent always receives readable text. (`skills/catalog-sources/SKILL.md`)
+
+### Changed
+
+- **Renamed the `concept-identifier` agent to `source-extractor`** to match its full job: it reads a source, extracts claims, maps concepts to article slugs, and assigns tiers — not just "identify concepts". (`agents/source-extractor.md`, catalog-sources dispatch + gate label, README, memory bank)
+- **`--from` staging now accepts documents, not just `.md`/`.txt`.** It stages `.pdf/.docx/.xlsx/.pptx` and friends into `incoming/`, then the convert stage handles them — type-awareness lives in one place (the converter) rather than split across `--from`, the converter, and `process-inbox`. (`skills/catalog-sources/SKILL.md` Step 1.5)
+- **New runtime dependencies** for document ingest: `pdfplumber` (fetched ephemerally via `uv run --with`, no install), `pandoc`, `libreoffice`. Each is only invoked for the formats that need it; a missing tool degrades to skip-and-report. (memory bank `tech-context.md`)
+
 ## 0.21.0 — 2026-06-13
 
 **Cut stacks down to the one thing it's for: drop a source in, ask a question, get a grounded answer.** Everything that didn't serve that path is gone. The plugin is roughly half its former size (16 files deleted). Breaking: skills and the audit findings ledger were removed, so libraries built against the old audit format lose their `findings.md` flywheel (articles and sources are untouched).

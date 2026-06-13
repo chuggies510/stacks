@@ -86,29 +86,32 @@ For the remainder of the skill (Steps 2-10), when `STACK_QUEUE` contains multipl
 
 ## Step 1.5: Stage sources from --from path (if provided)
 
-If `$FROM_PATH` is set, copy readable source files into `$STACK/sources/incoming/` before detection runs. Only copy files Claude can read and extract knowledge from: markdown (`.md`, `.txt`) and text files. Skip binaries, PDFs, images, and other non-text formats.
+If `$FROM_PATH` is set, copy candidate source files into `$STACK/sources/incoming/` before detection runs. Stage text AND document formats (`.md/.txt/.html`, `.pdf`, `.docx/.doc/.odt/.rtf`, `.xlsx/.xls/.ods`, `.ppt/.pptx`); the convert stage (Step 3.5) turns the documents into readable text and skips-and-reports anything it can't (images, scanned PDFs, unknown binaries). Type-awareness lives in one place — the converter — not split between here, the converter, and `process-inbox`.
 
 ```bash
 if [[ -n "$FROM_PATH" ]]; then
   echo "Staging sources from: $FROM_PATH"
   STAGED=0
-  SKIPPED=0
   while IFS= read -r -d '' src_file; do
     filename=$(basename "$src_file")
     dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$STACK/sources/incoming" "$filename")
     cp "$src_file" "$dest"
     ((STAGED++))
-  done < <(find "$FROM_PATH" -type f \( -name "*.md" -o -name "*.txt" \) -print0 2>/dev/null)
+  done < <(find "$FROM_PATH" -type f \( \
+      -iname "*.md" -o -iname "*.txt" -o -iname "*.html" -o -iname "*.htm" \
+      -o -iname "*.pdf" -o -iname "*.docx" -o -iname "*.doc" -o -iname "*.odt" -o -iname "*.rtf" \
+      -o -iname "*.xlsx" -o -iname "*.xls" -o -iname "*.ods" -o -iname "*.pptx" -o -iname "*.ppt" \
+    \) -print0 2>/dev/null)
 
   TOTAL=$(find "$FROM_PATH" -type f ! -name ".gitkeep" 2>/dev/null | wc -l | tr -d ' ')
   SKIPPED=$((TOTAL - STAGED))
 
   echo "Staged $STAGED file(s) to $STACK/sources/incoming/"
-  [[ $SKIPPED -gt 0 ]] && echo "Skipped $SKIPPED non-text file(s) (PDFs, images, binaries)"
+  [[ $SKIPPED -gt 0 ]] && echo "Skipped $SKIPPED non-source file(s) (images, unknown binaries)"
 
   if [[ $STAGED -eq 0 ]]; then
-    echo "ERROR: No readable source files found in $FROM_PATH"
-    echo "Supported formats: .md, .txt"
+    echo "ERROR: No source files found in $FROM_PATH"
+    echo "Supported: .md .txt .html, .pdf, .docx/.doc/.odt/.rtf, .xlsx/.xls/.ods, .pptx/.ppt"
     exit 1
   fi
 fi
@@ -135,6 +138,18 @@ AGENTS_DIR="$STACKS_ROOT/agents"
 
 Each fan-out wave (W1, W2) gates its agents' output with `gate-batch.sh`: the parent captures a dispatch epoch before dispatch, and after fan-in every expected file must be non-empty and newer than that epoch (a write-or-fail check), plus a content-shape check via `assert-structure.sh`.
 
+## Step 3.5: Convert non-text sources to readable text
+
+`sources/incoming/` may hold documents the extractor agent cannot read with `Read` — PDFs (page-capped, truncate silently), Office binaries (zipped XML, garble), images. Convert them to text sidecars BEFORE enumeration so the agent always receives readable text it can consume in full. This runs per-stack (direct drops into any stack's `incoming/`, not just `--from` staging).
+
+```bash
+bash "$SCRIPTS_DIR/convert-sources.sh" "$STACK/sources/incoming" "$STACK/sources/.raw"
+```
+
+The converter (single source of type-awareness): text passes through; PDF → `pdfplumber` text sidecar (full document, no page cap; multi-column layout preserved); `.docx` → `pandoc`; spreadsheets/slides/legacy Office → `libreoffice` headless. Each converted original is moved to `sources/.raw/` (gitignored — provenance kept out of the library's article history). Images, scanned PDFs (no text layer), and unknown binaries are skipped and listed, never garbled. **Surface the converter's report to the operator** so any skipped source is visible — a knowledge base built on silently-incomplete extraction reads as authoritative while being wrong.
+
+After this step `incoming/` holds only readable text; W0 enumerates that.
+
 ## Step 4: W0 — Enumerate new sources
 
 Files in `sources/incoming/` are by definition not yet filed or indexed (W3 moves them after successful catalog); they ARE the new-source set. No diff against `index.md` is needed here.
@@ -158,11 +173,11 @@ fi
 
 If `NEW_SOURCES` is empty, tell the user: "All sources already indexed. Nothing to catalog." and stop.
 
-## Step 6: W1 — Parent-side parallel concept-identifier dispatch
+## Step 6: W1 — Parent-side parallel source-extractor dispatch
 
-The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
+The parent skill (this session) shards sources directly and dispatches `source-extractor` agents in parallel. The `source-extractor-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
 
-**Batch size: 1 source per concept-identifier agent.** Per-source isolation matters more than minimizing dispatch count. Each agent reads one source plus the existing `articles/` listing (for slug-immutability checks) and writes one `dev/extractions/batch-{NN}-concepts.md` file. Bundling multiple sources into one agent invites concept-bleed across sources — claims from source A get attributed to a concept first identified in source B.
+**Batch size: 1 source per source-extractor agent.** Per-source isolation matters more than minimizing dispatch count. Each agent reads one source plus the existing `articles/` listing (for slug-immutability checks) and writes one `dev/extractions/batch-{NN}-concepts.md` file. Bundling multiple sources into one agent invites concept-bleed across sources — claims from source A get attributed to a concept first identified in source B.
 
 ```bash
 NEW_SOURCES_ARR=()
@@ -182,7 +197,7 @@ rm -f "$STACK/dev/extractions"/_dedup*.md
 DISPATCH_EPOCH_W1=$(date +%s)
 ```
 
-**Dispatch:** in a single message, emit one `Agent` tool call per source (subagent_type `stacks:concept-identifier`). Each prompt names: the assigned `batch_id` (`batch-1`, `batch-2`, …), the absolute source path, the path to `$STACK/STACK.md`, and the existing `$STACK/articles/` listing. Tell each agent to write its output to `dev/extractions/{batch_id}-concepts.md`. Parallel dispatch is mandatory.
+**Dispatch:** in a single message, emit one `Agent` tool call per source (subagent_type `stacks:source-extractor`). Each prompt names: the assigned `batch_id` (`batch-1`, `batch-2`, …), the absolute source path, the path to `$STACK/STACK.md`, and the existing `$STACK/articles/` listing. Tell each agent to write its output to `dev/extractions/{batch_id}-concepts.md`. Parallel dispatch is mandatory.
 
 **Gate W1:**
 
@@ -191,7 +206,7 @@ W1_PATHS=()
 for ((i=1; i<=N_BATCHES_W1; i++)); do
   W1_PATHS+=("$STACK/dev/extractions/batch-${i}-concepts.md")
 done
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W1" "concept-identifier" concept-batch "${W1_PATHS[@]}"
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W1" "source-extractor" concept-batch "${W1_PATHS[@]}"
 ```
 
 ## Step 6.5: W1b — Deterministic dedup in the parent

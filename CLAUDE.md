@@ -26,7 +26,7 @@ stacks/
 │   ├── plugin.json            # Plugin identity and version
 │   └── marketplace.json       # Single-plugin marketplace descriptor
 ├── skills/{name}/SKILL.md     # User-invocable skills (init, new, catalog-sources, ask, audit-stack, process-inbox)
-├── agents/                    # 5 subagent definitions (YAML frontmatter + prompt)
+├── agents/                    # 3 subagent definitions (source-extractor, article-synthesizer, validator)
 ├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
 ├── templates/
 │   ├── library/               # Files copied when /stacks:init-library creates a library

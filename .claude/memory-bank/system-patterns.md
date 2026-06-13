@@ -5,7 +5,7 @@
 Three-layer plugin:
 
 1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a SKILL.md with a procedural walkthrough.
-2. **Agents**: 3 workers (`concept-identifier`, `article-synthesizer`, `validator`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly — there are no orchestrator agents.
+2. **Agents**: 3 workers (`source-extractor`, `article-synthesizer`, `validator`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly — there are no orchestrator agents.
 3. **Templates** (scaffolding): `templates/library/` and `templates/stack/` are copied into user repos to bootstrap structure.
 
 The plugin itself holds no knowledge. It manipulates user-owned library repos.
@@ -19,7 +19,7 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 `/stacks:new-stack {name}` (from within a library) → copy `templates/stack/` to `{name}/` → register in library's `catalog.md`.
 
 ### Catalog pipeline (W0 → W4)
-`/stacks:catalog-sources [stack]` → W0 enumerate `sources/incoming/` (these ARE the new-source set; a paren-in-filename gate fails early) → W1 concept-identifier (parallel, 1 source per agent for source isolation; slug immutability enforced; writes `dev/extractions/{batch_id}-concepts.md`) → W1b `dedup-extractions.py` slug-collision dedup (merges `source_paths[]` across shared slugs, writes one self-contained `_dedup-{slug}.md` per slug plus `_dedup-meta.txt` of counts the parent sources) → W2 article-synthesizer (parallel per unique concept, strip-on-rewrite rule; inline wave-cap of 25 agents per wave) → W2 tag drift check (`normalize-tags.sh`) halts on out-of-vocab tags against `STACK.md` `allowed_tags:`, skipped if absent → W3 source filing to publisher dirs → W4 MoC regeneration (`regenerate-moc.sh`) preserving `## Reading Paths`.
+`/stacks:catalog-sources [stack]` → Step 3.5 convert non-text sources (`convert-sources.sh`: PDF→pdfplumber text, `.docx`→pandoc, spreadsheets/slides/legacy Office→libreoffice; images/scanned-PDFs/unknown-binaries skipped+reported; converted originals archived to gitignored `sources/.raw/`; runs before enumeration so the agent only ever sees text) → W0 enumerate `sources/incoming/` (these ARE the new-source set; a paren-in-filename gate fails early) → W1 source-extractor (parallel, 1 source per agent for source isolation; slug immutability enforced; writes `dev/extractions/{batch_id}-concepts.md`) → W1b `dedup-extractions.py` slug-collision dedup (merges `source_paths[]` across shared slugs, writes one self-contained `_dedup-{slug}.md` per slug plus `_dedup-meta.txt` of counts the parent sources) → W2 article-synthesizer (parallel per unique concept, strip-on-rewrite rule; inline wave-cap of 25 agents per wave) → W2 tag drift check (`normalize-tags.sh`) halts on out-of-vocab tags against `STACK.md` `allowed_tags:`, skipped if absent → W3 source filing to publisher dirs → W4 MoC regeneration (`regenerate-moc.sh`) preserving `## Reading Paths`.
 
 ### Inbox routing
 `/stacks:process-inbox` (from any repo) → read library's `inbox/*.md` → classify each against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only (no quality gate).
@@ -36,7 +36,7 @@ Each audit run is independent: the validator re-marks from scratch and the repor
 
 The scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched directly by the parent skill, not by an orchestrator agent. Orchestrator agents were removed because nested Task dispatch was unreliable: when the harness dropped Task on a nested call, the orchestrator silently fell back to inline execution and bundled every shard into one context, hitting "Prompt is too long" on exactly the stacks sharding was meant to keep below the ceiling. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent run all deterministic pieces (dedup, per-slug split, wave gating) as code.
 
-Per-wave bounds: 1 source per concept-identifier agent (W1, prevents concept-bleed across sources); 25 agents per W2 wave; 25 articles per validator agent (audit A1), sliced into more agents above that. All sharding uses the inline `${ARRAY[@]:i:CAP}` idiom — there is no `shard-batches.sh`. The parent runs the `gate-batch.sh` write-or-fail + structure gate after each fan-in.
+Per-wave bounds: 1 source per source-extractor agent (W1, prevents concept-bleed across sources); 25 agents per W2 wave; 25 articles per validator agent (audit A1), sliced into more agents above that. All sharding uses the inline `${ARRAY[@]:i:CAP}` idiom — there is no `shard-batches.sh`. The parent runs the `gate-batch.sh` write-or-fail + structure gate after each fan-in.
 
 ## Write-or-fail gate
 
@@ -44,7 +44,7 @@ Every agent-producing wave gates through `gate-batch.sh {epoch} {label} {kind} {
 
 ## Slug immutability invariant
 
-W1 concept-identifier cannot rename an existing article's slug — it matches by claim overlap and reuses the existing slug as both `slug` and `target_article`. Combined with W1b dedup, this eliminates silent overwrite by parallel W2 dispatches writing to the same filename.
+W1 source-extractor cannot rename an existing article's slug — it matches by claim overlap and reuses the existing slug as both `slug` and `target_article`. Combined with W1b dedup, this eliminates silent overwrite by parallel W2 dispatches writing to the same filename.
 
 ## Marketplace Registration Pattern
 

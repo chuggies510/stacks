@@ -11,7 +11,7 @@ set -euo pipefail
 #   dispatch_epoch   Unix timestamp (seconds) captured before dispatch — each
 #                    file's mtime must be strictly greater than this value.
 #   agent_label      Label surfaced in AGENT_WRITE_FAILURE messages (e.g.
-#                    "concept-identifier", "validator-parent-gate").
+#                    "source-extractor", "validator-parent-gate").
 #   structure_kind   Type passed to assert-structure.sh.  Pass "-" to skip the
 #                    structure check and run the write check only.
 #   <path>...        One or more absolute paths to gate.

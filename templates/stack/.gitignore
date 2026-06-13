@@ -2,3 +2,4 @@ sources/incoming/*
 sources/trash/*
 !sources/incoming/.gitkeep
 !sources/trash/.gitkeep
+sources/.raw/

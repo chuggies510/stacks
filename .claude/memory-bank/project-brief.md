@@ -10,7 +10,7 @@ Claude Code plugin for building and maintaining curated domain knowledge librari
 - **Source routing**: inbox files from other sessions get classified and moved to the matching stack's incoming directory (`process-inbox`, routing only).
 - **Stateless audit**: `audit-stack` re-marks every article (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) against its cited sources and rebuilds `dev/audit/report.md` from those marks each run. No persistent findings ledger, no carry-forward, no convergence loop.
 - **Harness engineering**: every agent dispatch is gated by `gate-batch.sh` — each expected output file must be non-empty AND freshly written (mtime newer than the captured dispatch epoch), plus a content-shape check. Sub-agents return only text, so the file-based gate is the success signal.
-- **Agent-driven synthesis**: concept-identifier → article-synthesizer (catalog); validator (audit). Slug immutability prevents silent cross-file drift.
+- **Agent-driven synthesis**: source-extractor → article-synthesizer (catalog); validator (audit). Slug immutability prevents silent cross-file drift.
 - **Template-driven**: new libraries and stacks are scaffolded from templates in `templates/library/` and `templates/stack/`.
 - **Directory-source marketplace**: the plugin loads directly from this repo via `extraKnownMarketplaces`. `git pull` is the update mechanism.
 

@@ -6,7 +6,7 @@
 |----------------|---------|
 | `.claude-plugin/plugin.json` | Plugin identity and version |
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
-| `agents/` | 3 worker subagent definitions: concept-identifier, article-synthesizer, validator |
+| `agents/` | 3 worker subagent definitions: source-extractor, article-synthesizer, validator |
 | `skills/{name}/SKILL.md` | User-invocable skills: ask, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
 | `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, locate-plugin-root.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
@@ -56,6 +56,10 @@ Runtime dependencies:
 - `jq` (version file parsing, known_marketplaces.json fallback)
 - `python3` (W1b dedup: `dedup-extractions.py`)
 - `awk` (W4 MoC `regenerate-moc.sh`, tag parse in `normalize-tags.sh`)
+- `uv` + `pdfplumber` (PDF→text in `convert-sources.sh`; pdfplumber fetched ephemerally via `uv run --no-project --with`, no install)
+- `pandoc` (`.docx`→text in `convert-sources.sh`)
+- `libreoffice` (spreadsheets/slides/legacy Office→text in `convert-sources.sh`, headless with an isolated profile)
+- document-ingest tools degrade gracefully: a missing tool skips that file with a report, never crashes the pipeline
 - Linux `stat -c %Y` (mtime extraction in `gate-batch.sh`; macOS/BSD not supported)
 
 Consumers of this plugin:
