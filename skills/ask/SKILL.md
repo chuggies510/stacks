@@ -105,20 +105,27 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
 
 ## Step 5: Retrieve matching articles across stacks
 
-<!-- STACKS-SEARCH STUB — replace this block when #10 (qmd) lands.
-     Contract: input = (QUERY, STACKS_TO_SEARCH[], per-stack article dirs)
-     Output = up to 3 (article_path, stack_name) pairs ranked by relevance.
-     The answer synthesis in Step 6 depends only on these pairs. -->
+<!-- Retrieval contract: input = (QUERY, STACKS_TO_SEARCH[], per-stack article dirs)
+     Output = up to 3 article paths ranked by relevance; Step 6 synthesis depends
+     only on those. rank-articles.sh searches whole article BODIES, not just
+     frontmatter — title-only matching missed body content, the wall past a few
+     dozen articles (#10). qmd's vector search is the future escalation, for
+     queries that miss on pure semantic synonyms keyword grep can't catch. -->
 
-Score articles across all stacks in `STACKS_TO_SEARCH` together. For each article in `$LIBRARY/{stack}/articles/`, weight matches in this order:
-1. `title` frontmatter field — highest weight
-2. `tags[]` frontmatter field — high weight
-3. Article slug (filename without `.md`) — medium weight
-4. Reading Paths context from Step 4 — contextual aid
+Rank articles across all stacks in scope by keyword match over the whole file (body included), highest score first. Pass one `articles/` dir per stack:
 
-Select the top 3 articles globally (across all stacks). Read each article file. Track which stack each article came from.
+```bash
+ARTICLE_DIRS=()
+for s in "${STACKS_TO_SEARCH[@]}"; do
+  [[ -d "$LIBRARY/$s/articles" ]] && ARTICLE_DIRS+=("$LIBRARY/$s/articles")
+done
+RANKED=$(bash "$STACKS_ROOT/scripts/rank-articles.sh" 3 "$QUERY" "${ARTICLE_DIRS[@]}")
+echo "$RANKED"
+```
 
-If no matches found across any stack in scope: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}."
+Each output line is `<score><TAB><path>`. Read each ranked article file (top 3); the stack name is the directory two levels above the file (`{stack}/articles/{slug}.md`). Use the `## Reading Paths` context from Step 4 as a tie-breaker / supplementary pointer when scores are close.
+
+If `RANKED` is empty (no article scored), tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
 
 ## Step 6: Synthesize answer
 

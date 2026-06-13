@@ -1,3 +1,16 @@
+## 0.23.0 — 2026-06-13
+
+**`/stacks:ask` now searches inside article bodies, not just titles and tags — so it stops missing articles once a stack grows past a few dozen.** Before, retrieval scored each article only on its frontmatter `title`/`tags`/slug; an article whose relevant content was in the body never surfaced unless the query happened to echo its title. Past ~50-75 articles per stack that breaks down and `ask` returns wrong or incomplete sources. Now a keyword rank over the whole file picks the top 3. (#10, partial — the keyword wall; semantic-synonym retrieval via qmd is a later escalation, not built)
+
+### Added
+
+- **`scripts/rank-articles.sh`** — ranks articles against a query by case-insensitive keyword count over the whole file (body weight 1, `title:` line +5), drops stopwords and <3-char tokens, returns the top N `score⇥path` lines across all scoped stacks. Pure `grep`/`sort`, no new dependency, no index to maintain. (`tests/rank-articles.bats` — 7 cases incl. a body-only match that title-search would miss)
+- `/stacks:ask` Step 5 calls it instead of asking the model to eyeball frontmatter. Empty output → honest "no matching content", no synthesis from nothing. (`skills/ask/SKILL.md`)
+
+### Why not qmd
+
+The original #10 proposed Karpathy's BM25/vector engine + an MCP server + an index. That's the second fix, not the first: the keyword wall (title-only matching) falls to `grep` over bodies with zero dependencies. qmd earns its slot only when retrieval misses on pure semantic synonyms keyword search can't catch — a sharper, later trigger than raw article count.
+
 ## 0.22.0 — 2026-06-13
 
 **Stacks can now swallow the documents it exists for — PDFs, Word, Excel — instead of only hand-written markdown.** Before, the extractor read whatever file it was handed straight with the Read tool: a long PDF stopped at ~20 pages with no warning, and a `.docx` (zipped XML) came back as garbled bytes. A knowledge base built on silently-incomplete extraction reads as authoritative while being wrong. Now a conversion stage turns every document into full readable text before extraction, and anything it can't convert (images, scanned PDFs, unknown binaries) is skipped and reported, never garbled. (#55)

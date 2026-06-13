@@ -30,7 +30,7 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 Each audit run is independent: the validator re-marks from scratch and the report is rebuilt from the current marks. There is no `findings.md` ledger, no carry-forward, no convergence pass-loop, and no glossary/invariants/contradictions synthesis — those (and the catalog↔audit extraction-hash flywheel) were removed in 0.21.0.
 
 ### Lookup
-`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all stacks) → extract `## Reading Paths` context → score and load up to 3 matching articles across the scoped stacks → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
+`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all stacks) → extract `## Reading Paths` context → rank articles by keyword match over the whole file body (`rank-articles.sh`, not frontmatter-only — body search is the fix for the title-match wall, #10), load the top 3 across the scoped stacks → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
 
 ## Parent-side sharded dispatch
 

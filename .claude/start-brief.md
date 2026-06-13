@@ -2,13 +2,13 @@
 Start-brief: distilled orientation loaded by /start.
 Distilled 2026-06-13 from:
   tech-context.md @ e89bc4bdf7d7f8645e06a6292a09e312087eba67
-  system-patterns.md @ 08b7448d728c8a1e4a2d40a6765402f700e381aa
+  system-patterns.md @ 1cf94424a169e4659648700d2d59c174d4307ab2
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
 # stacks Start Brief
 
-Claude Code plugin (v0.22.0) for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:ask` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
+Claude Code plugin (v0.23.0) for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:ask` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
 
 ## Tech context
 
@@ -74,7 +74,7 @@ Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned lib
 - `/stacks:init-library {path}`: copy `templates/library/` → create private GitHub repo → write `~/.config/stacks/config.json`.
 - `/stacks:new-stack {name}`: copy `templates/stack/` to `{name}/` → register in library `catalog.md`.
 - `/stacks:process-inbox`: read library `inbox/*.md` → classify against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only, no quality gate.
-- `/stacks:ask {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all) → score and load up to 3 matching articles → synthesize cited answer → optional file-back (extend or write an article, commit). Article-only.
+- `/stacks:ask {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all) → rank articles by keyword match over the whole body (`rank-articles.sh`, not frontmatter-only — #10 fix), load top 3 → synthesize cited answer → optional file-back (extend or write an article, commit). Article-only.
 
 ### Cross-cutting harness patterns
 
