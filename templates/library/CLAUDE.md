@@ -32,7 +32,7 @@ Stacks in this library:
 Available commands:
   /stacks:new-stack {name}          scaffold a new stack
   /stacks:catalog-sources {stack}  process sources into article-per-concept wiki entries
-  /stacks:audit-stack {stack}      validate articles, find gaps, suggest research
+  /stacks:audit-stack {stack}      validate articles against sources, report drift
   /stacks:ask "{query}"            query this library from any repo
 
 Next: {derive from state}
@@ -42,7 +42,7 @@ Derive "Next" from state:
 - No stacks: "Run `/stacks:new-stack {name}` to create your first stack."
 - Stack exists, no articles, no incoming: "Drop sources in `{stack}/sources/incoming/`, then run `/stacks:catalog-sources {stack}`."
 - Stack has incoming sources: "Run `/stacks:catalog-sources {stack}` to process {N} queued source(s)."
-- Stack has articles, no incoming: "Run `/stacks:audit-stack {stack}` to check coverage and find gaps."
+- Stack has articles, no incoming: "Run `/stacks:audit-stack {stack}` to check articles against their sources."
 
 ## Conventions
 

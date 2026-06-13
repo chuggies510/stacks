@@ -28,8 +28,8 @@ This is [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :ask, :audit-stack
-  agents/        ← 5 LLM workers (concept identification, synthesis, validation, findings)
+  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :ask, :audit-stack, :process-inbox
+  agents/        ← 3 LLM workers (concept identification, synthesis, validation)
   scripts/       ← install.sh, init.sh, update.sh
 
 ~/my-library/    ← your repo. the content. private. the tool touches this.
@@ -38,7 +38,7 @@ stacks/          ← this repo. the tool. public. knows nothing about you.
     STACK.md     ← schema: source tiers, topic template, filing rules
     index.md     ← what's been ingested
     sources/     ← raw material goes in here
-    topics/      ← synthesized guides come out here
+    articles/    ← synthesized article-per-concept entries come out here
 ```
 
 The tool never knows what's in your library. Your library doesn't care what version of the tool you're running. They're just files.
@@ -85,7 +85,8 @@ Query from anywhere:
 | `/stacks:new-stack {name}` | scaffold a new stack from templates |
 | `/stacks:catalog-sources {stack}` | identify concepts in new sources, write article-per-concept wiki entries |
 | `/stacks:ask {query}` | answer a question from your curated articles (works from any repo) |
-| `/stacks:audit-stack {stack}` | validate articles against sources, synthesize glossary/invariants, find gaps |
+| `/stacks:audit-stack {stack}` | validate articles against sources, report drift/unsourced/stale claims |
+| `/stacks:process-inbox` | route queued inbox files to the matching stack's incoming dir |
 
 ---
 
@@ -98,30 +99,27 @@ sources/incoming/  →  [concept-identifier × N]  →  dev/extractions/
                               ↓
               [article-synthesizer × N]  →  articles/{slug}.md
                               ↓
-              wikilink pass  →  cross-article links resolved
+              regenerate index.md (Map of Contents)
 ```
 
 **audit-stack** (run when you want quality):
 
 ```
-articles/  →  [validator]         →  inline [VERIFIED]/[DRIFT]/[UNSOURCED] marks
-           →  [synthesizer]       →  glossary.md + invariants.md + contradictions.md
-           →  [findings-analyst]  →  dev/audit/findings.md (gaps + research direction)
+articles/  →  [validator]  →  inline [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] marks
+           →  drift report  →  dev/audit/report.md (what drifted / is unsourced / is stale)
 ```
 
 ---
 
 ## agents
 
-Five specialized agents power the pipeline:
+Three specialized agents power the pipeline:
 
 | agent | role | used by |
 |-------|------|---------|
 | concept-identifier | identify concepts and extract claims from one source | catalog-sources |
 | article-synthesizer | write/update an article-per-concept wiki entry | catalog-sources |
 | validator | verify article claims against source material, apply inline marks | audit-stack |
-| synthesizer | produce glossary.md, invariants.md, contradictions.md | audit-stack |
-| findings-analyst | identify gaps, write findings.md, suggest research direction | audit-stack |
 
 ---
 
@@ -133,13 +131,7 @@ Five specialized agents power the pipeline:
 | `index.md` | stack root | source + topic catalog, regenerated on every ingest |
 | `log.md` | stack root | append-only operation history |
 | `catalog.md` | library root | index of all stacks |
-| `guide.md` | `topics/{name}/` | one synthesized topic guide |
-
----
-
-## browse with Obsidian
-
-A library is a directory of markdown files with frontmatter and `[[wikilinks]]` — exactly the shape [Obsidian](https://obsidian.md) is built for. Open your library as a vault and you get graph view over the articles, backlinks, Dataview queries against frontmatter (e.g. "which articles have never been validated"), and one-click source capture via the [Web Clipper](https://obsidian.md/clipper) extension pointed at `sources/incoming/`. See `references/obsidian.md` for setup, Dataview query recipes, and conventions.
+| `{slug}.md` | `articles/` | one synthesized article-per-concept wiki entry |
 
 ---
 
