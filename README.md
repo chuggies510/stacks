@@ -79,16 +79,18 @@ Query from anywhere:
 
 ## skills
 
+Listed in lifecycle order: set up, route and ingest, maintain, query.
+
 | skill | what it does | run from |
 |-------|-------------|----------|
 | `/stacks:init-library {path}` | create a knowledge library + private GitHub repo | anywhere |
 | `/stacks:new-stack {name}` | scaffold a new stack from templates | inside the library |
+| `/stacks:process-inbox` | route queued inbox files into the matching stacks | anywhere |
 | `/stacks:catalog-sources {stack}` | identify concepts in new sources, write one article per concept | inside the library |
 | `/stacks:audit-stack {stack}` | validate articles against sources, report drift / unsourced / stale | inside the library |
 | `/stacks:ask {query}` | answer a question from your curated articles | anywhere |
-| `/stacks:process-inbox` | route queued inbox files to the matching stack | anywhere |
 
-**anywhere** = the skill locates your library through `~/.config/stacks/config.json` (written by `init-library`), so it runs from any repo. **inside the library** = run it from a session opened in your library repo; it acts on the stack you name in the current directory. `ask` and `process-inbox` both read the configured library, which is why neither needs you to be inside it.
+**run from** is where you can type the command, not a grouping by kind. `new-stack`, `catalog-sources`, and `audit-stack` act on the stack in your current directory, so run them inside the library. The other three don't need that: `init-library` takes a target path and writes the config, while `ask` and `process-inbox` read the library location from `~/.config/stacks/config.json`. By purpose `process-inbox` belongs with `catalog-sources`: it writes to the library and feeds the ingest. It only shares an invocation style with the read-only `ask`.
 
 ---
 
