@@ -16,7 +16,6 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 - `batch_id` (e.g. `batch-3`) — identifies your output file path
 - Source file paths assigned to this batch (N≥1 files)
 - `STACK.md` — read the source hierarchy section to understand tiers; read the scope section to understand what belongs in this stack
-- Skip list of `extraction_hash` values from prior `dev/audit/findings.md` (if present) — concepts whose hash matches the skip list have not changed since last ingestion and can be omitted
 - Existing `articles/` listing — required to check for slug collisions and reuse
 
 ## Process
@@ -27,7 +26,7 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 4. For each candidate concept, check the existing `articles/` listing. Slug immutability is a hard constraint here.
    - If a concept matches an existing article (by claim overlap with the article body or frontmatter topic): use the existing article's slug as both `slug` and `target_article`. Do not propose a renamed slug. If you believe an existing slug is wrong, note it in a comment field; do not change the slug.
    - If no match: assign a new slug (kebab-case, descriptive, unique). Leave `target_article` empty.
-5. Write one merged extraction file per batch to `dev/extractions/{batch_id}-concepts.md` containing one concept block per unique concept across all sources in your batch. When N>1, dedup at the source level: a concept appearing in multiple of your assigned sources becomes one block with `source_paths:` listing all contributing source paths (preserving file order). Do not emit an `extraction_hash` field — W1b computes it deterministically via `scripts/compute-extraction-hash.sh` after cross-batch dedup merges `source_paths[]` across all contributing sources.
+5. Write one merged extraction file per batch to `dev/extractions/{batch_id}-concepts.md` containing one concept block per unique concept across all sources in your batch. When N>1, dedup at the source level: a concept appearing in multiple of your assigned sources becomes one block with `source_paths:` listing all contributing source paths (preserving file order).
 
 ## Output Format
 

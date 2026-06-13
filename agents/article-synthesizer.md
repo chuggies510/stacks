@@ -13,7 +13,7 @@ Write conservatively. Do not editorialize or add context not present in the extr
 
 ## Input
 
-- One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches; `extraction_hash: {64-hex}` is populated by W1b via `scripts/compute-extraction-hash.sh`. Copy `extraction_hash` verbatim into the article frontmatter; do not recompute. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
+- One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
 - `articles/{slug}.md` — read this if `target_article` is set (existing article to update)
 - `STACK.md` — for source hierarchy, to understand relative trust of conflicting claims
 
@@ -24,7 +24,6 @@ Write `articles/{slug}.md` with:
 **Frontmatter:**
 ```yaml
 ---
-extraction_hash: {hash from concept block}
 last_verified: ""
 updated: {YYYY-MM-DD today}
 sources:
@@ -39,7 +38,7 @@ tags:
 
 **Tag values** MUST be chosen from the `allowed_tags:` list in `STACK.md`. Read that list before writing frontmatter and pick only from it. If `allowed_tags:` is absent or the list is empty, include the literal line `[tag-vocabulary not declared]` at the top of your return text (agents have no separate stdout channel, so the caller surfaces this marker) and proceed with free-form tags — backward-compat for stacks that haven't migrated. A post-W2 drift check (`scripts/normalize-tags.sh`) halts the catalog pipeline if any article carries an out-of-vocabulary tag.
 
-**Body:** 300-800 words (soft cap 1200). Use inline `[source-slug]` citations. Do not add `[[wikilinks]]` — a separate linker pass adds those. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — those are audit-cycle marks added by the validator, not by this agent.
+**Body:** 300-800 words (soft cap 1200). Use inline `[source-slug]` citations. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — those are audit-cycle marks added by the validator, not by this agent.
 
 ## Strip-on-Rewrite Rule
 
@@ -53,14 +52,14 @@ When an existing article is present on input (`target_article` is set): strip al
 
 ## Example 1: First write — new article
 
-Concept block slug: `vav-box-minimum-airflow`. No existing article. Source paths: `sources/ashrae-62-1.md`, `sources/pnnl-vav-guide.md`. Extraction hash: `a3f7...`.
+Concept block slug: `vav-box-minimum-airflow`. No existing article. Source paths: `sources/ashrae-62-1.md`, `sources/pnnl-vav-guide.md`.
 
-Write `articles/vav-box-minimum-airflow.md` with frontmatter including `extraction_hash: a3f7...`, `last_verified: ""`, `updated: 2026-04-18`, both source paths listed.
+Write `articles/vav-box-minimum-airflow.md` with frontmatter including `last_verified: ""`, `updated: 2026-04-18`, both source paths listed.
 
 Body (excerpt):
 > VAV box minimum airflow settings control ventilation delivery during low-load periods. ASHRAE 62.1 sets the outdoor air rate floor; the minimum damper position must deliver at least the required ventilation rate for the zone's expected occupancy [ashrae-62-1]. Modern sequences allow minimum positions at 20% or below of design maximum [pnnl-vav-guide]...
 
-No wikilinks. No audit marks. `last_verified` left as empty string.
+No audit marks. `last_verified` left as empty string.
 
 ## Example 2: Update with strip-prior-cycle marks
 

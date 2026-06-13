@@ -24,7 +24,6 @@ case "$type" in
     grep -qE '^ALL_SLUGS=[^[:space:]]' "$path" || fail "ALL_SLUGS has empty value"
     ;;
   article-md)
-    grep -qE '^extraction_hash:' "$path" || fail "missing extraction_hash field"
     grep -qE '^title:'           "$path" || fail "missing title field"
     grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
     ;;

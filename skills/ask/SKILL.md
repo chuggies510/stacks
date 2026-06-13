@@ -165,12 +165,11 @@ For each chosen stack:
 
 1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
 
-2. **Extends existing article:** read `$LIBRARY/{stack}/articles/{slug}.md`, append the synthesized material under an appropriate heading, merge any new source paths into the `sources:` frontmatter list, set `updated: <today>` and `last_verified: ""` (forces revalidation on the next audit). Use inline `[source-slug]` citations to match the article convention. Do not write `[[wikilinks]]` — the next `/stacks:audit-stack` wikilink pass handles those.
+2. **Extends existing article:** read `$LIBRARY/{stack}/articles/{slug}.md`, append the synthesized material under an appropriate heading, merge any new source paths into the `sources:` frontmatter list, set `updated: <today>` and `last_verified: ""` (forces revalidation on the next audit). Use inline `[source-slug]` citations to match the article convention.
 
 3. **New article:** create `$LIBRARY/{stack}/articles/{slug}.md` with this frontmatter:
    ```yaml
    ---
-   extraction_hash: ""
    last_verified: ""
    updated: <YYYY-MM-DD today>
    sources:

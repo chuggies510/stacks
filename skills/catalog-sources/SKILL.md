@@ -2,13 +2,12 @@
 name: catalog-sources
 description: |
   Use when the user wants to process new sources into article-per-concept wiki
-  entries for a knowledge stack. Enumerates new sources, reads prior audit
-  findings to build a skip list, identifies concepts per source (W1), deduplicates
-  shared concept slugs (W1b), synthesizes one article per unique concept (W2),
-  runs a wikilink pass (W2b), files sources to their publisher directory (W3),
-  and regenerates the stack Map of Contents (W4). Must be run from within a
-  library repo (one with catalog.md at root). Accepts an optional --from {path}
-  argument to stage source files from an existing directory before cataloging.
+  entries for a knowledge stack. Enumerates new sources, identifies concepts per
+  source (W1), deduplicates shared concept slugs (W1b), synthesizes one article
+  per unique concept (W2), files sources to their publisher directory (W3), and
+  regenerates the stack Map of Contents (W4). Must be run from within a library
+  repo (one with catalog.md at root). Accepts an optional --from {path} argument
+  to stage source files from an existing directory before cataloging.
 ---
 
 # Catalog Sources
@@ -132,14 +131,13 @@ Derive sibling paths from `STACKS_ROOT` (set in Step 0 via the shared resolver):
 ```bash
 SCRIPTS_DIR="$STACKS_ROOT/scripts"
 AGENTS_DIR="$STACKS_ROOT/agents"
-WAVE_ENGINE="$STACKS_ROOT/references/wave-engine.md"
 ```
 
-Read `$WAVE_ENGINE` for canonical wave descriptions and `assert-written.sh` usage examples.
+Each fan-out wave (W1, W2) gates its agents' output with `gate-batch.sh`: the parent captures a dispatch epoch before dispatch, and after fan-in every expected file must be non-empty and newer than that epoch (a write-or-fail check), plus a content-shape check via `assert-structure.sh`.
 
 ## Step 4: W0 — Enumerate new sources
 
-Files in `sources/incoming/` are by definition not yet filed or indexed (W3 moves them after successful catalog); they ARE the new-source set. No diff against `index.md` is needed here. Deduplication of already-synthesized content is handled at W0b by the extraction-hash skip list.
+Files in `sources/incoming/` are by definition not yet filed or indexed (W3 moves them after successful catalog); they ARE the new-source set. No diff against `index.md` is needed here.
 
 ```bash
 NEW_SOURCES=$(find "$STACK/sources/incoming" -type f ! -name ".gitkeep" | sort)
@@ -160,37 +158,6 @@ fi
 
 If `NEW_SOURCES` is empty, tell the user: "All sources already indexed. Nothing to catalog." and stop.
 
-## Step 5: W0b — Prior-findings gate
-
-Read `$STACK/dev/audit/findings.md` if it exists. Extract `extraction_hash` values from all items with a terminal status (`applied`, `closed`). These hashes represent content already synthesized; concept-identifier will skip them.
-
-```bash
-SKIP_HASHES=""
-FINDINGS="$STACK/dev/audit/findings.md"
-if [[ -f "$FINDINGS" ]]; then
-  # Extract extraction_hash values from terminal-status items
-  # Items have YAML-style fields; terminal statuses: applied, closed
-  # Item boundary is `- id:`, not blank line. Blank-line-as-terminator misses
-  # items abutting without separator and bleeds prior status into the next.
-  SKIP_HASHES=$(awk '
-    function flush() {
-      if (have && (status=="applied" || status=="closed") && hash != "") print hash
-      have=0; hash=""; status=""
-    }
-    /^- id:/ { flush(); have=1; next }
-    have && /extraction_hash:/ { hash=$2 }
-    have && /status:/ { status=$2 }
-    END { flush() }
-  ' "$FINDINGS")
-  SKIP_COUNT=$(echo "$SKIP_HASHES" | grep -c . || echo 0)
-  echo "W0b: loaded $SKIP_COUNT extraction_hash values to skip (terminal-status findings)"
-else
-  echo "W0b: no prior findings.md; skip list is empty (first catalog run)"
-fi
-```
-
-Missing `findings.md` is a no-op; skip list is empty on the first run.
-
 ## Step 6: W1 — Parent-side parallel concept-identifier dispatch
 
 The parent skill (this session) shards sources directly and dispatches `concept-identifier` agents in parallel. The `concept-identifier-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
@@ -205,14 +172,7 @@ while IFS= read -r src; do
 done <<< "$NEW_SOURCES"
 N_SOURCES=${#NEW_SOURCES_ARR[@]}
 if (( N_SOURCES == 0 )); then
-  echo "W1: no new sources. Writing zero-count summary and exiting."
-  mkdir -p "$STACK/dev/extractions"
-  jq -n '{schema_version:1, wave:"w1-w2", status:"ok",
-          counts:{n_sources:0, n_batches_w1:0, n_concepts_input:0,
-                  n_unique_concepts:0, n_articles_new:0, n_articles_updated:0,
-                  n_w2_waves:0},
-          epochs:{}}' \
-    > "$STACK/dev/extractions/_w1-w2-summary.json"
+  echo "W1: no new sources. Nothing to catalog."
   return 0 2>/dev/null || exit 0
 fi
 N_BATCHES_W1=$N_SOURCES
@@ -222,7 +182,7 @@ rm -f "$STACK/dev/extractions"/_dedup*.md
 DISPATCH_EPOCH_W1=$(date +%s)
 ```
 
-**Dispatch:** in a single message, emit one `Agent` tool call per source (subagent_type `stacks:concept-identifier`). Each prompt names: the assigned `batch_id` (`batch-1`, `batch-2`, …), the absolute source path, the path to `$STACK/STACK.md`, the existing `$STACK/articles/` listing, and the `$SKIP_HASHES` list. Tell each agent to write its output to `dev/extractions/{batch_id}-concepts.md`. Parallel dispatch is mandatory.
+**Dispatch:** in a single message, emit one `Agent` tool call per source (subagent_type `stacks:concept-identifier`). Each prompt names: the assigned `batch_id` (`batch-1`, `batch-2`, …), the absolute source path, the path to `$STACK/STACK.md`, and the existing `$STACK/articles/` listing. Tell each agent to write its output to `dev/extractions/{batch_id}-concepts.md`. Parallel dispatch is mandatory.
 
 **Gate W1:**
 
@@ -236,7 +196,7 @@ bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W1" "concept-identifier" conc
 
 ## Step 6.5: W1b — Deterministic dedup in the parent
 
-Group concept blocks across all W1 outputs by slug. For any slug appearing in multiple batches, merge `source_paths[]` into a single unified block. Compute `extraction_hash` per unique slug. Classify each unique slug as `new` (no `target_article` in any contributing block) or `updated`. All deterministic; no agent needed.
+Group concept blocks across all W1 outputs by slug. For any slug appearing in multiple batches, merge `source_paths[]` into a single unified block. Classify each unique slug as `new` (no `target_article` in any contributing block) or `updated`. All deterministic; no agent needed.
 
 A concept block in `batch-{N}-concepts.md` looks like:
 
@@ -270,22 +230,10 @@ python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
 "$SCRIPTS_DIR/assert-structure.sh" "$STACK/dev/extractions/_dedup-meta.txt" dedup-meta "dedup-extractions" \
   || { echo "STRUCTURE_FAILURE: dedup meta malformed — missing or empty ALL_SLUGS"; exit 1; }
 
-# Load the meta into shell vars.
+# Load the meta into shell vars (ALL_SLUGS, UPDATED_SLUGS, N_NEW, N_UPDATED,
+# N_UNIQUE_CONCEPTS, INPUT_BLOCKS — used by W2 dispatch and the Step 10 commit).
 source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')
 CONCEPT_SLUGS=($ALL_SLUGS)
-
-
-# Compute extraction_hash per unique slug. Required byte format (stable across
-# stacks; do not change without invalidating every skip list):
-#   {path1}|{path2}|...|{pathN}|{slug}
-# paths sorted ascending, joined by `|`, no trailing newline.
-declare -A SLUG_HASH
-for slug in "${CONCEPT_SLUGS[@]}"; do
-  per_slug_path="$STACK/dev/extractions/_dedup-${slug}.md"
-  paths=$(awk '/^source_paths:/{p=1;next} p && /^  - /{sub(/^  - /,""); print} p && !/^  -/{exit}' "$per_slug_path" | sort)
-  hash=$(printf '%s' "$(echo "$paths" | tr '\n' '|')${slug}" | "$SCRIPTS_DIR/compute-extraction-hash.sh")
-  SLUG_HASH[$slug]=$hash
-done
 ```
 
 The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug.
@@ -296,40 +244,26 @@ Article-synthesizer is naturally 1-per-slug — each agent reads one `_dedup-{sl
 
 **Wave cap: 25 agents per dispatch wave.** This matches the prior orchestrator's `W2_WAVE_CAP` to avoid overwhelming the harness on stacks with hundreds of new concepts. Each wave runs in parallel; waves run sequentially. Each wave captures its own dispatch epoch so the gate compares each wave's articles against the epoch immediately preceding their dispatch.
 
-Each wave does, in order: (1) populate `extraction_hash` in each slug's per-slug dedup file from `${SLUG_HASH[$slug]}` so article-synthesizer can copy it verbatim into article frontmatter; (2) dispatch one `stacks:article-synthesizer` per slug in a single message; (3) gate every expected article against that wave's epoch. The hash injection MUST happen before dispatch — agents read the per-slug file at dispatch time, so a missing hash field at dispatch produces an article with empty `extraction_hash` frontmatter, breaking the W0b skip-list flywheel for the next catalog run.
+Each wave does, in order: (1) capture a dispatch epoch then dispatch one `stacks:article-synthesizer` per slug in a single message; (2) gate every expected article against that wave's epoch.
 
 ```bash
 W2_WAVE_CAP=25
-n_w2_waves=0
-DISPATCH_EPOCH_W2_FIRST=""
 W2_FAILED=()
 n=${#CONCEPT_SLUGS[@]}
 i=0
 while (( i < n )); do
   WAVE_SLICE=("${CONCEPT_SLUGS[@]:i:W2_WAVE_CAP}")
 
-  # 1. Inject extraction_hash into each per-slug dedup file BEFORE dispatch.
-  for slug in "${WAVE_SLICE[@]}"; do
-    per_slug="$STACK/dev/extractions/_dedup-${slug}.md"
-    if ! grep -q "^extraction_hash:" "$per_slug"; then
-      sed -i "/^slug: ${slug}/a extraction_hash: ${SLUG_HASH[$slug]}" "$per_slug"
-    fi
-  done
-
-  # 2. Capture epoch, then dispatch.
+  # 1. Capture this wave's dispatch epoch, then dispatch.
   DISPATCH_EPOCH_W2_WAVE=$(date +%s)
-  [[ -z "$DISPATCH_EPOCH_W2_FIRST" ]] && DISPATCH_EPOCH_W2_FIRST="$DISPATCH_EPOCH_W2_WAVE"
   # In a single message, dispatch one stacks:article-synthesizer agent per slug
   # in WAVE_SLICE. Each prompt names:
-  #   - $STACK/dev/extractions/_dedup-${slug}.md (concept block, self-contained,
-  #     extraction_hash now populated)
+  #   - $STACK/dev/extractions/_dedup-${slug}.md (concept block, self-contained)
   #   - $STACK/articles/${slug}.md if slug is in UPDATED_SLUGS (else absent)
   #   - $STACK/STACK.md (for source hierarchy + allowed_tags)
-  # Tell each agent to copy extraction_hash verbatim from the concept block
-  # frontmatter (W1b populated it; agents don't recompute).
   # ----- DISPATCH MARKER (parent does this) -----
 
-  # 3. After fan-in, gate each article in this wave against this wave's epoch.
+  # 2. After fan-in, gate each article in this wave against this wave's epoch.
   WAVE_ARTICLE_PATHS=()
   for slug in "${WAVE_SLICE[@]}"; do
     WAVE_ARTICLE_PATHS+=("$STACK/articles/${slug}.md")
@@ -338,53 +272,23 @@ while (( i < n )); do
     W2_FAILED+=("${WAVE_ARTICLE_PATHS[@]}")
   fi
   ((i += W2_WAVE_CAP))
-  ((n_w2_waves++))
 done
 if (( ${#W2_FAILED[@]} > 0 )); then
   exit 1
 fi
 ```
 
-**Summary write (parent):**
+The counts needed for the Step 10 commit (`N_SOURCES`, `N_NEW`, `N_UPDATED`) are already in shell vars (`N_SOURCES` from W1; `N_NEW`/`N_UPDATED` sourced from the dedup meta at W1b). Clean up the working meta file:
 
 ```bash
-jq -n \
-  --argjson n_sources "$N_SOURCES" \
-  --argjson n_batches_w1 "$N_BATCHES_W1" \
-  --argjson n_concepts_input "$INPUT_BLOCKS" \
-  --argjson n_unique_concepts "$N_UNIQUE_CONCEPTS" \
-  --argjson n_articles_new "$N_NEW" \
-  --argjson n_articles_updated "$N_UPDATED" \
-  --argjson n_w2_waves "$n_w2_waves" \
-  --arg dispatch_epoch_w1 "$DISPATCH_EPOCH_W1" \
-  --arg dispatch_epoch_w2 "$DISPATCH_EPOCH_W2_FIRST" \
-  '{schema_version:1, wave:"w1-w2", status:"ok",
-    counts:{n_sources:$n_sources, n_batches_w1:$n_batches_w1,
-            n_concepts_input:$n_concepts_input, n_unique_concepts:$n_unique_concepts,
-            n_articles_new:$n_articles_new, n_articles_updated:$n_articles_updated,
-            n_w2_waves:$n_w2_waves},
-    epochs:{dispatch_epoch_w1:$dispatch_epoch_w1, dispatch_epoch_w2:$dispatch_epoch_w2}}' \
-  > "$STACK/dev/extractions/_w1-w2-summary.json"
 rm -f "$STACK/dev/extractions/_dedup-meta.txt"
 ```
 
-Downstream steps (W2b wikilink, W2b-post tag drift, W3 source filing, W4 MoC update) remain in this skill after Step 6.75 succeeds.
+Downstream steps (tag drift check, W3 source filing, W4 MoC update) remain in this skill after Step 6.75 succeeds.
 
-## Step 7: W2b — Wikilink pass
+## Step 7: Tag drift check
 
-After all W2 assert-written gates pass, run the deterministic wikilink pass:
-
-```bash
-"$SCRIPTS_DIR/wikilink-pass.sh" "$STACK/articles/" "$STACK/glossary.md"
-```
-
-When `$STACK/glossary.md` does not exist (first catalog run before any audit pass), the script is a no-op. This is safe and expected.
-
-The script reads bold terms from `glossary.md` and rewrites the first occurrence of each term per article as a `[[wikilink]]`. Self-links are excluded (when the article's own slug matches the term slug).
-
-## Step 7.5: Tag drift check
-
-After the wikilink pass, enforce the tag vocabulary declared in `STACK.md`. The check reads `allowed_tags:` from the stack root and halts the pipeline if any article carries an out-of-vocabulary tag. No auto-rewrite — drift is a surfaced defect the operator resolves by editing either the offending article or the vocabulary list.
+After W2, enforce the tag vocabulary declared in `STACK.md`. The check reads `allowed_tags:` from the stack root and halts the pipeline if any article carries an out-of-vocabulary tag. No auto-rewrite — drift is a surfaced defect the operator resolves by editing either the offending article or the vocabulary list.
 
 ```bash
 "$SCRIPTS_DIR/normalize-tags.sh" "$STACK"
@@ -394,7 +298,7 @@ On non-zero exit, halt the catalog pipeline and surface the `TAG_DRIFT:` stderr 
 
 ## Step 8: W3 — Source filing
 
-Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 assert-written gates. Failed articles block their sources' filing at W3 below.
+Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 write gates. Failed articles block their sources' filing at W3 below.
 
 ```bash
 INCOMING_FILES=$(find "$STACK/sources/incoming" -type f ! -name ".gitkeep" 2>/dev/null)
@@ -430,14 +334,11 @@ The `## Reading Paths` section is preserved verbatim. Any user-curated reading p
 
 Prepend an entry to `$STACK/log.md`:
 
-```bash
-SUMMARY_PATH="$STACK/dev/extractions/_w1-w2-summary.json"
-N_SOURCES=$(jq -r '.counts.n_sources' "$SUMMARY_PATH")
-N_ARTICLES_NEW=$(jq -r '.counts.n_articles_new' "$SUMMARY_PATH")
-N_ARTICLES_UPDATED=$(jq -r '.counts.n_articles_updated' "$SUMMARY_PATH")
+Use the counts already in shell vars: `N_SOURCES` (W1), and `N_NEW` / `N_UPDATED` (sourced from the dedup meta at W1b).
 
-NEW_ENTRY="## [$(date +%Y-%m-%d)] catalog | $N_SOURCES new sources, $N_ARTICLES_NEW articles created, $N_ARTICLES_UPDATED articles updated
-Sources processed: $N_SOURCES. New articles: $N_ARTICLES_NEW. Updated articles: $N_ARTICLES_UPDATED."
+```bash
+NEW_ENTRY="## [$(date +%Y-%m-%d)] catalog | $N_SOURCES new sources, $N_NEW articles created, $N_UPDATED articles updated
+Sources processed: $N_SOURCES. New articles: $N_NEW. Updated articles: $N_UPDATED."
 
 { printf '%s\n\n' "$NEW_ENTRY"; cat "$STACK/log.md"; } > /tmp/stacks-log.tmp
 mv /tmp/stacks-log.tmp "$STACK/log.md"
@@ -447,7 +348,7 @@ Commit the stack:
 
 ```bash
 git add "$STACK/"
-git commit -m "feat($STACK): catalog $N_SOURCES sources, $N_ARTICLES_NEW new articles, $N_ARTICLES_UPDATED updated"
+git commit -m "feat($STACK): catalog $N_SOURCES sources, $N_NEW new articles, $N_UPDATED updated"
 ```
 
 Report summary to the user:
