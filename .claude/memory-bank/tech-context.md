@@ -8,7 +8,7 @@
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
 | `agents/` | 5 worker subagent definitions: concept-identifier, article-synthesizer, validator, synthesizer, findings-analyst |
 | `skills/{name}/SKILL.md` | User-invocable skills: ask, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
-| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh) plus pipeline helpers (assert-written.sh, wikilink-pass.sh, telemetry.sh) |
+| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh) plus pipeline helpers (assert-written.sh, assert-structure.sh, gate-batch.sh, shard-batches.sh, collision-dest.sh, wikilink-pass.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
 | `references/` | Reference docs: `wave-engine.md` (catalog + audit wave tables, gate contract, feedback flywheel), `refresh-procedure.md`, topic template |
@@ -24,6 +24,9 @@
 | `scripts/wikilink-pass.sh {articles-dir} {glossary-path}` | Deterministic wikilink injection. Reads bold terms from glossary, wraps first case-insensitive occurrence per term per article, preserves capitalization, skips self-links and already-wrapped. No-op when glossary absent. |
 | `scripts/compute-extraction-hash.sh` (stdin→stdout) | Pipes stdin through `sha256sum \| awk '{print $1}'`. Called by W1b on `echo -n "{sorted-source-paths}\|{slug}"` (paths joined by `\|`, trailing `\|`, then slug). Emits bare 64-hex digest. Anchors the catalog→audit→catalog skip-list flywheel. |
 | `scripts/normalize-tags.sh {stack_root}` | Reads `allowed_tags:` block-list from `{stack_root}/STACK.md`, greps every `articles/*.md` frontmatter `tags:` against it, halts with `TAG_DRIFT: {slug}: {tag}` on stderr per offender (exit 1). Exits 0 with backward-compat warning when `allowed_tags:` absent/empty. Runs as W2b-post in catalog pipeline. |
+| `scripts/gate-batch.sh {epoch} {label} {kind} {path}...` | Shared write-or-fail + structure gate loop (0.19.1). Runs assert-written then assert-structure on each path, aggregates failures, exits 1 with `AGENT_WRITE_FAILURE: {label} batches ungated:`. Pass `-` as `{kind}` to skip the structure check. 5 call sites across catalog (W1, W2) and audit (A1, A2, A3). Covered by `tests/gate-batch.bats`. |
+| `scripts/shard-batches.sh {list_file} {batch_size} {out_prefix}` | Shards a newline list into `{out_prefix}NN.txt` (two-digit zero-padded) via `int((NR-1)/bs)` awk. 3 call sites: audit A1/A2/A3 article batches. Filename format must match the downstream `{out_prefix}*.txt` glob. |
+| `scripts/collision-dest.sh {dir} {filename}` | Echoes a non-colliding path in `{dir}` for `{filename}`, appending `-1`, `-2`, ... before the extension until free. Shared by catalog source filing and process-inbox routing. |
 
 ## CLI Commands
 

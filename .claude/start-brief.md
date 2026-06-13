@@ -1,7 +1,7 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
 Distilled 2026-06-12 from:
-  tech-context.md @ 35e3d0839acc47ae383c9cbd8451769d51e57bcb
+  tech-context.md @ b95b8c117abc21e52d46d5543590d7c7e4c9fe34
   system-patterns.md @ f5665e541817a2bdcfef923bf9c4cc314bd83689
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
@@ -47,7 +47,7 @@ Three-layer plugin: (1) skills (user-facing SKILL.md walkthroughs: init-library,
 ### File conventions
 - `agents/` subagent definitions. `skills/{name}/SKILL.md`. `scripts/` lifecycle (install/uninstall/update/init) + pipeline helpers. `templates/library|stack/`. `references/` (`wave-engine.md` holds wave tables + gate contract). `dev/` planning artifacts (not shipped).
 - Articles are flat (no typed subdirs), 300-800 word soft cap, `[[wikilinks]]` injected by deterministic post-write bash pass (not agent output).
-- Pipeline helpers: `assert-written.sh {path} {epoch} {label}` (write-or-fail), `wikilink-pass.sh {articles} {glossary}` (first-occurrence wrap), `compute-extraction-hash.sh` (sha256 of sorted source paths + slug; anchors the skip-list flywheel), `normalize-tags.sh {root}` (halts on out-of-vocab tags vs `STACK.md` `allowed_tags:`).
+- Pipeline helpers: `assert-written.sh {path} {epoch} {label}` (write-or-fail) and `assert-structure.sh {kind} {path}` (content-shape gate), wrapped together by `gate-batch.sh {epoch} {label} {kind} {path}...` (5 call sites); `shard-batches.sh {list} {size} {prefix}` (batch sharder); `collision-dest.sh {dir} {file}` (non-colliding filename); `wikilink-pass.sh {articles} {glossary}` (first-occurrence wrap); `compute-extraction-hash.sh` (sha256 of sorted source paths + slug; anchors the skip-list flywheel); `normalize-tags.sh {root}` (halts on out-of-vocab tags vs `STACK.md` `allowed_tags:`).
 
 ### Catalog pipeline (W0 to W4)
 `/stacks:catalog-sources [stack]`: W0 enumerate `sources/incoming/` -> W0b skip list from `dev/audit/findings.md` -> W1 concept-identifier (parallel, `SOURCES_PER_AGENT=10` baseline, 1-per-agent small-stack bypass; slug immutability) -> W1b bash slug-collision dedup + `extraction_hash` via `scripts/compute-extraction-hash.sh` -> W2 article-synthesizer (parallel per concept, copies `extraction_hash` verbatim; 25-agent cap per wave) -> W2b wikilink pass -> W2b-post tag drift check (`normalize-tags.sh`) -> W3 source filing -> W4 MoC regen preserving `## Reading Paths`.
