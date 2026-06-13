@@ -36,11 +36,6 @@ if [[ -d "$TARGET" ]]; then
   exit 1
 fi
 
-if ! command -v gh &>/dev/null; then
-  echo "ERROR: gh CLI not found."
-  exit 1
-fi
-
 if ! gh auth status &>/dev/null; then
   echo "ERROR: Not authenticated with gh."
   exit 1

@@ -108,7 +108,6 @@ def main():
         "stats": {
             "comments_parsed": len(flat),
             "comments_kept": min(len(flat), MAX_COMMENTS),
-            "max_depth_applied": MAX_DEPTH,
         },
         "comments": flat[:MAX_COMMENTS],
     }

@@ -4,15 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-usage() {
-  echo "Usage: bash update.sh"
-  echo ""
-  echo "Pulls latest stacks code. Since stacks uses a directory-source"
-  echo "marketplace, git pull IS the update — no cache refresh needed."
-}
-
-[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { usage; exit 0; }
-
 echo "=== Stacks Plugin Updater ==="
 
 cd "$REPO_DIR"

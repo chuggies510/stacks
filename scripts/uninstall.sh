@@ -8,15 +8,6 @@ CONFIG_DIR="$HOME/.config/stacks"
 PLUGIN_KEY="stacks@stacks"
 MARKETPLACE_NAME="stacks"
 
-usage() {
-  echo "Usage: bash uninstall.sh"
-  echo ""
-  echo "Removes the stacks plugin from Claude Code."
-  echo "Does NOT delete your library repo or its content."
-}
-
-[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { usage; exit 0; }
-
 echo "=== Stacks Plugin Uninstaller ==="
 
 # Remove from settings.json: enabledPlugins + extraKnownMarketplaces

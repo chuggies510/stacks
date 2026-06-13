@@ -16,14 +16,11 @@ compute_slug() {
 
 mapfile -t terms < <(grep -oP '(?<=\*\*)[^*]+(?=\*\*)' "$glossary_path" | sort -u)
 
+shopt -s nullglob
 for term in "${terms[@]}"; do
   term_slug=$(compute_slug "$term")
 
   for article in "$articles_dir"/*.md; do
-    if [[ ! -f "$article" ]]; then
-      continue
-    fi
-
     article_slug=$(compute_slug "$(basename "$article" .md)")
     if [[ "$article_slug" == "$term_slug" ]]; then
       continue

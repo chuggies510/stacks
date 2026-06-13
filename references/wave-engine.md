@@ -216,7 +216,7 @@ Phase B (merge): parent dispatches one additional `synthesizer` in merge mode th
 
 If the batch count is 1, Phase B is skipped and the single Phase A agent writes the three final stack-root files directly (single mode). The synthesizer agent contract documents all three modes (shard, merge, single).
 
-Smaller per-shard batch (≤10) than the prior orchestrator's 30-cap because per-agent attention to each article matters: a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only; per-agent context stays small.
+The ≤10 per-shard cap is intentionally tighter than the 30-article cap used before parent-side dispatch: per-agent attention to each article matters, and a shard producing 25 candidate glossary entries from 30 articles silently misses terms that a shard of 8 articles would catch. Synthesizer reads article bodies only; per-agent context stays small.
 
 Parent writes `dev/audit/_a2-summary.json` directly (schema_version=1).
 
@@ -267,7 +267,7 @@ scripts/wikilink-pass.sh {stack}/articles/ {stack}/glossary.md
 
 Same shared helper as W2b. Runs after A2 assert-written checks pass.
 
-A3 execution follows A2b (see [A3 — Findings (orchestrator-wrapped)](#a3--findings-orchestrator-wrapped) above).
+A3 execution follows A2b (see [A3 — Findings (parent-side shard + deterministic merge)](#a3--findings-parent-side-shard--deterministic-merge) above).
 
 ### A4 — Convergence check
 

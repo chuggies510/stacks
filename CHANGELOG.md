@@ -1,3 +1,26 @@
+## 0.19.1 — 2026-06-12
+
+Ponytail cleanup sweep: deleted dead orchestrator agents, removed the legacy guide-mode path, factored copy-pasted pipeline logic into shared scripts, swapped hand-rolled loops for stdlib. No change to live pipeline behavior.
+
+### Removed
+
+- **Deleted the four no-op orchestrator agents**: they were deprecated stubs kept "for external callers" with zero live callers, since catalog-sources and audit-stack dispatch the worker agents directly. Their stale "this is the live mechanism" descriptions are repointed to parent-side dispatch. (`agents/{validator,synthesizer,findings-analyst,concept-identifier}-orchestrator.md` deleted; `system-patterns.md`, `tech-context.md`, `wave-engine.md` rewritten)
+- **Removed the legacy guide-mode path from `/stacks:ask`**: the catalog pipeline only produces `articles/`, and `topics/*/guide.md` has had no producer since 0.9.0. Mode-detection, guide-scoring, mixed-case, and guide-filing branches are gone; the skill is article-only. (`skills/ask/SKILL.md`, ~30 lines)
+- **Dropped the dead `noop` finding action**: `merge-findings.py` has no `noop` bucket, so any such item was silently discarded at merge anyway. Also removed two one-shot schema-migration paragraphs (v2→v3, v3→v4) with no in-repo file to migrate from. (`agents/findings-analyst.md`)
+- Dead `usage()`/`--help` handlers in `install`/`uninstall`/`update.sh` (no caller passes flags), the `agent_label` default in `assert-structure.sh` (every caller passes it), a redundant `command -v gh` check in `init-library` (the next `gh auth status` already reports it), the never-entered registry-install fallback in `locate-plugin-root.sh`, and a duplicate stub comment in `ask`.
+
+### Changed
+
+- **Factored three shared pipeline scripts** so the same logic stops being copy-pasted between catalog-sources and audit-stack: `gate-batch.sh` (the write-or-fail + structure gate loop, 5 call sites), `shard-batches.sh` (the awk article/source batch sharder, 3 sites), `collision-dest.sh` (the filename-collision rename loop, shared with process-inbox). New `tests/gate-batch.bats` (4 cases) covers the failure-aggregation path. (`scripts/{gate-batch,shard-batches,collision-dest}.sh` new)
+- Collision-suffix numbering now starts at `-1` (was `-2`); cosmetic, both yield unique names.
+- Removed the redundant agent-side write gate from `synthesizer` (the parent skill re-gates every output); dropped `Bash` from its tools.
+
+### Internal
+
+- stdlib swaps in the Python helpers: `collections.Counter` for hand-listed zero-init keys and `re.finditer` for a hand-rolled occurrence loop (`reconcile-findings.py`); `dict.fromkeys` for set-based source dedup and a de-duplicated writer (`dedup-extractions.py`); a 4-branch terminal-precedence ladder collapsed to 2 (`merge-findings.py`); dropped an unread `max_depth_applied` stat (`extract-reddit-thread.py`).
+- bash: `grep -qxF` set-membership replacing an associative-array build (`normalize-tags.sh`); `shopt -s nullglob` replacing a per-file existence guard (`wikilink-pass.sh`); one redundant `tr` dropped (`regenerate-moc.sh`).
+- Doc-drift fix: removed the stale "cross-stack ask is a stub" weak-spot note (`#5` shipped in 0.19.0) from `system-patterns.md`.
+
 ## 0.19.0 — 2026-05-10
 
 Phase 2: pipeline content-structure gates and cross-stack lookup.

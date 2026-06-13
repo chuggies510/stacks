@@ -63,9 +63,6 @@ Read `$STACK/STACK.md` to extract:
 
 ```bash
 MAX_AUDIT_PASSES=$(grep -oP '(?<=MAX_AUDIT_PASSES:\s)\d+' "$STACK/STACK.md" 2>/dev/null || echo "3")
-if [[ -z "$MAX_AUDIT_PASSES" ]] || ! [[ "$MAX_AUDIT_PASSES" =~ ^[0-9]+$ ]]; then
-  MAX_AUDIT_PASSES=3
-fi
 ```
 
 ## Step 3: Pass loop controller
@@ -103,11 +100,8 @@ DISPATCH_EPOCH=$(date +%s)
 mkdir -p "$STACK/dev/audit"
 
 # Build batch files: dev/audit/_a1-batch-{NN}.txt with one article path per line.
-# Use bare `print` (defaults to $0 + ORS) — never `$0` literal in the awk script,
-# because the skill harness substitutes shell `$N` positionals through skill args.
-echo "$ARTICLES" | awk -v bs="$BATCH_SIZE" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a1-batch-%02d.txt", stack, batch) }
-'
+echo "$ARTICLES" > /tmp/_stacks-a1-articles.tmp
+bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a1-articles.tmp "$BATCH_SIZE" "$STACK/dev/audit/_a1-batch-"
 ```
 
 **Per-batch citation graph:** for each batch, resolve which sources its articles cite and write the resolved absolute paths to `dev/audit/_a1-sources-{NN}.txt`. Pass that file to the matching validator. Restores the per-batch source union from 0.13.0 #34 lost in the 0.14.0 refactor: validator prompts grow with article count AND source count, so each shard must see only what its articles cite, not the full tree.
@@ -154,22 +148,14 @@ Note on stale frontmatter paths: catalog-sources W3 moves files out of `sources/
 **Gate:** after all validator agents return, the parent re-runs the gate inline:
 
 ```bash
-FAILED=()
+A1_ARTICLE_PATHS=()
 for batch in "$STACK"/dev/audit/_a1-batch-*.txt; do
   while IFS= read -r article; do
     [[ -z "$article" ]] && continue
-    if ! "$SCRIPTS_DIR/assert-written.sh" "$article" "$DISPATCH_EPOCH" "validator-parent-gate" 2>/dev/null; then
-      FAILED+=("$article")
-    elif ! "$SCRIPTS_DIR/assert-structure.sh" "$article" article-validated "validator-parent-gate" 2>/dev/null; then
-      FAILED+=("$article")
-    fi
+    A1_ARTICLE_PATHS+=("$article")
   done < "$batch"
 done
-if [[ ${#FAILED[@]} -gt 0 ]]; then
-  printf 'AGENT_WRITE_FAILURE: A1 articles ungated:\n'
-  printf '  %s\n' "${FAILED[@]}"
-  exit 1
-fi
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "validator-parent-gate" article-validated "${A1_ARTICLE_PATHS[@]}"
 ```
 
 **Summary write:** the parent writes `_a1-summary.json` itself:
@@ -210,9 +196,8 @@ N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
 BATCH_SIZE_A2=10
 N_BATCHES_A2=$(( (N_ARTICLES + BATCH_SIZE_A2 - 1) / BATCH_SIZE_A2 ))
 DISPATCH_EPOCH=$(date +%s)
-echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A2" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a2-batch-%02d.txt", stack, batch) }
-'
+echo "$ARTICLES" > /tmp/_stacks-a2-articles.tmp
+bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a2-articles.tmp "$BATCH_SIZE_A2" "$STACK/dev/audit/_a2-batch-"
 ```
 
 In a single message, dispatch one `stacks:synthesizer` agent per batch. Each prompt: stack root, batch file path, output path `dev/audit/_a2-partial-{NN}.md` (a single markdown file with `## Glossary`, `## Invariants`, `## Contradictions` sections covering only that shard's articles), and `$DISPATCH_EPOCH`. The agent must call `assert-written.sh "$PARTIAL_PATH" "$DISPATCH_EPOCH" "synthesizer"` after writing.
@@ -220,12 +205,11 @@ In a single message, dispatch one `stacks:synthesizer` agent per batch. Each pro
 **Gate Phase A:**
 
 ```bash
+A2_PARTIAL_PATHS=()
 for i in $(seq -f "%02g" 0 $((N_BATCHES_A2 - 1))); do
-  PARTIAL="$STACK/dev/audit/_a2-partial-$i.md"
-  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH" "synthesizer-parent-gate" 2>/dev/null; then
-    echo "AGENT_WRITE_FAILURE: A2 partial $PARTIAL ungated"; exit 1
-  fi
+  A2_PARTIAL_PATHS+=("$STACK/dev/audit/_a2-partial-$i.md")
 done
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "synthesizer-parent-gate" - "${A2_PARTIAL_PATHS[@]}"
 ```
 
 **Phase B — merge pass:** dispatch ONE `stacks:synthesizer` agent (single Task call, not parallel). Prompt it to read all `dev/audit/_a2-partial-*.md` files, apply dedup + independent-corroboration + tier-hierarchy resolution across shards, and write the three final stack-root files: `$STACK/glossary.md`, `$STACK/invariants.md`, `$STACK/contradictions.md`. Each must be gated with `assert-written.sh ... "$DISPATCH_EPOCH" "synthesizer-merge"`.
@@ -293,9 +277,8 @@ N_ARTICLES=$(echo "$ARTICLES" | grep -c .)
 BATCH_SIZE_A3=3
 N_BATCHES_A3=$(( (N_ARTICLES + BATCH_SIZE_A3 - 1) / BATCH_SIZE_A3 ))
 DISPATCH_EPOCH=$(date +%s)
-echo "$ARTICLES" | awk -v bs="$BATCH_SIZE_A3" -v stack="$STACK" '
-  { batch = int((NR-1)/bs); print > sprintf("%s/dev/audit/_a3-batch-%02d.txt", stack, batch) }
-'
+echo "$ARTICLES" > /tmp/_stacks-a3-articles.tmp
+bash "$SCRIPTS_DIR/shard-batches.sh" /tmp/_stacks-a3-articles.tmp "$BATCH_SIZE_A3" "$STACK/dev/audit/_a3-batch-"
 ```
 
 **Dispatch:** in a single message, one `stacks:findings-analyst` agent per batch. Each prompt: stack root, batch file, output partial path `dev/audit/_a3-partial-{NN}.md`, prior `dev/audit/findings.md` path (read-only for carry-forward), `dev/audit/contradictions.md`, and `$DISPATCH_EPOCH`. The agent writes its partial and gates via `assert-written.sh`.
@@ -314,12 +297,11 @@ schema_version: 4
 **Gate partials:**
 
 ```bash
+A3_PARTIAL_PATHS=()
 for i in $(seq -f "%02g" 0 $((N_BATCHES_A3 - 1))); do
-  PARTIAL="$STACK/dev/audit/_a3-partial-$i.md"
-  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH" "findings-analyst-parent-gate" 2>/dev/null; then
-    echo "AGENT_WRITE_FAILURE: A3 partial $PARTIAL ungated"; exit 1
-  fi
+  A3_PARTIAL_PATHS+=("$STACK/dev/audit/_a3-partial-$i.md")
 done
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "findings-analyst-parent-gate" - "${A3_PARTIAL_PATHS[@]}"
 ```
 
 **Deterministic merge in parent (no agent needed):** terminal-wins precedence by item id. A terminal status (`applied`, `closed`, `deferred`) in any partial overrides an `open` status for the same id. Within terminals, latest wins (last partial scanned). Items appearing only once carry through.
@@ -441,6 +423,7 @@ This step runs only when `converged=1` (per the A4 decision above). It runs befo
 Items in a terminal status (`applied`, `closed`, `deferred`) for ≥ `ROTATION_CYCLES` distinct audit cycles (default 3, parsed from `STACK.md`) are moved from the active `dev/audit/findings.md` to `dev/audit/findings-archive.md`. The archive is append-only, chronological, and operator-readable. Findings-analyst carry-forward reads the active file only; rotated items drop out of the working set.
 
 ```bash
+# Compute audit_date once here; reused in Step 9 (archive).
 audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/dev/null | head -1)
 if [[ -z "$audit_date" ]]; then
   audit_date=$(date +%Y-%m-%d)
@@ -464,14 +447,9 @@ The assert-written gate fires only when the script reports a non-zero rotation, 
 
 This step runs only when `converged=1`.
 
-Read `audit_date` from the frontmatter of the converged findings file before moving it:
+`audit_date` was set in Step 8.5; use it directly:
 
 ```bash
-audit_date=$(grep -oP '(?<=audit_date:\s)\S+' "$STACK/dev/audit/findings.md" 2>/dev/null | head -1)
-if [[ -z "$audit_date" ]]; then
-  audit_date=$(date +%Y-%m-%d)
-fi
-
 mkdir -p "$STACK/dev/audit/closed"
 cp "$STACK/dev/audit/findings.md" "$STACK/dev/audit/closed/${audit_date}-findings.md"
 ```

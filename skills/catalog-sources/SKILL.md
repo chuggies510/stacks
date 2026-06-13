@@ -70,8 +70,7 @@ if [[ -z "$STACK" ]]; then
   fi
   echo "Auto-cataloging stacks with queued sources (largest first):"
   for s in $STACK_QUEUE; do
-    n=$(find "$s/sources/incoming" -type f ! -name ".gitkeep" | wc -l | tr -d ' ')
-    echo "  $s ($n files)"
+    echo "  $s ($(find "$s/sources/incoming" -type f ! -name ".gitkeep" 2>/dev/null | wc -l | tr -d ' ') files)"
   done
   # Run steps 2-11 once per stack in STACK_QUEUE. Continue on per-stack failures
   # so one broken source doesn't block the rest.
@@ -97,17 +96,7 @@ if [[ -n "$FROM_PATH" ]]; then
   SKIPPED=0
   while IFS= read -r -d '' src_file; do
     filename=$(basename "$src_file")
-    dest="$STACK/sources/incoming/$filename"
-    # Handle filename collisions by appending a counter
-    if [[ -f "$dest" ]]; then
-      base="${filename%.*}"
-      ext="${filename##*.}"
-      counter=2
-      while [[ -f "$STACK/sources/incoming/${base}-${counter}.${ext}" ]]; do
-        ((counter++))
-      done
-      dest="$STACK/sources/incoming/${base}-${counter}.${ext}"
-    fi
+    dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$STACK/sources/incoming" "$filename")
     cp "$src_file" "$dest"
     ((STAGED++))
   done < <(find "$FROM_PATH" -type f \( -name "*.md" -o -name "*.txt" \) -print0 2>/dev/null)
@@ -238,20 +227,11 @@ DISPATCH_EPOCH_W1=$(date +%s)
 **Gate W1:**
 
 ```bash
-W1_FAILED=()
+W1_PATHS=()
 for ((i=1; i<=N_BATCHES_W1; i++)); do
-  PARTIAL="$STACK/dev/extractions/batch-${i}-concepts.md"
-  if ! "$SCRIPTS_DIR/assert-written.sh" "$PARTIAL" "$DISPATCH_EPOCH_W1" "concept-identifier" 2>/dev/null; then
-    W1_FAILED+=("batch-${i}")
-  elif ! "$SCRIPTS_DIR/assert-structure.sh" "$PARTIAL" concept-batch "concept-identifier" 2>/dev/null; then
-    W1_FAILED+=("batch-${i}")
-  fi
+  W1_PATHS+=("$STACK/dev/extractions/batch-${i}-concepts.md")
 done
-if (( ${#W1_FAILED[@]} > 0 )); then
-  printf 'AGENT_WRITE_FAILURE: W1 batches ungated:\n'
-  printf '  %s\n' "${W1_FAILED[@]}"
-  exit 1
-fi
+bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W1" "concept-identifier" concept-batch "${W1_PATHS[@]}"
 ```
 
 ## Step 6.5: W1b — Deterministic dedup in the parent
@@ -308,7 +288,7 @@ for slug in "${CONCEPT_SLUGS[@]}"; do
 done
 ```
 
-The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug. The `compute-extraction-hash.sh` invocation matches the byte format documented in `agents/article-synthesizer.md`.
+The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug.
 
 ## Step 6.75: W2 — Parent-side parallel article-synthesizer dispatch
 
@@ -350,19 +330,17 @@ while (( i < n )); do
   # ----- DISPATCH MARKER (parent does this) -----
 
   # 3. After fan-in, gate each article in this wave against this wave's epoch.
+  WAVE_ARTICLE_PATHS=()
   for slug in "${WAVE_SLICE[@]}"; do
-    if ! "$SCRIPTS_DIR/assert-written.sh" "$STACK/articles/${slug}.md" "$DISPATCH_EPOCH_W2_WAVE" "article-synthesizer" 2>/dev/null; then
-      W2_FAILED+=("$slug")
-    elif ! "$SCRIPTS_DIR/assert-structure.sh" "$STACK/articles/${slug}.md" article-md "article-synthesizer" 2>/dev/null; then
-      W2_FAILED+=("$slug")
-    fi
+    WAVE_ARTICLE_PATHS+=("$STACK/articles/${slug}.md")
   done
+  if ! bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W2_WAVE" "article-synthesizer" article-md "${WAVE_ARTICLE_PATHS[@]}"; then
+    W2_FAILED+=("${WAVE_ARTICLE_PATHS[@]}")
+  fi
   ((i += W2_WAVE_CAP))
   ((n_w2_waves++))
 done
 if (( ${#W2_FAILED[@]} > 0 )); then
-  printf 'AGENT_WRITE_FAILURE: W2 slugs ungated:\n'
-  printf '  %s\n' "${W2_FAILED[@]}"
   exit 1
 fi
 ```

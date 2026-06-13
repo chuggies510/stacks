@@ -51,14 +51,14 @@ Items with `action: research_question` — tensions, implications, or partial ov
 
 Items the operator has moved to `status: deferred`.
 
-**Item shape (claim-keyed — for fetch_source, resynthesize, noop):**
+**Item shape (claim-keyed — for fetch_source, resynthesize):**
 ```yaml
 - id: <sha256 of "{article-slug}|{finding_type}|{space-normalized claim text}">
   article: <slug>
   finding_type: <VERIFIED|DRIFT|UNSOURCED|STALE>
   claim: <claim text, space-normalized>
   source: <source path if relevant, else "">
-  action: <fetch_source|resynthesize|noop>
+  action: <fetch_source|resynthesize>
   resolvable_by: <audit-stack|catalog-sources|external>
   status: <open|applied|closed|deferred>
   terminal_transitioned_on: <YYYY-MM-DD, required for any item currently in a terminal status; empty/unset for open items>
@@ -92,7 +92,7 @@ Status only transitions from `open` to a terminal state. Never regress a termina
 ## Resolvable-By Enum
 
 Every item carries `resolvable_by` identifying which skill owns the fix:
-- `audit-stack` — audit-stack itself can close the item via its normal pass (resynthesize items self-close when the article is re-synthesized and re-validated; noop items are already resolved).
+- `audit-stack` — audit-stack itself can close the item via its normal pass (resynthesize items self-close when the article is re-synthesized and re-validated).
 - `catalog-sources` — requires a catalog-sources cycle to resolve (fetch_source items queue for the next catalog run).
 - `external` — requires operator-external action (research_question items need material acquisition or expert verification outside the pipeline).
 
@@ -100,7 +100,6 @@ Emit-time rule (apply at write time to every new item):
 - `action: fetch_source` → `resolvable_by: catalog-sources`
 - `action: resynthesize` → `resolvable_by: audit-stack`
 - `action: research_question` → `resolvable_by: external`
-- `action: noop` → `resolvable_by: audit-stack`
 
 ## Carry-Forward Rule
 
@@ -109,10 +108,6 @@ Read the prior `dev/audit/findings.md` before writing. For each item ID that alr
 - If its status is `open`: keep it `open` (it has not been resolved).
 
 New IDs not present in the prior findings default to `open`.
-
-When a prior-pass item lacks `resolvable_by` (schema v2), populate it using the emit-time defaults below before writing the v3 item: `fetch_source → catalog-sources`, `resynthesize → audit-stack`, `research_question → external`, `noop → audit-stack`. This is the only v2→v3 migration; no hand-editing of findings.md files is required.
-
-**v3→v4 migration (schema_version bump):** When reading a prior-pass item whose `status` is terminal (`applied`, `closed`, `deferred`) but which lacks `terminal_transitioned_on` (schema v3 item), set `terminal_transitioned_on` to the current `audit_date` before writing the v4 item. `scripts/rotate-findings.sh` then always sees the field populated on any terminal item it encounters. No hand-editing of existing files is required; the migration fires automatically on the first A3 pass after the schema bump.
 
 On any fresh transition from `open` into a terminal status during the current pass, record today's `audit_date` as `terminal_transitioned_on`. On carry-forward of an already-terminal item, preserve the existing `terminal_transitioned_on` value.
 
@@ -218,4 +213,4 @@ A new source was ingested and the article was re-synthesized since the last pass
 
 Carry-forward: this item's status is already `applied` (terminal). Carry it forward as-is, preserving `terminal_transitioned_on: 2026-02-14`. Do not reset to `open`. Do not overwrite `terminal_transitioned_on` with the current `audit_date`. Do not create a duplicate new item.
 
-The new `[VERIFIED]` mark on the claim means no action item is generated for this claim in the current pass — VERIFIED claims generate `action: noop` items only if you need to record them; typically they are omitted from findings.md entirely unless the operator requests a full audit trail.
+The new `[VERIFIED]` mark on the claim means no action item is generated for this claim in the current pass.

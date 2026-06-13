@@ -4,6 +4,7 @@
 # Output:  rewrites <stack>/dev/audit/findings.md in place. Logs ambiguous-match warnings to stderr.
 
 import difflib, os, re, sys
+from collections import Counter
 
 stack = sys.argv[1]
 audit_date = sys.argv[2]
@@ -106,14 +107,7 @@ def reconcile(blk):
     if not norm_claim:
         return blk, "unchanged"
 
-    occurrences = []
-    start = 0
-    while True:
-        idx = norm_body.find(norm_claim, start)
-        if idx == -1:
-            break
-        occurrences.append(idx)
-        start = idx + 1
+    occurrences = [m.start() for m in re.finditer(re.escape(norm_claim), norm_body)]
 
     if len(occurrences) == 0:
         fuzzy_note = _fuzzy_rewrite_check(body, norm_claim)
@@ -184,14 +178,7 @@ def _close(blk, note):
 
 
 reconciled_blocks = []
-counts = {
-    "unchanged": 0,
-    "closed-article-missing": 0,
-    "closed-verified": 0,
-    "closed-drift": 0,
-    "closed-rewrite-verified": 0,
-    "ambiguous": 0,
-}
+counts = Counter()
 for blk in item_blocks:
     new_blk, action = reconcile(blk)
     counts[action] += 1

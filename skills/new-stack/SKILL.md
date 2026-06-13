@@ -53,7 +53,7 @@ Find the stack template in the stacks plugin directory:
 
 ```bash
 TEMPLATE_DIR="$STACKS_ROOT/templates/stack"
-if [[ -z "$TEMPLATE_DIR" || ! -d "$TEMPLATE_DIR" ]]; then
+if [[ ! -d "$TEMPLATE_DIR" ]]; then
   echo "ERROR: Stack template not found. Is the stacks plugin installed?"
   exit 1
 fi

@@ -8,15 +8,6 @@ CONFIG_DIR="$HOME/.config/stacks"
 MARKETPLACE_NAME="stacks"
 PLUGIN_KEY="stacks@stacks"
 
-usage() {
-  echo "Usage: bash install.sh"
-  echo ""
-  echo "Registers the stacks plugin with Claude Code."
-  echo "Run from the stacks repo root or scripts/ directory."
-}
-
-[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { usage; exit 0; }
-
 echo "=== Stacks Plugin Installer ==="
 
 # Ensure settings file exists

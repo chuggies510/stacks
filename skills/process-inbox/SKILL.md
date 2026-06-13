@@ -43,9 +43,7 @@ echo "Library: $LIBRARY"
 ## Step 2: Enumerate stacks
 
 ```bash
-STACKS=$(find "$LIBRARY" -maxdepth 1 -mindepth 1 -type d | while read d; do
-  [ -f "$d/STACK.md" ] && echo "$d"
-done | sort)
+STACKS=$(find "$LIBRARY" -maxdepth 2 -name STACK.md -exec dirname {} \; | sort)
 ```
 
 If STACKS is empty, tell the user: "No stacks in your library yet. Run /stacks:new-stack {name} first." Stop.
@@ -102,17 +100,7 @@ For each matched file, move it to `{stack}/sources/incoming/`:
 ```bash
 TARGET_STACK="$LIBRARY/{matched-stack}"
 mkdir -p "$TARGET_STACK/sources/incoming"
-# Handle filename collision:
-dest="$TARGET_STACK/sources/incoming/$filename"
-if [ -f "$dest" ]; then
-  base="${filename%.*}"
-  ext="${filename##*.}"
-  counter=2
-  while [ -f "$TARGET_STACK/sources/incoming/${base}-${counter}.${ext}" ]; do
-    counter=$((counter + 1))
-  done
-  dest="$TARGET_STACK/sources/incoming/${base}-${counter}.${ext}"
-fi
+dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$TARGET_STACK/sources/incoming" "$filename")
 mv "$f" "$dest"
 echo "Routed: $filename → {matched-stack}/sources/incoming/"
 ```

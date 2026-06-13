@@ -8,9 +8,7 @@ import os, re, sys, glob
 extr_dir, dedup_path = sys.argv[1], sys.argv[2]
 batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
 
-slug_seen = set()              # slugs encountered (dedup key)
 slug_sources = {}              # slug -> list of source paths in first-seen order
-slug_seen_sources = {}         # slug -> set
 slug_target_article = {}       # slug -> existing target slug ("" if none)
 slug_title = {}                # slug -> human title
 slug_tier = {}                 # slug -> tier
@@ -52,62 +50,49 @@ for bf in batch_files:
         slug = fields["slug"]
         if not slug: continue
         input_blocks_total += 1
-        if slug not in slug_seen:
-            slug_seen.add(slug)
+        if slug not in slug_sources:
             slug_sources[slug] = []
-            slug_seen_sources[slug] = set()
             slug_target_article[slug] = fields["target_article"]
             slug_title[slug] = fields["title"]
             slug_tier[slug] = fields["tier"]
             slug_claims[slug] = []
-        for sp in fields["source_paths"]:
-            if sp not in slug_seen_sources[slug]:
-                slug_sources[slug].append(sp)
-                slug_seen_sources[slug].add(sp)
+        slug_sources[slug] = list(dict.fromkeys(slug_sources[slug] + fields["source_paths"]))
         if fields["target_article"] and not slug_target_article[slug]:
             slug_target_article[slug] = fields["target_article"]
         slug_claims[slug].extend(fields["claims_lines"])
 
+def write_block(fh, slug):
+    fh.write(f"## Concept: {slug_title[slug]}\n\n")
+    fh.write(f"slug: {slug}\n")
+    fh.write(f"title: {slug_title[slug]}\n")
+    fh.write("source_paths:\n")
+    for sp in slug_sources[slug]:
+        fh.write(f"  - {sp}\n")
+    fh.write(f'target_article: {slug_target_article[slug] or ""}\n')
+    fh.write(f"tier: {slug_tier[slug]}\n\n")
+    fh.write("### Claims\n")
+    for cl in slug_claims[slug]:
+        fh.write(cl + "\n")
+    fh.write("\n")
+
 # Write merged _dedup.md (one block per unique slug, source_paths merged).
 with open(dedup_path, "w") as f:
-    for slug in sorted(slug_seen):
-        f.write(f"## Concept: {slug_title[slug]}\n\n")
-        f.write(f"slug: {slug}\n")
-        f.write(f"title: {slug_title[slug]}\n")
-        f.write("source_paths:\n")
-        for sp in slug_sources[slug]:
-            f.write(f"  - {sp}\n")
-        f.write(f'target_article: {slug_target_article[slug] or ""}\n')
-        f.write(f"tier: {slug_tier[slug]}\n\n")
-        f.write("### Claims\n")
-        for cl in slug_claims[slug]:
-            f.write(cl + "\n")
-        f.write("\n")
+    for slug in sorted(slug_sources):
+        write_block(f, slug)
 
 # Emit slug list, new/updated classification, and counts to _dedup-meta.txt for caller to source.
-updated_slugs = [s for s in slug_seen if slug_target_article[s]]
+updated_slugs = [s for s in slug_sources if slug_target_article[s]]
 with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
     f.write(f"INPUT_BLOCKS={input_blocks_total}\n")
-    f.write(f"N_UNIQUE_CONCEPTS={len(slug_seen)}\n")
-    f.write(f"N_NEW={len(slug_seen) - len(updated_slugs)}\n")
+    f.write(f"N_UNIQUE_CONCEPTS={len(slug_sources)}\n")
+    f.write(f"N_NEW={len(slug_sources) - len(updated_slugs)}\n")
     f.write(f"N_UPDATED={len(updated_slugs)}\n")
-    f.write("ALL_SLUGS=" + " ".join(sorted(slug_seen)) + "\n")
+    f.write("ALL_SLUGS=" + " ".join(sorted(slug_sources)) + "\n")
     f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
 
 # Write one _dedup-{slug}.md per unique slug so article-synthesizer agents each
 # read a self-contained single-concept file rather than parsing _dedup.md.
-for slug in sorted(slug_seen):
+for slug in sorted(slug_sources):
     per_slug_path = os.path.join(extr_dir, f"_dedup-{slug}.md")
     with open(per_slug_path, "w") as f:
-        f.write(f"## Concept: {slug_title[slug]}\n\n")
-        f.write(f"slug: {slug}\n")
-        f.write(f"title: {slug_title[slug]}\n")
-        f.write("source_paths:\n")
-        for sp in slug_sources[slug]:
-            f.write(f"  - {sp}\n")
-        f.write(f'target_article: {slug_target_article[slug] or ""}\n')
-        f.write(f"tier: {slug_tier[slug]}\n\n")
-        f.write("### Claims\n")
-        for cl in slug_claims[slug]:
-            f.write(cl + "\n")
-        f.write("\n")
+        write_block(f, slug)

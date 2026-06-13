@@ -39,7 +39,7 @@ done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || tru
   echo ""
   echo "## Articles"
   echo ""
-  for tag in $(echo "${!TAG_GROUPS[@]}" | tr ' ' '\n' | sort); do
+  for tag in $(printf '%s\n' "${!TAG_GROUPS[@]}" | sort); do
     echo "### ${tag}"
     echo ""
     printf '%s' "${TAG_GROUPS[$tag]}"

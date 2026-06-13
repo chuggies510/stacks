@@ -48,14 +48,9 @@ for it in items:
     iid = it["id"]
     cur = by_id.get(iid)
     is_term = it.get("status", "open") in TERMINAL
-    if cur is None:
+    cur_term = cur is not None and cur.get("status", "open") in TERMINAL
+    if cur is None or is_term or not cur_term:
         by_id[iid] = it
-    else:
-        cur_term = cur.get("status", "open") in TERMINAL
-        if is_term and not cur_term:
-            by_id[iid] = it
-        elif is_term == cur_term:
-            by_id[iid] = it  # latest wins on tie
 
 # Status-first bucketing: status:deferred items route to Deferred regardless
 # of action. Everything else routes by action. This matches the findings-analyst

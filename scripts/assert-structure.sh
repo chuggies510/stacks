@@ -3,10 +3,10 @@ set -euo pipefail
 
 path=${1:-}
 type=${2:-}
-agent_label=${3:-unknown}
+agent_label=$3
 
 if [[ -z "$path" || -z "$type" ]]; then
-  echo "usage: assert-structure.sh <path> <type> [agent_label]" >&2
+  echo "usage: assert-structure.sh <path> <type> <agent_label>" >&2
   exit 1
 fi
 

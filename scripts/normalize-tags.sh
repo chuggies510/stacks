@@ -29,12 +29,6 @@ if [[ -z "$allowed" ]]; then
   exit 0
 fi
 
-declare -A allowed_map=()
-while IFS= read -r t; do
-  [[ -z "$t" ]] && continue
-  allowed_map["$t"]=1
-done <<< "$allowed"
-
 articles_dir="$stack_root/articles"
 if [[ ! -d "$articles_dir" ]]; then
   exit 0
@@ -78,7 +72,7 @@ for article in "$articles_dir"/*.md; do
 
   while IFS= read -r tag; do
     [[ -z "$tag" ]] && continue
-    if [[ -z "${allowed_map[$tag]:-}" ]]; then
+    if ! grep -qxF "$tag" <<< "$allowed"; then
       echo "TAG_DRIFT: $slug: $tag" >&2
       drift_found=1
     fi

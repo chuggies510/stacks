@@ -3,7 +3,7 @@ name: ask
 description: |
   Use when the user needs to look up domain knowledge from their knowledge
   library. Works from any repo. Reads the stacks config to find the library,
-  searches the catalog and indexes, and synthesizes an answer from topic guides.
+  searches the catalog and indexes, and synthesizes an answer from articles.
   Examples: "/stacks:ask how do VAV systems work", "/stacks:ask mep chilled water sizing".
 ---
 
@@ -72,9 +72,6 @@ QUERY=$(echo "$RAW" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 Resolve `STACKS_TO_SEARCH` — the list of stack names to search:
 
 ```bash
-# -- REPLACE-WITH-QMD when #10 lands: this bash enumeration is the stub.
-# The qmd implementation accepts (query, stacks_to_search[]) and returns
-# (article_path, stack_name)[] ranked by score — replace Step 5 article-mode body only.
 if [[ -n "$STACK_SINGLE" ]]; then
   [[ -d "$LIBRARY/$STACK_SINGLE" ]] || { echo "ERROR: stack '$STACK_SINGLE' not found"; exit 1; }
   STACKS_TO_SEARCH=("$STACK_SINGLE")
@@ -113,21 +110,7 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
      Output = up to 3 (article_path, stack_name) pairs ranked by relevance.
      The answer synthesis in Step 6 depends only on these pairs. -->
 
-Check whether each stack in `STACKS_TO_SEARCH` is in article mode or guide mode:
-
-```bash
-for stack in "${STACKS_TO_SEARCH[@]}"; do
-  if find "$LIBRARY/$stack/articles" -maxdepth 1 -name '*.md' 2>/dev/null | grep -q .; then
-    echo "article $stack"
-  else
-    echo "guide $stack"
-  fi
-done
-```
-
-**Article mode stacks** (those where `articles/` exists and has `.md` files):
-
-Score articles across ALL article-mode stacks together. For each article, weight matches in this order:
+Score articles across all stacks in `STACKS_TO_SEARCH` together. For each article in `$LIBRARY/{stack}/articles/`, weight matches in this order:
 1. `title` frontmatter field — highest weight
 2. `tags[]` frontmatter field — high weight
 3. Article slug (filename without `.md`) — medium weight
@@ -135,25 +118,17 @@ Score articles across ALL article-mode stacks together. For each article, weight
 
 Select the top 3 articles globally (across all stacks). Read each article file. Track which stack each article came from.
 
-**Guide mode stacks** (those without `articles/`):
-
-Score guides from all guide-mode stacks together using the same weighting. Select top 3 guides globally. Track which stack each guide came from.
-
-**Mixed case** (some stacks article mode, some guide mode):
-
-Score article-mode and guide-mode results separately, then interleave by relevance score. Cap at 3 total.
-
 If no matches found across any stack in scope: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}."
 
 ## Step 6: Synthesize answer
 
-Using the topic guide content, synthesize an answer to the user's query.
+Using the article content, synthesize an answer to the user's query.
 
 Requirements:
-- Cite which topic guide(s) the answer comes from (by name, not path)
-- Include specific data points, formulas, rules of thumb, and field notes from the guides
-- If the guides don't fully answer the question, say what's missing
-- Do not invent information beyond what the guides contain
+- Cite which article(s) the answer comes from (by title, not path)
+- Include specific data points, formulas, rules of thumb, and field notes from the articles
+- If the articles don't fully answer the question, say what's missing
+- Do not invent information beyond what the articles contain
 
 Format the response as:
 ```
@@ -161,11 +136,11 @@ Format the response as:
 
 {synthesized answer with specific citations inline}
 
-**Sources**: {topic guide names that contributed}
+**Sources**: {article titles that contributed}
 **Stacks**: {stack name(s) that contributed — use singular "Stack" if only one}
 ```
 
-If no relevant topics are found: "No matching topics found in {stack}. The stack covers: {list topic names from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
+If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
 
 ## Step 7: File result back (Karpathy loop)
 
@@ -173,12 +148,12 @@ Valuable answers compound into the library rather than disappearing into chat hi
 
 **File the result if the answer:**
 - Synthesized something non-obvious across multiple topics (the synthesis didn't exist as a single place before)
-- Resolved a contradiction or ambiguity between guides
+- Resolved a contradiction or ambiguity between articles
 - Produced a comparison or decision table that would be useful again
 - Revealed a gap that is now partially answered by the synthesis itself
 
 **Do not file if the answer:**
-- Simply restated what one existing guide already says clearly
+- Simply restated what one existing article already says clearly
 - Was a lookup that required no synthesis
 - Is ephemeral context specific to the current task
 
@@ -186,11 +161,7 @@ If the answer warrants filing, proceed as follows:
 
 **Determine the filing target.** If results came from a single stack, file there. If results came from multiple stacks, ask: "File this answer to: {list of contributing stacks}, all of them, or skip?"
 
-For each chosen stack, run the filing branch for that stack independently using that stack's mode (article or guide — determined in Step 5 by whether `$LIBRARY/{stack}/articles/` exists and has files).
-
 For each chosen stack:
-
-**Article mode** (stack has `articles/` with files):
 
 1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
 
@@ -211,20 +182,12 @@ For each chosen stack:
    ```
    Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list (keep alphabetical).
 
-**Guide mode** (stack has no `articles/`):
-
-1. Determine whether it fits an existing topic (extends a guide) or is genuinely new.
-
-2. **Extends existing topic:** append the synthesized content to `$LIBRARY/{stack}/topics/{topic}/guide.md` under the appropriate section.
-
-3. **New topic:** create `$LIBRARY/{stack}/topics/{slug}/guide.md` using the topic template from `$LIBRARY/{stack}/STACK.md`. Add to `$LIBRARY/{stack}/index.md` Topics table.
-
 **After each stack filed:**
 
 Update `$LIBRARY/{stack}/log.md`, prepending:
 ```
 ## [YYYY-MM-DD] query | "{short query summary}" → filed to {target}
-Synthesized answer filed. {new | updated} {article|topic}: {slug}.
+Synthesized answer filed. {new | updated} article: {slug}.
 ```
 
 **After all chosen stacks are filed:**
