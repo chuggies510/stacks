@@ -1,3 +1,17 @@
+## 0.20.0 — 2026-06-13
+
+Phase 3+4: inbox quality gate, scheduled maintenance loop, on-demand guide synthesis, and a comparison page type.
+
+### Added
+
+- process-inbox: quality gate — low-quality files route to `library/recycling-bin/` instead of stack incoming dirs, assessed by reading the file body. The Step 6 report gains a Recycled section when files are recycled. (#40)
+- `scripts/loop.sh`: scheduled library maintenance — delegates inbox routing to `/stacks:process-inbox` via `claude -p`, then catalogs each stack with pending incoming files. Enable with `touch $LIBRARY/.loop-enabled`. Add to crontab with an explicit PATH that includes claude's install dir. Covered by `tests/loop.bats` (6 cases). (#14)
+- `/stacks:guide`: new skill — synthesizes a long-form guide (800-2000 words) from library articles. Writes `library/guides/{slug}.md` with full article attribution and commit SHAs. `--stacks` scopes to named stacks; `--regenerate` rebuilds from current articles. (#18)
+- `/stacks:ask`: checks `library/guides/` before article retrieval (Step 1.5) and surfaces an existing guide. (#18)
+- Comparison page type: source files with `## Comparison: X vs Y` sections produce `comparisons/{slug}.md` via the new `comparison-synthesizer` agent. Requires ≥3 criteria or the page is skipped with a `COMPARISON_SKIPPED` report. catalog-sources Step 5.5 (W0c) pre-filters before W1; W1–W2 process only standard sources; an all-comparison run skips straight to index regen. W4 index rebuild now emits a Comparisons section. (#7)
+- STACK.md template: `## Comparison Template` section documents the expected comparison page structure.
+- `templates/stack/index.md`: now shows Articles, Comparisons, and Sources sections.
+
 ## 0.19.1 — 2026-06-12
 
 Ponytail cleanup sweep: deleted dead orchestrator agents, removed the legacy guide-mode path, factored copy-pasted pipeline logic into shared scripts, swapped hand-rolled loops for stdlib. No change to live pipeline behavior.
