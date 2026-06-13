@@ -95,7 +95,34 @@ Using the header block (filename, H1 title, Source line, Extracted from line, fi
 - **Tie (no stack wins ≥⅔ of sub-topics, or no stack has a clear domain majority)**: cannot confidently route — leave in inbox, record candidate stacks and the per-stack sub-topic counts in the report.
 - **No match**: content doesn't fit any existing stack — leave in inbox, record as unmatched.
 
-For each matched file, move it to `{stack}/sources/incoming/`:
+**Quality gate** — before routing a matched file, read its body content beyond section
+headers: at minimum the first 600 words (exclude `##` headings and lines under 20 chars).
+
+Assess: **Does this file contain at least one specific, non-obvious technical fact,
+failure mode, or concrete architectural decision a practitioner would look up?**
+
+Pass signals (route to stack):
+- Specific failure mode with concrete cause and symptom (e.g., "`flock -n` silently drops
+  events when a consumer loop is already inside the lock — use blocking `flock`")
+- Measured performance or behavior claim tied to specific conditions
+- Discovered constraint with traceable cause and effect
+- Concrete architectural decision with documented consequences
+
+Fail signals (route to recycling-bin/):
+- Restatement of documented API semantics — things findable in official docs
+- Generic process aphorisms without specific technical grounding ("test before merge")
+- Meeting summaries or status updates with no extractable technical fact
+- Observations that follow directly from understanding how the system works
+
+For a file that fails the gate, move it to `recycling-bin/` and add it to RECYCLED (not MOVED):
+
+```bash
+mkdir -p "$LIBRARY/recycling-bin"
+mv "$f" "$LIBRARY/recycling-bin/$filename"
+echo "Recycled: $filename → recycling-bin/ (low quality)"
+```
+
+For each matched file that passes the quality gate, move it to `{stack}/sources/incoming/`:
 
 ```bash
 TARGET_STACK="$LIBRARY/{matched-stack}"
@@ -105,10 +132,11 @@ mv "$f" "$dest"
 echo "Routed: $filename → {matched-stack}/sources/incoming/"
 ```
 
-Track three lists throughout this step:
+Track four lists throughout this step:
 - MOVED: filename → stack pairs for all successfully routed files
 - UNMATCHED: filenames with no stack home
 - TIES: filename → [candidate1, candidate2] pairs where classification was ambiguous
+- RECYCLED: filenames moved to recycling-bin/ for failing the quality gate
 
 ## Step 5: Commit (conditional)
 
@@ -116,17 +144,20 @@ Track three lists throughout this step:
 cd "$LIBRARY"
 ```
 
-If MOVED is empty, tell the user: "No files routed — all files are unmatched or tied. See report below." Skip the commit and proceed to Step 6.
+If BOTH MOVED and RECYCLED are empty, tell the user: "No files routed or recycled — all files are unmatched or tied. See report below." Skip the commit and proceed to Step 6.
 
-If any files were moved, stage both the additions in each affected stack's `sources/incoming/` directory AND the deletions in `inbox/`. Some libraries track inbox files, some gitignore them — `git add -A` on both paths handles both cases and ensures a clean tree after the commit:
+Otherwise stage the inbox deletions plus whichever destinations received files, and commit. Some libraries track inbox files, some gitignore them — `git add -A` on both paths handles both cases and ensures a clean tree after the commit. Stage `{each affected stack}/sources/incoming/` only when MOVED is non-empty, and `recycling-bin/` only when RECYCLED is non-empty:
 
 ```bash
 cd "$LIBRARY"
-git add -A inbox/ {each affected stack}/sources/incoming/
-git commit -m "chore(inbox): route {N_MOVED} file(s) to stack incoming dirs"
+git add -A inbox/ {each affected stack}/sources/incoming/ recycling-bin/
+git commit -m "chore(inbox): route {N_MOVED} file(s), recycle {N_RECYCLED} low-quality file(s)"
 ```
 
-Replace `{each affected stack}` with the actual stack paths from the MOVED list. Replace `{N_MOVED}` with the count of moved files.
+Replace `{each affected stack}` with the actual stack paths from the MOVED list and `{N_MOVED}`/`{N_RECYCLED}` with the counts. Match the commit message to what actually happened:
+- MOVED>0, RECYCLED=0: `chore(inbox): route {N_MOVED} file(s) to stack incoming dirs`
+- MOVED=0, RECYCLED>0: `chore(inbox): recycle {N_RECYCLED} low-quality file(s)`
+- both >0: the combined message above.
 
 Do NOT assume inbox is gitignored. Early versions of the skill only staged additions, which left deletions unstaged in libraries that track `inbox/` and required a second cleanup commit.
 
@@ -149,10 +180,13 @@ Tied — left in inbox/ (N):
 Split — routed with off-topic sub-topic flagged (N):
   {filename} → {winning-stack}/sources/incoming/  (off-topic sub-topics: "{heading}" belongs to {other-stack})
 
+Recycled — moved to recycling-bin/ (N):
+  {filename}  (low quality: no specific technical facts found)
+
 Next steps:
   /stacks:catalog-sources {stack}    (for each stack that received files)
 ```
 
-If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section. If no files were routed as splits, omit the Split section.
+If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section. If no files were routed as splits, omit the Split section. If no files were recycled, omit the Recycled section.
 
 Note at the bottom: "process-inbox routes files to incoming/. Run /stacks:catalog-sources {stack} per affected stack to build article-per-concept wiki entries."
