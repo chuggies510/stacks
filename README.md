@@ -22,6 +22,19 @@ This is [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6
 
 ---
 
+## the idea
+
+The library is a structure Claude walks to reach an answer: `/stacks:ask` → the library `catalog.md` → a stack's `index.md` → the article. Cataloging and auditing pay the reading cost once, up front: raw sources (PDFs, docs, web dumps) become small synthesized articles. Every later query is then a short walk to pre-digested knowledge, not a re-read of the originals and not a web search.
+
+Two properties make that walk worth taking:
+
+- **The path lands on the right article.** `index.md` is the routing map. The better each article is described there in the terms someone would actually ask about, the more reliably Claude recognizes the match by pattern rather than by literal keyword, and reads only what it needs.
+- **The article is true.** `/stacks:ask` reads articles, never the sources behind them, so an article that has drifted from its source becomes confident misinformation. `audit-stack` keeps the destination honest.
+
+Everything else is optimized for one outcome: an agent in any repo reaches the exact knowledge it needs with the least friction and no false claims on the way.
+
+---
+
 ## how it works
 
 **Two repos. One rule.**

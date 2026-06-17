@@ -4,6 +4,15 @@
 
 Claude Code plugin for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) that can be queried with `/stacks:ask` from any repo. An audit pass validates each article against its cited sources and writes a fresh drift report.
 
+## Design principle (north star)
+
+The library is a structure an LLM walks to reach knowledge: `ask` → `catalog.md` → stack `index.md` → article. Catalog and audit pay the source-reading cost once, so every later query is a cheap walk to pre-digested, cited knowledge instead of re-reading sources or searching the web. Design the whole system to maximize two things:
+
+- **Frictionless path** — each hop is encoded so the LLM lands on the right article by recognition (its native pattern-matching), not literal keyword match. `index.md` is the routing map; the design goal is per-article routing lines (what the article covers, the questions it answers) so retrieval is recognition-based.
+- **Truthful destination** — `ask` reads articles, not the sources behind them, so the article must stay accurate to its sources. `audit-stack` guards this.
+
+Current gaps against the principle (build directions, not shipped state): retrieval is literal keyword (`rank-articles.sh`) over a title-list `index.md`, so the path is under-encoded; the audit guards per-claim fidelity but not cross-article connection or source-to-source contradiction. These are the next builds.
+
 ## Core Requirements
 
 - **Library lifecycle**: scaffold new libraries (`init-library`), create stacks within them (`new-stack`), catalog sources into articles (`catalog-sources`), audit articles for drift against their sources (`audit-stack`), and query from any repo (`ask`).

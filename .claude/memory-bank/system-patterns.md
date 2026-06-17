@@ -32,6 +32,8 @@ Each audit run is independent: the validator re-marks from scratch and the repor
 ### Lookup
 `/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all stacks) → extract `## Reading Paths` context → rank articles by keyword match over the whole file body (`rank-articles.sh`, not frontmatter-only — body search is the fix for the title-match wall, #10), load the top 3 across the scoped stacks → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
 
+**Design goal (see project-brief "Design principle"):** `index.md` should be a concept-routing map so lookup is recognition-based, not the current literal keyword match (`rank-articles.sh`) over a title-list index. The two axes the whole system optimizes are retrieval friction (the path to the right article) and per-article truthfulness (the article matches its sources).
+
 ## Parent-side sharded dispatch
 
 The scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched directly by the parent skill, not by an orchestrator agent. Orchestrator agents were removed because nested Task dispatch was unreliable: when the harness dropped Task on a nested call, the orchestrator silently fell back to inline execution and bundled every shard into one context, hitting "Prompt is too long" on exactly the stacks sharding was meant to keep below the ceiling. Parent-side dispatch keeps Task usage shallow (always reachable) and lets the parent run all deterministic pieces (dedup, per-slug split, wave gating) as code.
