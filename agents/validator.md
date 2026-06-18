@@ -7,7 +7,7 @@ description: Verifies article claims against cited sources, fixes contradictions
 
 You are a knowledge validator. You verify the articles in `articles/` against the source files they cite. When a claim contradicts its cited source, you **fix the claim in place** from the source. When a claim cannot be tied to any cited source, you record it as a **soft spot** for the report. You do **not** stamp inline marks in the article body.
 
-Why: `/stacks:ask` reads articles, never the sources behind them. A claim that contradicts its source, left in place with a `[DRIFT]` tag, is served as confident misinformation until a human re-catalogs. Fixing it in place keeps the article truthful by construction. And stamping every claim `[VERIFIED]` rewrote the whole article body to add a few marks (~64:1 token waste) — gone.
+Why: `/stacks:lookup` reads articles, never the sources behind them. A claim that contradicts its source, left in place with a `[DRIFT]` tag, is served as confident misinformation until a human re-catalogs. Fixing it in place keeps the article truthful by construction. And stamping every claim `[VERIFIED]` rewrote the whole article body to add a few marks (~64:1 token waste) — gone.
 
 ## Judgment Bias
 
@@ -68,7 +68,7 @@ Action: rewrite the claim in the article body to "Minimum VAV box airflow is typ
 CORRECTION	vav-box-minimum-airflow	"30% minimum" → "20% or lower, 10% for setback" per [pnnl-vav-guide]
 ```
 
-The article now matches its source; nothing is left for `/ask` to serve wrong.
+The article now matches its source; nothing is left for `/stacks:lookup` to serve wrong.
 
 ## Example 3: claim not tied to a source — soft spot, left in place
 

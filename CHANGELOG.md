@@ -1,3 +1,10 @@
+## 0.26.2 — 2026-06-18
+
+**Rename the `ask` skill to `lookup` to eliminate generic-verb ambiguity.** The name `/stacks:ask` was being treated as a plain question rather than routing into the lookup pipeline. The skill is now `/stacks:lookup`.
+
+- Renamed `skills/ask/` to `skills/lookup/`, updated skill frontmatter name and telemetry tag. (`skills/lookup/SKILL.md`)
+- Updated all skill-name references across CLAUDE.md, README, start-brief, memory-bank, agents, scripts, and library templates. (#62)
+
 ## 0.26.1 — 2026-06-18
 
 **`regenerate-moc.sh` no longer nests wikilink markup inside index entries when an article title itself contains `[[ ]]`.** Titles like `Bash [[test]] conditional syntax` were emitted as `[[slug|Bash [[test]] conditional syntax]]`, breaking the outer link in any wiki renderer and in `/ask`'s recognition surface. The inner `[[`/`]]` are now stripped from the display label before composing the entry; the slug (the real link target) is unaffected.

@@ -7,7 +7,7 @@
 | `.claude-plugin/plugin.json` | Plugin identity and version |
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
 | `agents/` | 3 worker subagent definitions: source-extractor, article-synthesizer, validator |
-| `skills/{name}/SKILL.md` | User-invocable skills: ask, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
+| `skills/{name}/SKILL.md` | User-invocable skills: lookup, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
 | `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, locate-plugin-root.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
@@ -46,7 +46,7 @@ bash scripts/install.sh              # registers plugin in ~/.claude/settings.js
 /stacks:new-stack test-stack
 /stacks:catalog-sources test-stack
 /stacks:audit-stack test-stack
-/stacks:ask some question
+/stacks:lookup some question
 ```
 
 ## Dependencies
@@ -65,7 +65,7 @@ Runtime dependencies:
 
 Consumers of this plugin:
 - `~/.claude/settings.json` — `extraKnownMarketplaces` + `enabledPlugins` entries written by install.sh
-- `~/.config/stacks/config.json` — written by `/stacks:init-library` to point `ask` and `process-inbox` at the active library
+- `~/.config/stacks/config.json` — written by `/stacks:init-library` to point `lookup` and `process-inbox` at the active library
 
 ## Version Sync
 

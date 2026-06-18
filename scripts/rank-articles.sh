@@ -3,7 +3,7 @@ set -uo pipefail
 
 # Rank articles against a query by keyword match across the WHOLE file (body
 # included), not just frontmatter title/tags. This is the retrieval step for
-# /stacks:ask: title-only matching misses articles whose relevant content is in
+# /stacks:lookup: title-only matching misses articles whose relevant content is in
 # the body, which is the wall a library hits past a few dozen articles (#10).
 #
 # Usage:

@@ -6,7 +6,7 @@ session: 15
 
 ## Current state
 
-- Plugin at 0.23.0, versions synced in `plugin.json` + `marketplace.json`. Three agents (source-extractor, article-synthesizer, validator), 6 skills, two pipelines (catalog W0→W4 with a new convert stage, stateless audit drift report), body-keyword ask retrieval.
+- Plugin at 0.26.2, versions synced in `plugin.json` + `marketplace.json`. Three agents (source-extractor, article-synthesizer, validator), 6 skills, two pipelines (catalog W0→W4 with a new convert stage, stateless audit drift report), body-keyword lookup retrieval.
 - Document ingest now works: catalog-sources Step 3.5 (`scripts/convert-sources.sh`) converts PDFs/Office to text before extraction; the source-extractor agent (renamed from concept-identifier) only ever sees text.
 - ask retrieval searches article bodies, not just frontmatter (`scripts/rank-articles.sh`); fixes the title-only-matching wall.
 - 40 bats green (added `tests/convert-sources.bats` 7, `tests/rank-articles.bats` 7). Memory bank (system-patterns, tech-context, project-brief), README, start-brief all current to 0.23.0.
@@ -14,7 +14,7 @@ session: 15
 
 ## Next priority
 
-Backlog is down to one deferred item (#54). The session closed three issues (#55 ingest, #51 fetch-sources teardown, #10 qmd→keyword retrieval); no urgent next move. Two new scripts (convert-sources.sh, rank-articles.sh) are unit-tested but were never run end-to-end against a real library this session — no issue filed because that is one-shot verification, not a tracked defect. Run `/stacks:catalog-sources` on a stack with a real PDF and `/stacks:ask` a body-content query when convenient to confirm the live wiring. qmd vector search stays deferred: reopen #10 only on an observed semantic-synonym miss (query should match an article it shares no keywords with), not on article count.
+Backlog is down to one deferred item (#54). The session closed three issues (#55 ingest, #51 fetch-sources teardown, #10 qmd→keyword retrieval); no urgent next move. Two new scripts (convert-sources.sh, rank-articles.sh) are unit-tested but were never run end-to-end against a real library this session — no issue filed because that is one-shot verification, not a tracked defect. Run `/stacks:catalog-sources` on a stack with a real PDF and `/stacks:lookup` a body-content query when convenient to confirm the live wiring. qmd vector search stays deferred: reopen #10 only on an observed semantic-synonym miss (query should match an article it shares no keywords with), not on article count.
 
 ---
 

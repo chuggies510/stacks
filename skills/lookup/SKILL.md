@@ -1,10 +1,10 @@
 ---
-name: ask
+name: lookup
 description: |
   Use when the user needs to look up domain knowledge from their knowledge
   library. Works from any repo. Reads the stacks config to find the library,
   searches the catalog and indexes, and synthesizes an answer from articles.
-  Examples: "/stacks:ask how do VAV systems work", "/stacks:ask mep chilled water sizing".
+  Examples: "/stacks:lookup how do VAV systems work", "/stacks:lookup mep chilled water sizing".
 ---
 
 # Lookup
@@ -15,7 +15,7 @@ Query knowledge stacks from any repo.
 
 ```bash
 STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
-SKILL_NAME="stacks:ask" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
+SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Find the library

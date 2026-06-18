@@ -33,7 +33,7 @@ Available commands:
   /stacks:new-stack {name}          scaffold a new stack
   /stacks:catalog-sources {stack}  process sources into article-per-concept wiki entries
   /stacks:audit-stack {stack}      validate articles against sources, report drift
-  /stacks:ask "{query}"            query this library from any repo
+  /stacks:lookup "{query}"            query this library from any repo
 
 Next: {derive from state}
 ```

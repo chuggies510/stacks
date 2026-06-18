@@ -4,7 +4,7 @@
 
 Three-layer plugin:
 
-1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a SKILL.md with a procedural walkthrough.
+1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `lookup`. Each is a SKILL.md with a procedural walkthrough.
 2. **Agents**: 3 workers (`source-extractor`, `article-synthesizer`, `validator`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly — there are no orchestrator agents.
 3. **Templates** (scaffolding): `templates/library/` and `templates/stack/` are copied into user repos to bootstrap structure.
 
@@ -30,9 +30,9 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 Each audit run is independent: the validator re-marks from scratch and the report is rebuilt from the current marks. There is no `findings.md` ledger, no carry-forward, no convergence pass-loop, and no glossary/invariants/contradictions synthesis — those (and the catalog↔audit extraction-hash flywheel) were removed in 0.21.0.
 
 ### Lookup
-`/stacks:ask {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all stacks) → **recognize** matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`; the LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank over bodies for body-content matches and un-migrated stacks → load the matched articles → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
+`/stacks:lookup {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all stacks) → **recognize** matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`; the LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank over bodies for body-content matches and un-migrated stacks → load the matched articles → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
 
-**Routing map (project-brief "Design principle", #59):** `index.md` is a concept-routing map — the synthesizer emits a `routing:` frontmatter line per article (what it covers / questions it answers, in asker's terms), `regenerate-moc.sh` composes those into the `## Articles` list, and `/ask` recognizes over them. Articles synthesized before #59 carry no `routing:`, so they render as bare title links until re-cataloged (no backfill shipped — that's an LLM batch over existing libraries). The two axes the whole system optimizes are retrieval friction (the path to the right article) and per-article truthfulness (the article matches its sources).
+**Routing map (project-brief "Design principle", #59):** `index.md` is a concept-routing map — the synthesizer emits a `routing:` frontmatter line per article (what it covers / questions it answers, in asker's terms), `regenerate-moc.sh` composes those into the `## Articles` list, and `/stacks:lookup` recognizes over them. Articles synthesized before #59 carry no `routing:`, so they render as bare title links until re-cataloged (no backfill shipped — that's an LLM batch over existing libraries). The two axes the whole system optimizes are retrieval friction (the path to the right article) and per-article truthfulness (the article matches its sources).
 
 ## Parent-side sharded dispatch
 

@@ -9,7 +9,7 @@
 ║                                ▲                         ║
 ║                         STACK.md schema                  ║
 ║                                                          ║
-║   /stacks:ask "how does X work"  ──►  actual answer      ║
+║   /stacks:lookup "how does X work"  ──►  actual answer      ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 ```
@@ -24,12 +24,12 @@ This is [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6
 
 ## the idea
 
-The library is a structure Claude walks to reach an answer: `/stacks:ask` → the library `catalog.md` → a stack's `index.md` → the article. Cataloging and auditing pay the reading cost once, up front: raw sources (PDFs, docs, web dumps) become small synthesized articles. Every later query is then a short walk to pre-digested knowledge, not a re-read of the originals and not a web search.
+The library is a structure Claude walks to reach an answer: `/stacks:lookup` → the library `catalog.md` → a stack's `index.md` → the article. Cataloging and auditing pay the reading cost once, up front: raw sources (PDFs, docs, web dumps) become small synthesized articles. Every later query is then a short walk to pre-digested knowledge, not a re-read of the originals and not a web search.
 
 Two properties make that walk worth taking:
 
 - **The path lands on the right article.** `index.md` is the routing map. The better each article is described there in the terms someone would actually ask about, the more reliably Claude recognizes the match by pattern rather than by literal keyword, and reads only what it needs.
-- **The article is true.** `/stacks:ask` reads articles, never the sources behind them, so an article that has drifted from its source becomes confident misinformation. `audit-stack` keeps the destination honest.
+- **The article is true.** `/stacks:lookup` reads articles, never the sources behind them, so an article that has drifted from its source becomes confident misinformation. `audit-stack` keeps the destination honest.
 
 Everything else is optimized for one outcome: an agent in any repo reaches the exact knowledge it needs with the least friction and no false claims on the way.
 
@@ -85,7 +85,7 @@ Open a session in your new library:
 Query from anywhere:
 
 ```
-/stacks:ask how does tokio schedule tasks across threads
+/stacks:lookup how does tokio schedule tasks across threads
 ```
 
 ---
@@ -101,7 +101,7 @@ Listed in lifecycle order: set up, route and ingest, maintain, query.
 | `/stacks:process-inbox` | route queued inbox files into the matching stacks | anywhere |
 | `/stacks:catalog-sources {stack}` | identify concepts in new sources, write one article per concept | inside the library |
 | `/stacks:audit-stack {stack}` | validate articles against sources, report drift / unsourced / stale | inside the library |
-| `/stacks:ask {query}` | answer a question from your curated articles | anywhere |
+| `/stacks:lookup {query}` | answer a question from your curated articles | anywhere |
 
 **run from** is where you can type the command, not a grouping by kind. `new-stack`, `catalog-sources`, and `audit-stack` act on the stack in your current directory, so run them inside the library. The other three don't need that: `init-library` takes a target path and writes the config, while `ask` and `process-inbox` read the library location from `~/.config/stacks/config.json`. By purpose `process-inbox` belongs with `catalog-sources`: it writes to the library and feeds the ingest. It only shares an invocation style with the read-only `ask`.
 
@@ -183,4 +183,4 @@ bash scripts/update.sh     # git pull (directory-source plugins update in place)
 
 **Requirements**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), `gh` CLI (authenticated), `jq`.
 
-Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init-library` and read by `/stacks:ask` at runtime so it works from any repo.
+Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init-library` and read by `/stacks:lookup` at runtime so it works from any repo.

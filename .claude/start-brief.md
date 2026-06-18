@@ -8,7 +8,7 @@ Run /workspace-toolkit:refresh-start-brief when source files have drifted substa
 
 # stacks Start Brief
 
-Claude Code plugin (v0.23.0) for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:ask` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
+Claude Code plugin (v0.26.2) for building and maintaining curated domain knowledge libraries. Sources are cataloged into article-per-concept wiki entries (flat `articles/` directory) queryable with `/stacks:lookup` from any repo; an audit pass validates each article against its cited sources and writes a fresh drift report. This repo is the tool, not a library: no knowledge content lives here.
 
 ## Tech context
 
@@ -41,7 +41,7 @@ bash scripts/install.sh        # register plugin; restart Claude Code, then:
 /stacks:new-stack test-stack
 /stacks:catalog-sources test-stack
 /stacks:audit-stack test-stack
-/stacks:ask some question
+/stacks:lookup some question
 rm -rf ~/tmp/test-library      # do not commit test library content
 ```
 
@@ -51,7 +51,7 @@ rm -rf ~/tmp/test-library      # do not commit test library content
 
 Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned library repos.
 
-1. Skills (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `ask`. Each is a `skills/{name}/SKILL.md` procedural walkthrough.
+1. Skills (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `lookup`. Each is a `skills/{name}/SKILL.md` procedural walkthrough.
 2. Agents: 3 workers — `source-extractor`, `article-synthesizer`, `validator`. No orchestrator agents.
 3. Templates: `templates/library/` and `templates/stack/` copied into user repos to bootstrap structure.
 
@@ -74,7 +74,7 @@ Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned lib
 - `/stacks:init-library {path}`: copy `templates/library/` → create private GitHub repo → write `~/.config/stacks/config.json`.
 - `/stacks:new-stack {name}`: copy `templates/stack/` to `{name}/` → register in library `catalog.md`.
 - `/stacks:process-inbox`: read library `inbox/*.md` → classify against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only, no quality gate.
-- `/stacks:ask {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all) → recognize matching articles over the index routing map, supplemented by `rank-articles.sh` keyword rank over bodies → load matches → synthesize cited answer → optional **opt-in** file-back (ask before writing/committing an article). Article-only.
+- `/stacks:lookup {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all) → recognize matching articles over the index routing map, supplemented by `rank-articles.sh` keyword rank over bodies → load matches → synthesize cited answer → optional **opt-in** file-back (ask before writing/committing an article). Article-only.
 
 ### Cross-cutting harness patterns
 

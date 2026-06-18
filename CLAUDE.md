@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude Code plugin for building and maintaining curated domain knowledge libraries. Sources are ingested into topic guides that can be queried with `/stacks:ask` from any repo.
+Claude Code plugin for building and maintaining curated domain knowledge libraries. Sources are ingested into topic guides that can be queried with `/stacks:lookup` from any repo.
 
 This repo is the **stacks tool**. It is NOT a knowledge library. Do not store knowledge content here. Libraries are created with `/stacks:init-library`.
 
@@ -16,7 +16,7 @@ This repo is the **stacks tool**. It is NOT a knowledge library. Do not store kn
 - `/stacks:catalog-sources` — Process sources/incoming/ into article-per-concept wiki entries
 - `/stacks:process-inbox` — Route inbox/*.md files to matching stacks
 - `/stacks:audit-stack` — Validate articles, synthesize glossary/invariants, identify gaps
-- `/stacks:ask` — Look up knowledge from the configured library
+- `/stacks:lookup` — Look up knowledge from the configured library
 
 ## Plugin Structure
 
@@ -25,7 +25,7 @@ stacks/
 ├── .claude-plugin/
 │   ├── plugin.json            # Plugin identity and version
 │   └── marketplace.json       # Single-plugin marketplace descriptor
-├── skills/{name}/SKILL.md     # User-invocable skills (init, new, catalog-sources, ask, audit-stack, process-inbox)
+├── skills/{name}/SKILL.md     # User-invocable skills (init, new, catalog-sources, lookup, audit-stack, process-inbox)
 ├── agents/                    # 3 subagent definitions (source-extractor, article-synthesizer, validator)
 ├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
 ├── templates/
@@ -78,7 +78,7 @@ bash scripts/install.sh
 # open session in ~/tmp/test-library
 /stacks:new-stack test-stack
 /stacks:catalog-sources test-stack
-/stacks:ask some question
+/stacks:lookup some question
 # clean up
 rm -rf ~/tmp/test-library
 ```
