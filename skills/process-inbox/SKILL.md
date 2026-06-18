@@ -15,9 +15,7 @@ Route inbox session extracts to the correct stack's incoming directory.
 ## Step 0: Telemetry
 
 ```bash
-LOCATE=$(find ~/.claude/plugins/cache -name locate-plugin-root.sh -path '*/stacks/*/scripts/*' 2>/dev/null | sort -V | tail -1)
-[[ -z "$LOCATE" ]] && LOCATE="$(jq -r '.stacks.installLocation // empty' ~/.claude/plugins/known_marketplaces.json 2>/dev/null)/scripts/locate-plugin-root.sh"
-STACKS_ROOT=$(bash "$LOCATE" 2>/dev/null)
+STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 SKILL_NAME="stacks:process-inbox" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
