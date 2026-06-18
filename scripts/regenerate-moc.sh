@@ -26,9 +26,18 @@ declare -A TAG_GROUPS
 while IFS= read -r article; do
   tag=$(awk '/^tags:/{found=1; next} found && /^  - /{print $2; exit} found && !/^  -/{exit}' "$article")
   title=$(awk '/^title:/{print substr($0, 8); exit}' "$article")
+  # Routing line: what the article covers / questions it answers, in asker's
+  # terms. It's what makes index.md a recognition map instead of a title list,
+  # so /ask lands on the right article by pattern (#59). Omitted (bare link)
+  # for articles synthesized before the field existed.
+  routing=$(awk '/^routing:/{print substr($0, 10); exit}' "$article")
   slug=$(basename "$article" .md)
   tag="${tag:-uncategorized}"
-  TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]"$'\n'
+  if [[ -n "$routing" ]]; then
+    TAG_GROUPS["$tag"]+="- [[${slug}|${title}]] — ${routing}"$'\n'
+  else
+    TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]"$'\n'
+  fi
 done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || true)
 
 # 3. Write new index.md

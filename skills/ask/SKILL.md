@@ -95,37 +95,44 @@ else
 fi
 ```
 
-## Step 4: Read indexes for all stacks in scope
+## Step 4: Read the routing map for all stacks in scope
 
 For each stack in `STACKS_TO_SEARCH`:
 - Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no index yet" and skip it.
-- Capture any `## Reading Paths` section as retrieval context for that stack.
+- The `## Articles` section is the routing map: `- [[slug|title]] — {routing line}`, where the routing line says what the article covers and the questions it answers (#59). This is the recognition surface for Step 5.
+- Capture any `## Reading Paths` section as supplementary retrieval context.
 
 If all stacks were skipped (none had an index), tell the user to run `/stacks:catalog-sources` in the library repo.
 
-## Step 5: Retrieve matching articles across stacks
+## Step 5: Recognize matching articles across stacks
 
-<!-- Retrieval contract: input = (QUERY, STACKS_TO_SEARCH[], per-stack article dirs)
-     Output = up to 3 article paths ranked by relevance; Step 6 synthesis depends
-     only on those. rank-articles.sh searches whole article BODIES, not just
-     frontmatter — title-only matching missed body content, the wall past a few
-     dozen articles (#10). qmd's vector search is the future escalation, for
-     queries that miss on pure semantic synonyms keyword grep can't catch. -->
+<!-- Retrieval contract: input = (QUERY, the routing maps read in Step 4).
+     Output = the article paths whose routing line matches the query; Step 6
+     synthesis depends only on those. Primary signal is RECOGNITION over the
+     routing map (the design north star: the LLM lands on the right article by
+     pattern, not literal keyword overlap). rank-articles.sh keyword rank is the
+     complement — it catches body-content matches the routing line is too terse
+     to name, and it carries stacks whose index has no routing lines yet (articles
+     synthesized before #59). -->
 
-Rank articles across all stacks in scope by keyword match over the whole file (body included), highest score first. Pass one `articles/` dir per stack:
+Pick the articles to read, in this order:
 
-```bash
-ARTICLE_DIRS=()
-for s in "${STACKS_TO_SEARCH[@]}"; do
-  [[ -d "$LIBRARY/$s/articles" ]] && ARTICLE_DIRS+=("$LIBRARY/$s/articles")
-done
-RANKED=$(bash "$STACKS_ROOT/scripts/rank-articles.sh" 3 "$QUERY" "${ARTICLE_DIRS[@]}")
-echo "$RANKED"
-```
+1. **Recognize over the routing map.** From the `## Articles` routing lines you read in Step 4, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
 
-Each output line is `<score><TAB><path>`. Read each ranked article file (top 3); the stack name is the directory two levels above the file (`{stack}/articles/{slug}.md`). Use the `## Reading Paths` context from Step 4 as a tie-breaker / supplementary pointer when scores are close.
+2. **Supplement with keyword rank** (catches body matches and un-migrated stacks whose index lines have no routing text):
 
-If `RANKED` is empty (no article scored), tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
+   ```bash
+   ARTICLE_DIRS=()
+   for s in "${STACKS_TO_SEARCH[@]}"; do
+     [[ -d "$LIBRARY/$s/articles" ]] && ARTICLE_DIRS+=("$LIBRARY/$s/articles")
+   done
+   RANKED=$(bash "$STACKS_ROOT/scripts/rank-articles.sh" 10 "$QUERY" "${ARTICLE_DIRS[@]}")
+   echo "$RANKED"
+   ```
+
+   Each line is `<score><TAB><path>` (stack = the dir two levels above the file). Merge these into your recognition set; a strong keyword hit not in the routing-map picks is still worth reading.
+
+Read the selected article files (union of 1 and 2). If recognition found nothing AND `RANKED` is empty, tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
 
 ## Step 6: Synthesize answer
 

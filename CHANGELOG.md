@@ -1,3 +1,12 @@
+## 0.24.0 — 2026-06-18
+
+**`index.md` becomes a routing map, so `/stacks:ask` finds the right article by recognizing what it covers — not just matching keywords.** Before, the index was a bare title list and lookup leaned entirely on keyword grep over article bodies; an article whose title didn't echo the question got missed even when it was the right one. Now each article carries a one-line description of what it covers and the questions it answers, the index composes those into a recognition map, and `/ask` reads the map and picks by meaning first (keyword rank still backs it up). This is the Layer-2 "connection" piece of the design north star: the LLM lands on the right article by pattern.
+
+- **Synthesizer emits a `routing:` frontmatter line** per article — what it covers / questions it answers, in an asker's words, not a title restatement. (`agents/article-synthesizer.md`)
+- **`regenerate-moc.sh` composes routing lines into the `## Articles` map** (`- [[slug|title]] — {routing}`); articles synthesized before this field render as bare links, so old indexes still rebuild cleanly. (`scripts/regenerate-moc.sh`, `tests/regenerate-moc.bats` — 3 cases)
+- **`/ask` recognizes over the routing map first**, then merges in `rank-articles.sh` keyword hits (cap raised 3→10 for the merge; #58 finalizes the cap). (`skills/ask/SKILL.md` Steps 4-5)
+- Existing libraries: routing lines populate as articles are re-cataloged; no bulk backfill shipped (that's an LLM pass over every article, run it deliberately). (#59)
+
 ## 0.23.1 — 2026-06-18
 
 **Cataloged articles no longer cite source files at a path that no longer exists.** When `catalog-sources` files a source from `incoming/` to its publisher dir, the articles citing it now get their paths fixed in the same pass — before, every cataloged article pointed at an empty `sources/incoming/`, so every citation was a dead link.
