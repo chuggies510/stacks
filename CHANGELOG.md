@@ -1,3 +1,12 @@
+## 0.26.0 — 2026-06-18
+
+**`audit-stack` now fixes wrong claims instead of tagging them and walking away, and stops rewriting whole articles just to stamp marks.** Before, the validator marked every claim inline (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) — which rewrote the entire article body to add a few tags (~64:1 token waste) and, worse, left a claim that contradicted its source sitting in the article with a `[DRIFT]` label. Since `/ask` reads articles and never the sources, that drifted-but-tagged claim was served as confident misinformation until a human re-cataloged. Now the validator reads-and-fixes: a claim that contradicts its cited source is corrected in place from the source, and a claim with no cited source is recorded as a "soft spot" in the report (left in the body, not deleted). No inline marks at all.
+
+- **Validator is read-and-fix.** Contradictions are rewritten in place against the cited source (higher-tier source wins on conflict); unsourced claims become soft spots; legacy inline marks are stripped on sight. It writes per-batch findings to `dev/audit/_audit-{tag}.md` (tab-separated corrections + soft spots). (`agents/validator.md`)
+- **Audit report has two sections** — corrections applied (what the validator auto-edited, so you can eyeball it) and soft spots (claims to source or confirm) — aggregated from the batch files, which are then deleted. The old four-mark counts and grep-the-body report are gone. (`skills/audit-stack/SKILL.md` Steps 3-5)
+- **Validation gate shape changed**: a validated article is now signaled by a populated `last_verified:` date, not an inline mark. (`scripts/assert-structure.sh` `article-validated` kind; `tests/assert-structure.bats` updated)
+- Mark vocabulary scrubbed from README, project-brief, system-patterns, tech-context, start-brief, and the synthesizer's strip rule (kept as legacy cleanup for un-migrated articles). (#57)
+
 ## 0.25.0 — 2026-06-18
 
 **`/stacks:ask` no longer writes to your library behind your back, and its stack-scope flag is one flag instead of two.** Filing a query answer back into the library (the "Karpathy loop") used to auto-decide and auto-commit; now it asks first and does nothing unless you opt in. The two near-duplicate scope flags collapse into one.

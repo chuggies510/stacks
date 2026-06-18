@@ -41,11 +41,11 @@ tags:
 
 **Tag values** MUST be chosen from the `allowed_tags:` list in `STACK.md`. Read that list before writing frontmatter and pick only from it. If `allowed_tags:` is absent or the list is empty, include the literal line `[tag-vocabulary not declared]` at the top of your return text (agents have no separate stdout channel, so the caller surfaces this marker) and proceed with free-form tags — backward-compat for stacks that haven't migrated. A post-W2 drift check (`scripts/normalize-tags.sh`) halts the catalog pipeline if any article carries an out-of-vocabulary tag.
 
-**Body:** 300-800 words (soft cap 1200). Use inline `[source-slug]` citations. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — those are audit-cycle marks added by the validator, not by this agent.
+**Body:** 300-800 words (soft cap 1200). Use inline `[source-slug]` citations. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — these are a legacy audit vocabulary the current validator no longer emits (it fixes contradictions in place instead), and this agent never writes them.
 
 ## Strip-on-Rewrite Rule
 
-When an existing article is present on input (`target_article` is set): strip all prior-cycle marks from the existing article body before producing the updated version. The marks to strip are: `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]`. These accumulate across audit cycles and must not carry forward. Strip every occurrence, then rewrite the article incorporating the new claims.
+When an existing article is present on input (`target_article` is set): strip any legacy audit marks from the existing article body before producing the updated version. The marks to strip are: `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]`. Older audit cycles left these inline; the current validator emits none, but un-migrated articles may still carry them, so strip every occurrence, then rewrite the article incorporating the new claims.
 
 ## First Write vs. Update Behavior
 

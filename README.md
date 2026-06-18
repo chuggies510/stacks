@@ -124,8 +124,8 @@ sources/incoming/  →  convert-sources (PDF/Office → text; skip+report images
 **audit-stack** (run when you want quality):
 
 ```
-articles/  →  [validator]  →  inline [VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE] marks
-           →  drift report  →  dev/audit/report.md (what drifted / is unsourced / is stale)
+articles/  →  [validator]  →  fix source-contradictions in place + collect soft spots
+           →  audit report  →  dev/audit/report.md (corrections applied / soft spots)
 ```
 
 ---

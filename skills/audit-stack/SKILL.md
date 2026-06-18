@@ -2,15 +2,15 @@
 name: audit-stack
 description: |
   Use when the user wants to check a knowledge stack's articles against their
-  cited sources. Dispatches the validator agent to mark each claim inline
-  (VERIFIED/DRIFT/UNSOURCED/STALE), then writes a fresh drift report listing
-  every flagged claim. Stateless: each run regenerates the report from scratch,
-  no carry-forward ledger. Must be run from within a library repo.
+  cited sources. Dispatches the validator agent to fix source-contradictions in
+  place and list soft spots (claims not tied to a source), then writes a fresh
+  audit report. Stateless: each run regenerates the report from scratch, no
+  carry-forward ledger. Must be run from within a library repo.
 ---
 
 # Audit Stack
 
-Validate a stack's articles against their cited sources, then report what drifted, what is unsourced, and what is stale. Each run is independent: the validator re-marks every article and the report is rebuilt from the current marks. There is no carry-forward ledger and no multi-pass loop.
+Validate a stack's articles against their cited sources. The validator **fixes** claims that contradict their source in place (so `/ask` never serves a known-wrong claim) and records every fix plus every **soft spot** (a claim not tied to any cited source) for the report. No inline marks are stamped in article bodies. Each run is independent: the validator re-checks every article and the report is rebuilt from this run's findings. There is no carry-forward ledger and no multi-pass loop.
 
 ## Step 0: Telemetry
 
@@ -59,51 +59,54 @@ N_ARTICLES=${#ARTICLES[@]}
 CAP=25
 DISPATCH_EPOCH=$(date +%s)
 mkdir -p "$STACK/dev/audit"
+rm -f "$STACK"/dev/audit/_audit-*.md   # clear any stale per-batch files from a prior run
 ```
 
-**Dispatch.** Each validator gets: the absolute article paths in its slice, the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`), the source-hierarchy context from STACK.md, the stack root, and `$DISPATCH_EPOCH`. The validator strips prior-cycle marks, writes fresh inline `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks, and sets `last_verified` to today.
+**Dispatch.** Each validator gets: the absolute article paths in its slice, the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`), the source-hierarchy context from STACK.md, the stack root `$STACK`, `$DISPATCH_EPOCH`, and a **`BATCH_TAG`** = the slice index (`0`, `1`, `2`, …; use `0` for the single-agent case). The validator strips prior-cycle marks, fixes source-contradictions in place, sets `last_verified` to today, and writes its findings to `$STACK/dev/audit/_audit-${BATCH_TAG}.md` (tab-separated `CORRECTION`/`SOFTSPOT` lines, or empty if clean).
 
-- **N_ARTICLES ≤ CAP:** one `Agent` call (subagent_type `stacks:validator`) over all of `${ARTICLES[@]}`.
-- **N_ARTICLES > CAP:** in a single message, emit one `Agent` call per slice `${ARTICLES[@]:i:CAP}` (i = 0, CAP, 2·CAP, …). Parallel dispatch — never sequential.
+- **N_ARTICLES ≤ CAP:** one `Agent` call (subagent_type `stacks:validator`) over all of `${ARTICLES[@]}`, `BATCH_TAG=0`.
+- **N_ARTICLES > CAP:** in a single message, emit one `Agent` call per slice `${ARTICLES[@]:i:CAP}` (i = 0, CAP, 2·CAP, …), with `BATCH_TAG` = the slice ordinal (0, 1, 2, …). Parallel dispatch — never sequential.
 
-**Gate.** After all validators return, the parent re-runs the write-or-fail + marker-shape gate inline over every article:
+**Gate.** After all validators return, the parent re-runs the write-or-fail + shape gate inline over every article. The validated shape is now a populated `last_verified:` date (no inline marks):
 
 ```bash
 bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "validator-gate" article-validated "${ARTICLES[@]}"
 ```
 
-A non-zero exit means an article was not freshly written or carries no validation marker — surface the failing paths and stop.
+A non-zero exit means an article was not freshly written or its `last_verified` was not set to a date — surface the failing paths and stop.
 
-## Step 4: Drift report
+## Step 4: Audit report
 
-Rebuild `dev/audit/report.md` from the current marks. The report is regenerated every run; it is not a ledger.
+Rebuild `dev/audit/report.md` from this run's validator findings (the `_audit-*.md` batch files). The report is regenerated every run; it is not a ledger. Two sections: **corrections applied** (claims the validator fixed in place against their source) and **soft spots** (claims not tied to any cited source — left in place for the operator to source or confirm).
 
 ```bash
 REPORT="$STACK/dev/audit/report.md"
 TODAY=$(date +%Y-%m-%d)
-count() { grep -rohE "\\[$1\\]" "$STACK/articles" 2>/dev/null | wc -l | tr -d ' '; }
+# Aggregate the tab-separated CORRECTION/SOFTSPOT lines across all batch files.
+AUDIT_LINES=$(cat "$STACK"/dev/audit/_audit-*.md 2>/dev/null || true)
+N_CORR=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^CORRECTION'$'\t' || true)
+N_SOFT=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
+emit() { # $1 = KIND, prints "- `slug` — description" per matching line
+  printf '%s\n' "$AUDIT_LINES" | awk -F'\t' -v k="$1" '$1==k{printf "- `%s` — %s\n", $2, $3}'
+}
 {
-  echo "# $STACK — audit drift report ($TODAY)"
+  echo "# $STACK — audit report ($TODAY)"
   echo
   echo "Regenerated fresh each audit. Not a persistent ledger."
   echo
-  echo "VERIFIED: $(count VERIFIED)  DRIFT: $(count DRIFT)  UNSOURCED: $(count UNSOURCED)  STALE: $(count STALE)"
+  echo "Articles validated: $N_ARTICLES.  Corrections applied: $N_CORR.  Soft spots: $N_SOFT."
   echo
-  echo "## Flagged claims"
+  echo "## Corrections applied"
+  echo "_Claims the validator rewrote in place to match their cited source._"
   echo
-  flagged=0
-  for art in "$STACK"/articles/*.md; do
-    [[ -e "$art" ]] || continue
-    slug=$(basename "$art" .md)
-    while IFS= read -r line; do
-      flagged=1
-      mark=$(echo "$line" | grep -oE '\[(DRIFT|UNSOURCED|STALE)\]' | head -1)
-      claim=$(echo "$line" | sed -E 's/^[0-9]+://; s/^[[:space:]]+//')
-      echo "- \`$slug\` $mark — $claim"
-    done < <(grep -nE '\[(DRIFT|UNSOURCED|STALE)\]' "$art")
-  done
-  [[ "$flagged" -eq 0 ]] && echo "_None. Every cited claim verified against its source._"
+  if [[ "$N_CORR" -gt 0 ]]; then emit CORRECTION; else echo "_None. No cited claim contradicted its source._"; fi
+  echo
+  echo "## Soft spots"
+  echo "_Claims not tied to a cited source. Left in place — add a source or confirm._"
+  echo
+  if [[ "$N_SOFT" -gt 0 ]]; then emit SOFTSPOT; else echo "_None. Every claim ties to a cited source._"; fi
 } > "$REPORT"
+rm -f "$STACK"/dev/audit/_audit-*.md   # transient inputs; the report is the durable artifact
 echo "Wrote $REPORT"
 ```
 
@@ -113,14 +116,14 @@ Prepend an entry to `$STACK/log.md`:
 
 ```markdown
 ## [YYYY-MM-DD] audit-stack
-VERIFIED={v} DRIFT={d} UNSOURCED={u} STALE={s}. Report: dev/audit/report.md
+Validated={N_ARTICLES} Corrections={N_CORR} SoftSpots={N_SOFT}. Report: dev/audit/report.md
 ```
 
-Then commit the re-marked articles and the report:
+Then commit the corrected articles and the report:
 
 ```bash
 git add "$STACK/articles/" "$STACK/dev/audit/report.md" "$STACK/log.md"
-git commit -m "audit($STACK): drift report — D={d} U={u} S={s}"
+git commit -m "audit($STACK): corrections=$N_CORR soft-spots=$N_SOFT"
 ```
 
-Present a summary to the user: the four mark counts, the count of flagged claims, and the report path. If DRIFT or STALE counts are non-zero, name the most affected articles so the operator knows where to re-catalog or fix sources.
+Present a summary to the user: articles validated, corrections applied, soft-spot count, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff). If soft spots are high, point at the report.

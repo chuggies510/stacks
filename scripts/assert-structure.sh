@@ -28,8 +28,10 @@ case "$type" in
     grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
     ;;
   article-validated)
-    grep -qE '\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]' "$path" \
-      || fail "no validation marker found"
+    # The read-and-fix validator no longer stamps inline marks (#57); the success
+    # signal is a populated last_verified date (not the empty-string default).
+    grep -qE '^last_verified:[[:space:]]*"?[0-9]{4}-[0-9]{2}-[0-9]{2}' "$path" \
+      || fail "last_verified not set to a date (validator did not run)"
     ;;
   *)
     fail "unknown type: $type"

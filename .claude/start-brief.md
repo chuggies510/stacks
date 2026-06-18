@@ -67,7 +67,7 @@ Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned lib
 
 ### Audit pipeline (stateless drift report)
 
-`/stacks:audit-stack {stack}`: A1 dispatch `validator` over articles (one agent unless count exceeds the 25 cap, then inline `${ARRAY[@]:i:CAP}` slices in parallel). Each validator strips prior marks, re-marks every claim `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` against cited sources, updates `last_verified`. Parent re-gates each article (`gate-batch.sh ... article-validated`) → bash drift report greps marks, writes `dev/audit/report.md` (counts + every flagged claim) → log + commit. Each run is independent: re-marks from scratch, rebuilds the report. No findings ledger, no carry-forward, no convergence loop, no glossary/invariants synthesis.
+`/stacks:audit-stack {stack}`: A1 dispatch `validator` over articles (one agent unless count exceeds the 25 cap, then inline `${ARRAY[@]:i:CAP}` slices in parallel, each with a `BATCH_TAG`). Each validator strips legacy marks, fixes claims that contradict their cited source in place, records corrections + soft spots to `dev/audit/_audit-${BATCH_TAG}.md`, sets `last_verified`. No inline body marks. Parent re-gates each article (`gate-batch.sh ... article-validated`, shape = populated `last_verified` date) → bash report aggregates the batch files into `dev/audit/report.md` (corrections + soft spots), deletes them → log + commit. Each run is independent: re-checks from scratch, rebuilds the report. No findings ledger, no carry-forward, no convergence loop, no glossary/invariants synthesis.
 
 ### Other flows
 

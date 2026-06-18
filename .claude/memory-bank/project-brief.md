@@ -17,7 +17,7 @@ Current gaps against the principle (build directions, not shipped state): retrie
 
 - **Library lifecycle**: scaffold new libraries (`init-library`), create stacks within them (`new-stack`), catalog sources into articles (`catalog-sources`), audit articles for drift against their sources (`audit-stack`), and query from any repo (`ask`).
 - **Source routing**: inbox files from other sessions get classified and moved to the matching stack's incoming directory (`process-inbox`, routing only).
-- **Stateless audit**: `audit-stack` re-marks every article (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) against its cited sources and rebuilds `dev/audit/report.md` from those marks each run. No persistent findings ledger, no carry-forward, no convergence loop.
+- **Stateless audit**: `audit-stack` re-checks every article against its cited sources, fixes any claim that contradicts its source in place, collects soft spots (claims not tied to a source), and rebuilds `dev/audit/report.md` from this run's findings. No inline body marks, no persistent findings ledger, no carry-forward, no convergence loop.
 - **Harness engineering**: every agent dispatch is gated by `gate-batch.sh` — each expected output file must be non-empty AND freshly written (mtime newer than the captured dispatch epoch), plus a content-shape check. Sub-agents return only text, so the file-based gate is the success signal.
 - **Agent-driven synthesis**: source-extractor → article-synthesizer (catalog); validator (audit). Slug immutability prevents silent cross-file drift.
 - **Template-driven**: new libraries and stacks are scaffolded from templates in `templates/library/` and `templates/stack/`.
@@ -35,5 +35,5 @@ Current gaps against the principle (build directions, not shipped state): retrie
 ## Success Metrics
 
 - Libraries can be created, cataloged, audited, and queried end-to-end without editing files by hand.
-- Articles are accurate against their source material (validator inline marks + the drift report surface drift each audit run).
+- Articles are accurate against their source material (the validator fixes source-contradictions in place; the audit report surfaces corrections applied + soft spots each run).
 - Users can find domain answers via `/stacks:ask` faster than searching raw sources.

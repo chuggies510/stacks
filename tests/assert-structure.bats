@@ -100,37 +100,31 @@ run_script() {
 
 # ── article-validated ──────────────────────────────────────────────────────────
 
-@test "article-validated: VERIFIED mark passes" {
+@test "article-validated: populated last_verified date passes" {
   local f="$TEST_TMP/validated.md"
-  printf 'Some claim here [VERIFIED] with more text\n' > "$f"
+  printf 'last_verified: 2026-06-18\ntitle: X\n' > "$f"
   run_script "$f" article-validated
   [ "$status" -eq 0 ]
 }
 
-@test "article-validated: DRIFT mark passes" {
+@test "article-validated: quoted last_verified date passes" {
   local f="$TEST_TMP/validated.md"
-  printf 'Outdated claim [DRIFT]\n' > "$f"
+  printf 'last_verified: "2026-06-18"\n' > "$f"
   run_script "$f" article-validated
   [ "$status" -eq 0 ]
 }
 
-@test "article-validated: UNSOURCED mark passes" {
+@test "article-validated: empty last_verified fails (never audited)" {
   local f="$TEST_TMP/validated.md"
-  printf 'Uncited claim [UNSOURCED]\n' > "$f"
+  printf 'last_verified: ""\ntitle: X\n' > "$f"
   run_script "$f" article-validated
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
-@test "article-validated: STALE mark passes" {
+@test "article-validated: missing last_verified fails" {
   local f="$TEST_TMP/validated.md"
-  printf 'Superseded claim [STALE]\n' > "$f"
-  run_script "$f" article-validated
-  [ "$status" -eq 0 ]
-}
-
-@test "article-validated: missing marker fails" {
-  local f="$TEST_TMP/validated.md"
-  printf 'Some claim with no marker\n' > "$f"
+  printf 'title: X\nbody text\n' > "$f"
   run_script "$f" article-validated
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
