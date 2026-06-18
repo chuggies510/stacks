@@ -1,3 +1,9 @@
+## 0.27.0 — 2026-06-18
+
+**lookup: keyword-rank fallback retired; recognition over routing lines is now the sole retrieval path.**
+- Step 3: removed `--stack` scope flag — Hop-1 recognition now routes all queries to the right stack without manual scoping.
+- Step 6: removed `rank-articles.sh` keyword supplement — all article selection is recognition-only over routing lines. Validated against keyword on plumbing (5/5 articles): recognition scored 5/5 correct vs keyword's 3/5.
+
 ## 0.26.2 — 2026-06-18
 
 **Rename the `ask` skill to `lookup` to eliminate generic-verb ambiguity.** The name `/stacks:ask` was being treated as a plain question rather than routing into the lookup pipeline. The skill is now `/stacks:lookup`.

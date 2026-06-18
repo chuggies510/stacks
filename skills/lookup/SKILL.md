@@ -43,54 +43,32 @@ Read `$LIBRARY/catalog.md`. This lists all available stacks with names, descript
 
 If catalog.md contains no stack entries (no lines starting with `- [`), tell the user: "No stacks in your library yet. Run /stacks:new-stack from your library repo to create one."
 
-## Step 3: Parse the query and resolve stack scope
+## Step 3: Parse the query
 
-`$ARGUMENTS` contains the full query text. One optional scope flag, `--stack`, takes a single stack or a comma-separated list (`--stack hvac` or `--stack hvac,swe`); absent → all stacks. Parse it, then take the rest as the query:
-
-```bash
-RAW="$ARGUMENTS"
-SCOPE=""
-if [[ "$RAW" == *"--stack "* ]]; then
-  SCOPE=$(echo "$RAW" | sed 's/.*--stack[[:space:]]*//' | awk '{print $1}')
-  RAW=$(echo "$RAW" | sed "s/--stack[[:space:]]*${SCOPE}//")
-fi
-QUERY=$(echo "$RAW" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-```
-
-Resolve `STACKS_TO_SEARCH` — the list of stack names to search:
+`$ARGUMENTS` contains the full query text.
 
 ```bash
-if [[ -n "$SCOPE" ]]; then
-  IFS=',' read -ra _RAW_STACKS <<< "$SCOPE"
-  STACKS_TO_SEARCH=()
-  for s in "${_RAW_STACKS[@]}"; do
-    s="${s//[[:space:]]/}"
-    [[ -n "$s" ]] || continue
-    [[ -d "$LIBRARY/$s" ]] || { echo "ERROR: stack '$s' not found"; exit 1; }
-    STACKS_TO_SEARCH+=("$s")
-  done
-  [[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] || { echo "ERROR: --stack given but no valid stack resolved"; exit 1; }
-else
-  # Default: all stacks from catalog.md
-  mapfile -t STACKS_TO_SEARCH < <(
-    grep '^- \[' "$LIBRARY/catalog.md" \
-    | sed 's|.*\[\([^]]*\)\](\([^/]*\)/).*|\2|'
-  )
-  [[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] \
-    || { echo "No stacks found in catalog.md — run /stacks:new-stack first."; exit 1; }
-fi
+QUERY=$(echo "$ARGUMENTS" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 ```
 
-## Step 4: Hop-1 — narrow to matching stacks (skip if --stack was given)
+Resolve `STACKS_TO_SEARCH` from catalog.md:
+
+```bash
+mapfile -t STACKS_TO_SEARCH < <(
+  grep '^- \[' "$LIBRARY/catalog.md" \
+  | sed 's|.*\[\([^]]*\)\](\([^/]*\)/).*|\2|'
+)
+[[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] \
+  || { echo "No stacks found in catalog.md — run /stacks:new-stack first."; exit 1; }
+```
+
+## Step 4: Hop-1 — narrow to matching stacks
 
 <!-- Retrieval contract: input = (QUERY, catalog.md descriptions loaded in Step 2,
      STACKS_TO_SEARCH from Step 3).
-     Output = STACKS_TO_SEARCH narrowed to 1-3 stacks whose domain matches the query.
-     Skip entirely when --stack was provided — the user scoped explicitly. -->
+     Output = STACKS_TO_SEARCH narrowed to 1-3 stacks whose domain matches the query. -->
 
-If `SCOPE` is non-empty (the user passed `--stack`), skip this step: `STACKS_TO_SEARCH` is already correct.
-
-If `SCOPE` is empty, do the Hop-1 recognition pass now:
+Do the Hop-1 recognition pass now:
 
 Read the catalog.md descriptions you already loaded in Step 2. Each stack entry has a name and a description of its domain (what topics, questions, and concepts it covers). Match the **query's meaning** against those descriptions — not keyword overlap, but whether the stack's domain is the right place to answer this question.
 
@@ -114,31 +92,11 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
 
 <!-- Retrieval contract: input = (QUERY, the routing maps read in Step 5).
      Output = the article paths whose routing line matches the query; Step 7
-     synthesis depends only on those. Primary signal is RECOGNITION over the
-     routing map (the design north star: the LLM lands on the right article by
-     pattern, not literal keyword overlap). rank-articles.sh keyword rank is the
-     complement — it catches body-content matches the routing line is too terse
-     to name, and it carries stacks whose index has no routing lines yet (articles
-     synthesized before #59). -->
+     synthesis depends only on those. -->
 
-Pick the articles to read, in this order:
+From the `## Articles` routing lines you read in Step 5, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
 
-1. **Recognize over the routing map.** From the `## Articles` routing lines you read in Step 5, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
-
-2. **Supplement with keyword rank** (catches body matches and un-migrated stacks whose index lines have no routing text):
-
-   ```bash
-   ARTICLE_DIRS=()
-   for s in "${STACKS_TO_SEARCH[@]}"; do
-     [[ -d "$LIBRARY/$s/articles" ]] && ARTICLE_DIRS+=("$LIBRARY/$s/articles")
-   done
-   RANKED=$(bash "$STACKS_ROOT/scripts/rank-articles.sh" 10 "$QUERY" "${ARTICLE_DIRS[@]}")
-   echo "$RANKED"
-   ```
-
-   Each line is `<score><TAB><path>` (stack = the dir two levels above the file). Merge these into your recognition set; a strong keyword hit not in the routing-map picks is still worth reading.
-
-Read the selected article files (union of 1 and 2). If recognition found nothing AND `RANKED` is empty, tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
+Read the selected article files. If recognition found nothing, tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
 
 ## Step 7: Synthesize answer
 
