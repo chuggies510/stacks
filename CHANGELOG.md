@@ -1,3 +1,12 @@
+## 0.25.0 — 2026-06-18
+
+**`/stacks:ask` no longer writes to your library behind your back, and its stack-scope flag is one flag instead of two.** Filing a query answer back into the library (the "Karpathy loop") used to auto-decide and auto-commit; now it asks first and does nothing unless you opt in. The two near-duplicate scope flags collapse into one.
+
+- **File-back is opt-in.** `/ask` delivers the answer, then — only if filing is worthwhile — offers to file it, naming the target stack and whether it would extend or create an article. No write, no commit, until you say yes. (`skills/ask/SKILL.md` Step 7)
+- **`--stack` takes a single stack or a comma list** (`--stack hvac` or `--stack hvac,swe`); the separate `--stacks` flag is gone, dropping ~25 lines of duplicate parsing. (`skills/ask/SKILL.md` Step 3; start-brief + system-patterns scrubbed of `--stacks`)
+- New articles written by file-back now include the `routing:` field (#59) and register in `index.md` as a routing line, not a bare title link.
+- The dead index-read and the hard top-3 retrieval cap (items 3-4 of the issue) were already resolved when the routing-map work (#59) landed first — recognition reads the index, and the keyword cap is now 10. (#58)
+
 ## 0.24.0 — 2026-06-18
 
 **`index.md` becomes a routing map, so `/stacks:ask` finds the right article by recognizing what it covers — not just matching keywords.** Before, the index was a bare title list and lookup leaned entirely on keyword grep over article bodies; an article whose title didn't echo the question got missed even when it was the right one. Now each article carries a one-line description of what it covers and the questions it answers, the index composes those into a recognition map, and `/ask` reads the map and picks by meaning first (keyword rank still backs it up). This is the Layer-2 "connection" piece of the design north star: the LLM lands on the right article by pattern.

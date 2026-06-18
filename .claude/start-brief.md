@@ -74,7 +74,7 @@ Three-layer plugin; the plugin holds no knowledge, it manipulates user-owned lib
 - `/stacks:init-library {path}`: copy `templates/library/` → create private GitHub repo → write `~/.config/stacks/config.json`.
 - `/stacks:new-stack {name}`: copy `templates/stack/` to `{name}/` → register in library `catalog.md`.
 - `/stacks:process-inbox`: read library `inbox/*.md` → classify against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only, no quality gate.
-- `/stacks:ask {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack`/`--stacks` scope, else all) → rank articles by keyword match over the whole body (`rank-articles.sh`, not frontmatter-only — #10 fix), load top 3 → synthesize cited answer → optional file-back (extend or write an article, commit). Article-only.
+- `/stacks:ask {question}`: read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all) → recognize matching articles over the index routing map, supplemented by `rank-articles.sh` keyword rank over bodies → load matches → synthesize cited answer → optional **opt-in** file-back (ask before writing/committing an article). Article-only.
 
 ### Cross-cutting harness patterns
 

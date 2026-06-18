@@ -47,36 +47,23 @@ If catalog.md contains no stack entries (no lines starting with `- [`), tell the
 
 ## Step 3: Parse the query and resolve stack scope
 
-`$ARGUMENTS` contains the full query text. Parse flags before extracting the query:
+`$ARGUMENTS` contains the full query text. One optional scope flag, `--stack`, takes a single stack or a comma-separated list (`--stack hvac` or `--stack hvac,swe`); absent → all stacks. Parse it, then take the rest as the query:
 
 ```bash
 RAW="$ARGUMENTS"
-STACK_SINGLE=""
-STACKS_MULTI=""
-
-# Extract --stack {name}
+SCOPE=""
 if [[ "$RAW" == *"--stack "* ]]; then
-  STACK_SINGLE=$(echo "$RAW" | sed 's/.*--stack[[:space:]]*//' | awk '{print $1}')
-  RAW=$(echo "$RAW" | sed "s/--stack[[:space:]]*${STACK_SINGLE}//")
+  SCOPE=$(echo "$RAW" | sed 's/.*--stack[[:space:]]*//' | awk '{print $1}')
+  RAW=$(echo "$RAW" | sed "s/--stack[[:space:]]*${SCOPE}//")
 fi
-
-# Extract --stacks {a,b,c}
-if [[ "$RAW" == *"--stacks "* ]]; then
-  STACKS_MULTI=$(echo "$RAW" | sed 's/.*--stacks[[:space:]]*//' | awk '{print $1}')
-  RAW=$(echo "$RAW" | sed "s/--stacks[[:space:]]*${STACKS_MULTI}//")
-fi
-
 QUERY=$(echo "$RAW" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 ```
 
 Resolve `STACKS_TO_SEARCH` — the list of stack names to search:
 
 ```bash
-if [[ -n "$STACK_SINGLE" ]]; then
-  [[ -d "$LIBRARY/$STACK_SINGLE" ]] || { echo "ERROR: stack '$STACK_SINGLE' not found"; exit 1; }
-  STACKS_TO_SEARCH=("$STACK_SINGLE")
-elif [[ -n "$STACKS_MULTI" ]]; then
-  IFS=',' read -ra _RAW_STACKS <<< "$STACKS_MULTI"
+if [[ -n "$SCOPE" ]]; then
+  IFS=',' read -ra _RAW_STACKS <<< "$SCOPE"
   STACKS_TO_SEARCH=()
   for s in "${_RAW_STACKS[@]}"; do
     s="${s//[[:space:]]/}"
@@ -84,6 +71,7 @@ elif [[ -n "$STACKS_MULTI" ]]; then
     [[ -d "$LIBRARY/$s" ]] || { echo "ERROR: stack '$s' not found"; exit 1; }
     STACKS_TO_SEARCH+=("$s")
   done
+  [[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] || { echo "ERROR: --stack given but no valid stack resolved"; exit 1; }
 else
   # Default: all stacks from catalog.md
   mapfile -t STACKS_TO_SEARCH < <(
@@ -156,26 +144,24 @@ Format the response as:
 
 If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
 
-## Step 7: File result back (Karpathy loop)
+## Step 7: Offer to file the result back (opt-in)
 
-Valuable answers compound into the library rather than disappearing into chat history. After delivering the answer, assess whether it should be filed:
+Valuable answers can compound into the library rather than disappearing into chat history. Filing is **opt-in**: never write or commit an article without the user's go-ahead. After delivering the answer, assess whether filing is worth offering:
 
-**File the result if the answer:**
+**Worth offering if the answer:**
 - Synthesized something non-obvious across multiple topics (the synthesis didn't exist as a single place before)
 - Resolved a contradiction or ambiguity between articles
 - Produced a comparison or decision table that would be useful again
 - Revealed a gap that is now partially answered by the synthesis itself
 
-**Do not file if the answer:**
+**Not worth offering if the answer:**
 - Simply restated what one existing article already says clearly
 - Was a lookup that required no synthesis
 - Is ephemeral context specific to the current task
 
-If the answer warrants filing, proceed as follows:
+If it's worth offering, ask the user once — name the target stack(s) and whether it would extend an existing article or create a new one, e.g.: *"This synthesizes X across {stacks}. File it? (extend `{slug}` / new article `{slug}` / skip)"*. Do nothing further unless the user opts in. On skip (or no response), stop here — the answer was already delivered.
 
-**Determine the filing target.** If results came from a single stack, file there. If results came from multiple stacks, ask: "File this answer to: {list of contributing stacks}, all of them, or skip?"
-
-For each chosen stack:
+If the user opts in, file to the chosen stack(s):
 
 1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
 
@@ -189,11 +175,12 @@ For each chosen stack:
    sources:
      - <path/to/source1.md>
    title: <human-readable title>
+   routing: <one line — what this article covers and the questions it answers, in an asker's words>
    tags:
      - <tag>
    ---
    ```
-   Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list (keep alphabetical).
+   Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list as `- [[slug|title]] — {routing}` (keep alphabetical).
 
 **After each stack filed:**
 
@@ -203,7 +190,7 @@ Update `$LIBRARY/{stack}/log.md`, prepending:
 Synthesized answer filed. {new | updated} article: {slug}.
 ```
 
-**After all chosen stacks are filed:**
+**After all chosen stacks are filed** (only reached because the user opted in above):
 
 ```bash
 cd "$LIBRARY" && git add . && git commit -m "feat: file query result — {short description}"
