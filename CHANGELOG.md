@@ -1,3 +1,10 @@
+## 0.26.1 — 2026-06-18
+
+**`regenerate-moc.sh` no longer nests wikilink markup inside index entries when an article title itself contains `[[ ]]`.** Titles like `Bash [[test]] conditional syntax` were emitted as `[[slug|Bash [[test]] conditional syntax]]`, breaking the outer link in any wiki renderer and in `/ask`'s recognition surface. The inner `[[`/`]]` are now stripped from the display label before composing the entry; the slug (the real link target) is unaffected.
+
+- Strip `[[`/`]]` from the display label inside the `[[slug|label]]` entry — slug is the canonical target, so the display label can drop markup it can't nest. (`scripts/regenerate-moc.sh`)
+- Bats: added case — title with `[[ ]]` markup → no nested brackets in `index.md`. (`tests/regenerate-moc.bats`) (#60)
+
 ## 0.26.0 — 2026-06-18
 
 **`audit-stack` now fixes wrong claims instead of tagging them and walking away, and stops rewriting whole articles just to stamp marks.** Before, the validator marked every claim inline (`[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]`) — which rewrote the entire article body to add a few tags (~64:1 token waste) and, worse, left a claim that contradicted its source sitting in the article with a `[DRIFT]` label. Since `/ask` reads articles and never the sources, that drifted-but-tagged claim was served as confident misinformation until a human re-cataloged. Now the validator reads-and-fixes: a claim that contradicts its cited source is corrected in place from the source, and a claim with no cited source is recorded as a "soft spot" in the report (left in the body, not deleted). No inline marks at all.

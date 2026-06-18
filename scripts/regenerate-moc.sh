@@ -26,6 +26,9 @@ declare -A TAG_GROUPS
 while IFS= read -r article; do
   tag=$(awk '/^tags:/{found=1; next} found && /^  - /{print $2; exit} found && !/^  -/{exit}' "$article")
   title=$(awk '/^title:/{print substr($0, 8); exit}' "$article")
+  # Strip [[ ]] from the display label — titles that contain wikilink markup
+  # would otherwise produce nested brackets that break the outer link (#60).
+  display="${title//\[\[/}"; display="${display//\]\]/}"
   # Routing line: what the article covers / questions it answers, in asker's
   # terms. It's what makes index.md a recognition map instead of a title list,
   # so /ask lands on the right article by pattern (#59). Omitted (bare link)
@@ -34,9 +37,9 @@ while IFS= read -r article; do
   slug=$(basename "$article" .md)
   tag="${tag:-uncategorized}"
   if [[ -n "$routing" ]]; then
-    TAG_GROUPS["$tag"]+="- [[${slug}|${title}]] — ${routing}"$'\n'
+    TAG_GROUPS["$tag"]+="- [[${slug}|${display}]] — ${routing}"$'\n'
   else
-    TAG_GROUPS["$tag"]+="- [[${slug}|${title}]]"$'\n'
+    TAG_GROUPS["$tag"]+="- [[${slug}|${display}]]"$'\n'
   fi
 done < <(find "$ARTICLES_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | sort || true)
 

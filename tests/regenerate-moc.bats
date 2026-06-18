@@ -37,6 +37,21 @@ teardown() { rm -rf "$TEST_TMP"; }
   grep -qxF -- '- [[legacy|Legacy Article]]' "$STACK/index.md"
 }
 
+@test "title containing [[ ]] markup produces no nested brackets in index" {
+  cat > "$STACK/articles/wikilink-title.md" <<'EOF'
+---
+title: Bash [[test]] conditional syntax
+tags:
+  - airflow
+---
+Body.
+EOF
+  bash "$SCRIPT" "$STACK"
+  # display label must not contain [[ or ]]
+  ! grep -qF '[[wikilink-title|Bash [[test]]' "$STACK/index.md"
+  grep -qF '[[wikilink-title|Bash test conditional syntax]]' "$STACK/index.md"
+}
+
 @test "preserves the Reading Paths section verbatim" {
   cat > "$STACK/index.md" <<'EOF'
 # hvac: Map of Contents
