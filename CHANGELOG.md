@@ -1,3 +1,9 @@
+## 0.23.1 — 2026-06-18
+
+**Cataloged articles no longer cite source files at a path that no longer exists.** When `catalog-sources` files a source from `incoming/` to its publisher dir, the articles citing it now get their paths fixed in the same pass — before, every cataloged article pointed at an empty `sources/incoming/`, so every citation was a dead link.
+
+- catalog W3 calls a new `rewrite-source-refs.sh` after each `mv`, swapping `sources/incoming/{file}` → `sources/{publisher}/{file}` across the stack's articles. Catches both ref forms (frontmatter `sources/...` and body `{stack}/sources/...`) by matching the shared `sources/incoming/` substring. (`skills/catalog-sources/SKILL.md` Step 8, `scripts/rewrite-source-refs.sh`, `tests/rewrite-source-refs.bats` — 6 cases). Doubles as the one-shot fixer for libraries cataloged before this fix. (#56)
+
 ## 0.23.0 — 2026-06-13
 
 **`/stacks:ask` now searches inside article bodies, not just titles and tags — so it stops missing articles once a stack grows past a few dozen.** Before, retrieval scored each article only on its frontmatter `title`/`tags`/slug; an article whose relevant content was in the body never surfaced unless the query happened to echo its title. Past ~50-75 articles per stack that breaks down and `ask` returns wrong or incomplete sources. Now a keyword rank over the whole file picks the top 3. (#10, partial — the keyword wall; semantic-synonym retrieval via qmd is a later escalation, not built)

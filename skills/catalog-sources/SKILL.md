@@ -328,9 +328,14 @@ For each file in `incoming/`, determine the publisher directory from the filing 
 # For each source file that had at least one successfully written article:
 publisher=$(grep -m1 '^publisher:' "$src_file" 2>/dev/null | awk '{print $2}')
 # Fallback: infer publisher from filename prefix or ask user
-dest_dir="$STACK/sources/${publisher:-unknown}"
+pub="${publisher:-unknown}"
+dest_dir="$STACK/sources/$pub"
 mkdir -p "$dest_dir"
+fname=$(basename "$src_file")
 mv "$src_file" "$dest_dir/"
+# W1/W2 cited this source at sources/incoming/$fname (its location then); the mv
+# orphans that ref. Rewrite incoming→publisher across articles in the same pass.
+"$SCRIPTS_DIR/rewrite-source-refs.sh" "$STACK/articles" "$fname" "$pub"
 ```
 
 Partial failure is acceptable: unmoved sources remain in `incoming/` and are picked up on the next `/stacks:catalog-sources` run. Sources for failed concepts stay in `incoming/` and are picked up on the next run. No rollback.
