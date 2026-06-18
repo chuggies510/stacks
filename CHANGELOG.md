@@ -540,3 +540,9 @@ Initial release.
 **lookup: primary sources now listed at the bottom of every answer.**
 - Step 7 reads the `sources:` frontmatter from each cited article, extracts Author/Title/Date/URL from the source file header, and renders a "Primary sources:" block under the answer.
 - Practitioner/internal sources (Tier 3, liminal, field-notes) are excluded — only citable publications surface.
+
+## 0.27.1 — 2026-06-18
+
+**lookup: tighten primary-source exclusion to path-based only.**
+- Previously excluded all Tier 3 sources, which blocked public practitioner references (Fowler bliki, Wooledge wiki, ZenML research) from appearing in citations.
+- Now excludes only paths containing `liminal`, `field-notes`, or `internal` — private session notes only. Public sources surface regardless of tier as long as a URL exists.

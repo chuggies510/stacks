@@ -114,7 +114,7 @@ Requirements:
 - `Author:` line (if present)
 - `Date:` line (if present)
 
-Deduplicate across articles. Skip practitioner/internal sources (Tier 3 or paths containing `liminal`, `field-notes`, or `internal`) — those are private observations, not citable publications.
+Deduplicate across articles. Skip sources whose path contains `liminal`, `field-notes`, or `internal` — those are private session notes, not citable publications. Include everything else regardless of tier, as long as a URL exists.
 
 Format the response as:
 ```
