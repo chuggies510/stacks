@@ -150,14 +150,26 @@ Requirements:
 - If the articles don't fully answer the question, say what's missing
 - Do not invent information beyond what the articles contain
 
+**Collect primary sources.** Before formatting the response, gather the vera base sources from every article read. Each article has a `sources:` frontmatter list of relative paths (e.g. `swe/sources/fowler-bliki/fowler-harness-engineering.md`). For each unique path, read the first 8 lines of `$LIBRARY/{path}` and extract:
+- The H1 heading (title of the original publication)
+- `Source:` line (URL)
+- `Author:` line (if present)
+- `Date:` line (if present)
+
+Deduplicate across articles. Skip practitioner/internal sources (Tier 3 or paths containing `liminal`, `field-notes`, or `internal`) — those are private observations, not citable publications.
+
 Format the response as:
 ```
 ## Answer
 
 {synthesized answer with specific citations inline}
 
-**Sources**: {article titles that contributed}
-**Stacks**: {stack name(s) that contributed — use singular "Stack" if only one}
+**Library articles**: {article titles that contributed}
+**Stack**: {stack name(s) that contributed — use singular "Stack" if only one}
+
+**Primary sources:**
+- {Author}, "{Title}", {date} — {URL}
+- {repeat per unique citable source}
 ```
 
 If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."

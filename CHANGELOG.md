@@ -528,3 +528,9 @@ Initial release.
 - Templates for library and stack bootstrapping
 - Lifecycle scripts: install, uninstall, update, init
 - Reference docs: wave engine, refresh procedure, default topic template
+
+## 0.26.3 — 2026-06-18
+
+**lookup: primary sources now listed at the bottom of every answer.**
+- Step 7 reads the `sources:` frontmatter from each cited article, extracts Author/Title/Date/URL from the source file header, and renders a "Primary sources:" block under the answer.
+- Practitioner/internal sources (Tier 3, liminal, field-notes) are excluded — only citable publications surface.
