@@ -81,19 +81,39 @@ else
 fi
 ```
 
-## Step 4: Read the routing map for all stacks in scope
+## Step 4: Hop-1 — narrow to matching stacks (skip if --stack was given)
+
+<!-- Retrieval contract: input = (QUERY, catalog.md descriptions loaded in Step 2,
+     STACKS_TO_SEARCH from Step 3).
+     Output = STACKS_TO_SEARCH narrowed to 1-3 stacks whose domain matches the query.
+     Skip entirely when --stack was provided — the user scoped explicitly. -->
+
+If `SCOPE` is non-empty (the user passed `--stack`), skip this step: `STACKS_TO_SEARCH` is already correct.
+
+If `SCOPE` is empty, do the Hop-1 recognition pass now:
+
+Read the catalog.md descriptions you already loaded in Step 2. Each stack entry has a name and a description of its domain (what topics, questions, and concepts it covers). Match the **query's meaning** against those descriptions — not keyword overlap, but whether the stack's domain is the right place to answer this question.
+
+Decision rules:
+- **Single-domain query**: pick 1 stack. Default narrow: if one stack clearly owns the domain, select only that one.
+- **Cross-domain query** (the query genuinely spans two or more distinct domains, e.g. "how does AI apply to building controls"): widen to 2-3 stacks.
+- Do not open stacks whose domain is unrelated to the query even if they share incidental words (e.g. a query about LLM tuning should not pull in HVAC stacks because HVAC sources mention "controls").
+
+Rewrite `STACKS_TO_SEARCH` to contain only the selected stack name(s) before proceeding.
+
+## Step 5: Read the routing map for all stacks in scope
 
 For each stack in `STACKS_TO_SEARCH`:
 - Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no index yet" and skip it.
-- The `## Articles` section is the routing map: `- [[slug|title]] — {routing line}`, where the routing line says what the article covers and the questions it answers (#59). This is the recognition surface for Step 5.
+- The `## Articles` section is the routing map: `- [[slug|title]] — {routing line}`, where the routing line says what the article covers and the questions it answers (#59). This is the recognition surface for Step 6.
 - Capture any `## Reading Paths` section as supplementary retrieval context.
 
 If all stacks were skipped (none had an index), tell the user to run `/stacks:catalog-sources` in the library repo.
 
-## Step 5: Recognize matching articles across stacks
+## Step 6: Recognize matching articles across stacks
 
-<!-- Retrieval contract: input = (QUERY, the routing maps read in Step 4).
-     Output = the article paths whose routing line matches the query; Step 6
+<!-- Retrieval contract: input = (QUERY, the routing maps read in Step 5).
+     Output = the article paths whose routing line matches the query; Step 7
      synthesis depends only on those. Primary signal is RECOGNITION over the
      routing map (the design north star: the LLM lands on the right article by
      pattern, not literal keyword overlap). rank-articles.sh keyword rank is the
@@ -103,7 +123,7 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
 
 Pick the articles to read, in this order:
 
-1. **Recognize over the routing map.** From the `## Articles` routing lines you read in Step 4, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
+1. **Recognize over the routing map.** From the `## Articles` routing lines you read in Step 5, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
 
 2. **Supplement with keyword rank** (catches body matches and un-migrated stacks whose index lines have no routing text):
 
@@ -120,7 +140,7 @@ Pick the articles to read, in this order:
 
 Read the selected article files (union of 1 and 2). If recognition found nothing AND `RANKED` is empty, tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
 
-## Step 6: Synthesize answer
+## Step 7: Synthesize answer
 
 Using the article content, synthesize an answer to the user's query.
 
@@ -142,7 +162,7 @@ Format the response as:
 
 If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
 
-## Step 7: Offer to file the result back (opt-in)
+## Step 8: Offer to file the result back (opt-in)
 
 Valuable answers can compound into the library rather than disappearing into chat history. Filing is **opt-in**: never write or commit an article without the user's go-ahead. After delivering the answer, assess whether filing is worth offering:
 
