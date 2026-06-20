@@ -33,6 +33,14 @@ case "$type" in
     grep -qE '^last_verified:[[:space:]]*"?[0-9]{4}-[0-9]{2}-[0-9]{2}' "$path" \
       || fail "last_verified not set to a date (validator did not run)"
     ;;
+  enrichment-findings)
+    # Every non-blank line is a tab-led record whose first field is a verdict.
+    grep -qE '^(CANDIDATE|WEAK|DUP|NOSOURCE)'$'\t' "$path" \
+      || fail "no enrichment findings rows (CANDIDATE/WEAK/DUP/NOSOURCE)"
+    if awk 'NF && $0 !~ /^(CANDIDATE|WEAK|DUP|NOSOURCE)\t/ {bad=1} END{exit bad?1:0}' "$path"; then :; else
+      fail "malformed enrichment findings line (not KIND<TAB>...)"
+    fi
+    ;;
   *)
     fail "unknown type: $type"
     ;;

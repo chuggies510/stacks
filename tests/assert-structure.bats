@@ -130,6 +130,33 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
+# ── enrichment-findings ────────────────────────────────────────────────────────
+
+@test "enrichment-findings: valid file passes" {
+  local f="$TEST_TMP/enrich.md"
+  printf 'CANDIDATE\tgap-0\tprompt-engineering\t\thttps://x/y\t1\tTitle\tquote\n' >  "$f"
+  printf 'NOSOURCE\tgap-1\tcontext-mgmt\t\t\t\t\tno source found\n'              >> "$f"
+  run_script "$f" enrichment-findings
+  [ "$status" -eq 0 ]
+}
+
+@test "enrichment-findings: malformed line fails" {
+  local f="$TEST_TMP/enrich.md"
+  printf 'CANDIDATE\tgap-0\tslug\t\turl\t1\tTitle\tquote\n' >  "$f"
+  printf 'garbage line with no kind\n'                      >> "$f"
+  run_script "$f" enrichment-findings
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "enrichment-findings: empty file fails" {
+  local f="$TEST_TMP/enrich.md"
+  : > "$f"
+  run_script "$f" enrichment-findings
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
 # ── unknown type ───────────────────────────────────────────────────────────────
 
 @test "unknown type fails" {
