@@ -1,3 +1,11 @@
+## 0.29.0 — 2026-06-19
+
+**The pipeline can now go *find* sources, not just ingest what you drop in.** `/stacks:audit-stack` flags soft spots (article claims with no cited source); closing them used to be all-manual web-searching. The new `/stacks:enrich-stack {stack}` acquires candidate sources for you.
+- New `enrichment` agent: per soft spot, web-searches for one grounding source, verifies it states the actual claim (not just the topic), rates its tier, and dedups against already-filed sources. Four verdicts: CANDIDATE / WEAK (low-tier only) / DUP (already filed) / NOSOURCE. (`agents/enrichment.md`)
+- New `/stacks:enrich-stack` skill: reads the audit's soft spots, drops stale ones (claim no longer in the article), dispatches the agent in batches, then presents found sources for approval and stages only what you approve into `incoming/` — never auto-ingests. (`skills/enrich-stack/SKILL.md`)
+- `audit-stack` now persists a machine-readable `dev/audit/soft-spots.tsv` (verbatim claim + reason) so enrich reads structured data, not the human report's markdown; the validator emits the claim and reason as separate fields. (`agents/validator.md`, `skills/audit-stack/SKILL.md`)
+- New `enrichment-findings` gate shape + bats coverage. (`scripts/assert-structure.sh`, `tests/assert-structure.bats`)
+
 ## 0.28.0 — 2026-06-19
 
 **Skills find your library even before the machine is registered.** `/stacks:lookup` and `/stacks:process-inbox` used to hard-stop with "run init-library" when no config file existed — even when you were standing inside a fully-built library. They now resolve gracefully.
