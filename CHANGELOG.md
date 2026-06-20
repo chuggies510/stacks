@@ -1,3 +1,10 @@
+## 0.30.0 — 2026-06-20
+
+**Catalog runs stop leaving two manual cleanup chores behind.** Source refs and publisher dirs now come out canonical, so the operator no longer hand-fixes them after every run.
+- Source refs are normalized to bare `sources/{...}` at W1b dedup — the redundant `<stack>/sources/` prefix (echoed from the dispatched path) is stripped before it reaches article frontmatter, so refs resolve and a `- sources/` checker can't skip a prefixed line. The synthesizer contract now states the bare-form rule too. (`scripts/dedup-extractions.py`, `agents/article-synthesizer.md`, stacks#65)
+- W3 filing canonicalizes the publisher slug (lowercase, collapse `.`/`_`/space to `-`, strip trailing punctuation) and reuses an existing `sources/<dir>` on a match, so one publisher no longer fragments into `up.codes` / `up-codes` / `cpsc.gov` siblings. (`scripts/normalize-publisher.sh`, `skills/catalog-sources/SKILL.md`, stacks#66)
+- New bats coverage for both. (`tests/normalize-publisher.bats`, `tests/dedup-extractions.bats`)
+
 ## 0.29.0 — 2026-06-19
 
 **The pipeline can now go *find* sources, not just ingest what you drop in.** `/stacks:audit-stack` flags soft spots (article claims with no cited source); closing them used to be all-manual web-searching. The new `/stacks:enrich-stack {stack}` acquires candidate sources for you.

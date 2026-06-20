@@ -32,7 +32,13 @@ def parse_block(block_text):
             in_sources = True; continue
         if in_sources:
             m = re.match(r"^\s+-\s+(.+)$", line)
-            if m: fields["source_paths"].append(m.group(1).strip()); continue
+            if m:
+                # Normalize to bare `sources/...`: strip any leading `<stack>/`
+                # or absolute prefix the extractor echoed from the dispatched
+                # path, so article frontmatter never carries the redundant
+                # `<stack>/sources/` form (stacks#65).
+                sp = re.sub(r"^.*?(?=sources/)", "", m.group(1).strip())
+                fields["source_paths"].append(sp); continue
             in_sources = False
         m = re.match(r"^(slug|title|target_article|tier):\s*(.*)$", line)
         if m:

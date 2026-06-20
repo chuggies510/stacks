@@ -325,8 +325,12 @@ For each file in `incoming/`, determine the publisher directory from the filing 
 ```bash
 # For each source file that had at least one successfully written article:
 publisher=$(grep -m1 '^publisher:' "$src_file" 2>/dev/null | awk '{print $2}')
-# Fallback: infer publisher from filename prefix or ask user
-pub="${publisher:-unknown}"
+# Fallback: infer publisher from filename prefix or ask user.
+# normalize-publisher.sh canonicalizes the slug (lowercase, collapse ./_/space
+# to -, strip trailing punctuation) and reuses an existing sources/<dir> on a
+# match, so one publisher can't fragment into up.codes / up-codes / cpsc.gov
+# siblings (stacks#66).
+pub=$("$SCRIPTS_DIR/normalize-publisher.sh" "${publisher:-unknown}" "$STACK/sources")
 dest_dir="$STACK/sources/$pub"
 mkdir -p "$dest_dir"
 fname=$(basename "$src_file")

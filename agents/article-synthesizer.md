@@ -27,8 +27,8 @@ Write `articles/{slug}.md` with:
 last_verified: ""
 updated: {YYYY-MM-DD today}
 sources:
-  - {path/to/source1.md}
-  - {path/to/source2.md}
+  - {sources/path/to/source1.md}
+  - {sources/path/to/source2.md}
 title: {human-readable title}
 routing: {one line — what this article covers and the questions it answers, in an asker's words}
 tags:
@@ -36,6 +36,8 @@ tags:
   - {tag2}
 ---
 ```
+
+Write each `sources:` entry exactly as it appears in the concept block's `source_paths:` — in bare `sources/{...}` form (the block is already normalized). Never prepend the stack name: write `sources/cpsc/legacy-wiring.md`, not `electrical/sources/cpsc/legacy-wiring.md`.
 
 **`routing`** is the article's entry in the stack's routing map (`index.md`), which is how `/stacks:lookup` recognizes the right article without reading every body. Write ONE line, no line breaks, in the terms an asker would actually use — what the article covers and the questions it answers — not a restatement of the title. Lead with the concrete subject, then the questions. Plain text only (no `[[wikilinks]]`, no markdown, no leading `-`). Example for `vav-box-minimum-airflow`: `Minimum airflow/damper settings for VAV boxes — how low can the minimum go, what sets the floor, why low-load ventilation matters`.
 
