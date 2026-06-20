@@ -1,0 +1,16 @@
+{
+  "planPath": "dev/superpowers/plans/2026-06-19-enrich-stack.md",
+  "tasks": [
+    {"id": 1, "subject": "Task 1: Soft-spot contract — machine-readable soft-spots.tsv", "status": "pending",
+     "description": "validator emits SOFTSPOT<TAB>slug<TAB>claim<TAB>reason (verbatim claim); audit-stack persists dev/audit/soft-spots.tsv and renders report.md. Files: agents/validator.md, skills/audit-stack/SKILL.md."},
+    {"id": 2, "subject": "Task 2: enrichment-findings gate shape + bats", "status": "pending",
+     "description": "assert-structure.sh enrichment-findings case + tests/assert-structure.bats coverage (valid/malformed/empty). Verify: bats tests/assert-structure.bats."},
+    {"id": 3, "subject": "Task 3: enrichment agent", "status": "pending",
+     "description": "agents/enrichment.md — per-gap web acquisition, four verdicts, output KIND<TAB>gap_id<TAB>slug<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote, 3 examples."},
+    {"id": 4, "subject": "Task 4: enrich-stack skill", "status": "pending", "blockedBy": [1, 2, 3],
+     "description": "skills/enrich-stack/SKILL.md — gate (soft-spots.tsv) → stale-check → CAP=12 dispatch + gate-batch enrichment-findings → aggregate+URL-dedup → operator approval → stage-with-reverify (bold-field header) → report. No auto-catalog/commit."},
+    {"id": 5, "subject": "Task 5: Version bump + CHANGELOG", "status": "pending", "blockedBy": [1, 2, 3, 4],
+     "description": "plugin.json + marketplace.json → 0.29.0; CHANGELOG 0.29.0 entry."}
+  ],
+  "lastUpdated": "2026-06-19"
+}

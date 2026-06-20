@@ -96,7 +96,8 @@ approved staging into `incoming/`.)
   `soft-spots.tsv`. `gap_id` because one article can hold many gaps
   (`lora-prompt-loss-weight` has 4) — slug alone collides.
 - STACK.md source-hierarchy (tiers) + scope section.
-- Filed-sources listing (slug + title + url from frontmatter) for URL dedup.
+- Filed-sources listing (`slug<TAB>url`, url read from each source's
+  `**Source:**` header line) for URL dedup.
 - `$STACK`, `$BATCH_TAG`.
 
 **Process, per gap:**
@@ -166,20 +167,26 @@ to NOSOURCE/WEAK when unsure (a wrong citation is worse than an honest soft spot
   the table and confirm; don't picker-spam.) On cancel: clean up
   `dev/enrich/_enrich-*.md`, write nothing.
 - **Step 7 — stage approved (codex #7, #8).** For each approved URL, `WebFetch`
-  into `sources/incoming/` as a readable text file with provenance frontmatter:
+  into `sources/incoming/` as a readable markdown file using the **same
+  bold-field header that filed sources already use** (NOT YAML frontmatter — the
+  `source-extractor` reads `**Source:**` and `**Tier:**` from this header). A
+  staged file is indistinguishable from a hand-dropped source:
 
-  ```yaml
+  ```markdown
+  # {title}
+
+  **Source:** {url}
+  **Published:** {date if known}
+  **Tier:** {N} ({tier label})
+  **Fetched:** {date +%Y-%m-%d}
+  **Supports gap:** {slug}
+
   ---
-  title:
-  url:
-  publisher:
-  fetched:        # date +%Y-%m-%d
-  tier:
-  supports_gap:   # slug(s)
-  ---
+
+  {fetched text / excerpt}
   ```
 
-  Then the fetched text/excerpt. Filenames via `collision-dest.sh`.
+  Filenames via `collision-dest.sh`.
   **Re-verify:** confirm the supporting quote still appears in the re-fetched
   content; absent/failed fetch → warn and skip that one (a CANDIDATE verdict does
   not guarantee staging success).
