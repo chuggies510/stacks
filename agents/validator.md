@@ -31,7 +31,7 @@ For each assigned article:
 3. For each substantive claim, find the cited source(s) by `[source-slug]` ref and read the relevant section:
    - **Source supports the claim** → leave it unchanged.
    - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
-   - **No cited source, or no source you can tie the claim to** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line. Do not delete it; do not invent a citation.
+   - **No cited source, or no source you can tie the claim to** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
 4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). This is the success signal the audit gate checks — always set it, even when nothing else changed.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
 
@@ -39,14 +39,17 @@ For each assigned article:
 
 **1. Each article**, edited in place: prior marks stripped, contradictions fixed, `last_verified` set to today. No inline marks of any kind.
 
-**2. One audit file** at `$STACK/dev/audit/_audit-${BATCH_TAG}.md` listing what you changed and what is soft. One record per line, tab-separated, `KIND<TAB>slug<TAB>description`:
+**2. One audit file** at `$STACK/dev/audit/_audit-${BATCH_TAG}.md` listing what you changed and what is soft. One record per line, tab-separated. The two kinds have different shapes:
+
+- **`CORRECTION<TAB>slug<TAB>description`** — a one-line description of the fix.
+- **`SOFTSPOT<TAB>slug<TAB>claim<TAB>reason`** — `claim` is the **complete, verbatim sentence** from the article body (the downstream `/stacks:enrich-stack` searches the web for a source that grounds this exact text, so a shorthand is not enough); `reason` is the one-line why-it's-soft. Collapse any internal tabs/newlines in either field to single spaces.
 
 ```
 CORRECTION	vav-box-minimum-airflow	"30% minimum" → "20% or lower" per [pnnl-vav-guide]
-SOFTSPOT	cooling-tower-cycles	"cycles above 7 rarely achievable" — no cited source covers this
+SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achievable in practice.	no scoped source covers practical cycle limits
 ```
 
-Write this file with the Write tool (overwrite if it exists). If your batch produced no corrections and no soft spots, write the file empty (zero bytes) so the report knows the batch ran clean. `description` is one line; collapse any newlines.
+Write this file with the Write tool (overwrite if it exists). If your batch produced no corrections and no soft spots, write the file empty (zero bytes) so the report knows the batch ran clean.
 
 ## Example 1: claim supported — no change
 
@@ -74,10 +77,10 @@ The article now matches its source; nothing is left for `/stacks:lookup` to serv
 
 Article `cooling-tower-cycles.md`: "Cycles of concentration above 7 are rarely achievable in practice." No inline citation; no scoped source mentions practical cycle limits.
 
-Action: leave the sentence in the body (it reads as practitioner inference, not a fabricated fact). Record:
+Action: leave the sentence in the body (it reads as practitioner inference, not a fabricated fact). Record the verbatim claim and the reason as separate fields:
 
 ```
-SOFTSPOT	cooling-tower-cycles	"cycles above 7 rarely achievable" — no cited source covers this
+SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achievable in practice.	no scoped source covers practical cycle limits
 ```
 
-The audit report lists it under soft spots so the operator can add a source or confirm it; the body is not stamped.
+The audit report lists it under soft spots so the operator can add a source or confirm it; the body is not stamped. The verbatim `claim` field is what `/stacks:enrich-stack` later turns into a web query.

@@ -84,7 +84,7 @@ TODAY=$(date +%Y-%m-%d)
 AUDIT_LINES=$(cat "$STACK"/dev/audit/_audit-*.md 2>/dev/null || true)
 N_CORR=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^CORRECTION'$'\t' || true)
 N_SOFT=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
-emit() { # $1 = KIND, prints "- `slug` — description" per matching line
+emit() { # CORRECTION only (3-field): prints "- `slug` — description"
   printf '%s\n' "$AUDIT_LINES" | awk -F'\t' -v k="$1" '$1==k{printf "- `%s` — %s\n", $2, $3}'
 }
 {
@@ -102,10 +102,21 @@ emit() { # $1 = KIND, prints "- `slug` — description" per matching line
   echo "## Soft spots"
   echo "_Claims not tied to a cited source. Left in place — add a source or confirm._"
   echo
-  if [[ "$N_SOFT" -gt 0 ]]; then emit SOFTSPOT; else echo "_None. Every claim ties to a cited source._"; fi
+  # SOFTSPOT is 4-field (slug, claim, reason): render the verbatim claim + reason.
+  if [[ "$N_SOFT" -gt 0 ]]; then
+    printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{printf "- `%s` — \"%s\" — %s\n", $2, $3, $4}'
+  else echo "_None. Every claim ties to a cited source._"; fi
 } > "$REPORT"
-rm -f "$STACK"/dev/audit/_audit-*.md   # transient inputs; the report is the durable artifact
-echo "Wrote $REPORT"
+
+# Durable machine-readable soft-spot list — the /stacks:enrich-stack input.
+# slug<TAB>claim<TAB>reason, one row per soft spot. Written even when empty so
+# enrich-stack distinguishes "audited, none soft" from "never audited".
+printf '%s\n' "$AUDIT_LINES" \
+  | awk -F'\t' '$1=="SOFTSPOT"{print $2"\t"$3"\t"$4}' \
+  > "$STACK/dev/audit/soft-spots.tsv"
+
+rm -f "$STACK"/dev/audit/_audit-*.md   # transient inputs; report + soft-spots.tsv are the durable artifacts
+echo "Wrote $REPORT and $STACK/dev/audit/soft-spots.tsv ($N_SOFT soft spots)"
 ```
 
 ## Step 5: Log and commit
@@ -120,7 +131,7 @@ Validated={N_ARTICLES} Corrections={N_CORR} SoftSpots={N_SOFT}. Report: dev/audi
 Then commit the corrected articles and the report:
 
 ```bash
-git add "$STACK/articles/" "$STACK/dev/audit/report.md" "$STACK/log.md"
+git add "$STACK/articles/" "$STACK/dev/audit/report.md" "$STACK/dev/audit/soft-spots.tsv" "$STACK/log.md"
 git commit -m "audit($STACK): corrections=$N_CORR soft-spots=$N_SOFT"
 ```
 
