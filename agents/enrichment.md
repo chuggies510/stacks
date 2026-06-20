@@ -58,7 +58,7 @@ KIND<TAB>gap_id<TAB>slug<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote
 - `KIND` ∈ `CANDIDATE | WEAK | DUP | NOSOURCE`.
 - `source_ref` — the filed-source slug for `DUP`; empty otherwise.
 - `url` / `tier` / `title` — populated for `CANDIDATE`/`WEAK`/`DUP`; empty for `NOSOURCE`.
-- `quote` — the supporting passage (`CANDIDATE`/`WEAK`/`DUP`) or the short reason (`NOSOURCE`).
+- `quote` — the supporting passage (`CANDIDATE`/`WEAK`/`DUP`) or the short reason (`NOSOURCE`). Record the passage as **plain text with no surrounding quotation marks** and whitespace collapsed to single spaces: the skill re-verifies this exact text against the re-fetched page, so decorative quotes or line breaks would make a valid source fail the check.
 
 Write the file with the Write tool (overwrite if it exists). Every assigned gap produces exactly one row.
 
@@ -71,7 +71,7 @@ Query: "chain-of-thought no accuracy benefit classification latency". `WebSearch
 Row:
 
 ```
-CANDIDATE	gap-7	prompt-engineering		https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/chain-of-thought	1	Anthropic — Chain of Thought Prompting	"For simple classification, CoT adds output tokens and latency without improving accuracy."
+CANDIDATE	gap-7	prompt-engineering		https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/chain-of-thought	1	Anthropic — Chain of Thought Prompting	For simple classification, CoT adds output tokens and latency without improving accuracy.
 ```
 
 ## Example 2: DUP — an already-filed source grounds it
@@ -83,7 +83,7 @@ The query surfaces a HuggingFace PEFT page stating the alpha/rank scaling ration
 Row (no new fetch needed — the operator cites the existing source):
 
 ```
-DUP	gap-3	lora-rank-classification	hf-peft-lora-config	https://huggingface.co/docs/peft/conceptual_guides/lora	2	HuggingFace PEFT — LoRA	"alpha scales the update; setting alpha = 2r keeps the effective learning rate stable across ranks."
+DUP	gap-3	lora-rank-classification	hf-peft-lora-config	https://huggingface.co/docs/peft/conceptual_guides/lora	2	HuggingFace PEFT — LoRA	alpha scales the update; setting alpha = 2r keeps the effective learning rate stable across ranks.
 ```
 
 ## Example 3: NOSOURCE — nothing grounds the claim

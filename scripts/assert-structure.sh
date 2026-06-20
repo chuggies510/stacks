@@ -34,11 +34,14 @@ case "$type" in
       || fail "last_verified not set to a date (validator did not run)"
     ;;
   enrichment-findings)
-    # Every non-blank line is a tab-led record whose first field is a verdict.
+    # Every non-blank line is an 8-field tab record led by a verdict. Split on a
+    # real tab (-F'\t') rather than matching '\t' in an ERE (not portable across
+    # awks); then enforce the field count so an un-stripped tab inside a field
+    # (which would shift columns downstream) is caught here, not at parse time.
     grep -qE '^(CANDIDATE|WEAK|DUP|NOSOURCE)'$'\t' "$path" \
       || fail "no enrichment findings rows (CANDIDATE/WEAK/DUP/NOSOURCE)"
-    if awk 'NF && $0 !~ /^(CANDIDATE|WEAK|DUP|NOSOURCE)\t/ {bad=1} END{exit bad?1:0}' "$path"; then :; else
-      fail "malformed enrichment findings line (not KIND<TAB>...)"
+    if awk -F'\t' '$0!="" { if (NF!=8 || $1!~/^(CANDIDATE|WEAK|DUP|NOSOURCE)$/) bad=1 } END{exit bad?1:0}' "$path"; then :; else
+      fail "malformed enrichment findings line (need 8 tab fields led by a verdict)"
     fi
     ;;
   *)

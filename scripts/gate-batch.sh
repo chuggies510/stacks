@@ -36,9 +36,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAILED=()
 for path in "$@"; do
   # Write-or-fail gate (size + mtime): the file must be non-empty AND freshly
-  # written (mtime strictly newer than the pre-dispatch epoch). Size alone misses a
-  # stale leftover; mtime alone misses an empty write.
-  if [[ ! -s "$path" ]] || (( $(stat -c %Y "$path" 2>/dev/null || echo 0) <= DISPATCH_EPOCH )); then
+  # written (mtime not older than the pre-dispatch epoch). Callers rm stale files
+  # before dispatch, so mtime == epoch means written THIS run within the same
+  # wall-clock second as the epoch capture — accept it (`<`, not `<=`, else a
+  # fast same-second agent write is wrongly failed). Size alone misses a stale
+  # leftover; mtime alone misses an empty write.
+  if [[ ! -s "$path" ]] || (( $(stat -c %Y "$path" 2>/dev/null || echo 0) < DISPATCH_EPOCH )); then
     FAILED+=("$path")
   elif [[ "$STRUCTURE_KIND" != "-" ]]; then
     if ! "$SCRIPT_DIR/assert-structure.sh" "$path" "$STRUCTURE_KIND" "$AGENT_LABEL" 2>/dev/null; then

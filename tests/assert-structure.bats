@@ -149,6 +149,15 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
+@test "enrichment-findings: wrong field count fails" {
+  local f="$TEST_TMP/enrich.md"
+  # 6 fields (an un-stripped tab would shift columns like this)
+  printf 'CANDIDATE\tgap-0\tslug\turl\t1\tquote\n' > "$f"
+  run_script "$f" enrichment-findings
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
 @test "enrichment-findings: empty file fails" {
   local f="$TEST_TMP/enrich.md"
   : > "$f"

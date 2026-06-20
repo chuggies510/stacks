@@ -105,7 +105,12 @@ while IFS=$'\t' read -r slug claim reason; do
   [[ -z "$slug" ]] && continue
   TOTAL=$((TOTAL+1))
   art="$STACK/articles/$slug.md"
-  if [[ ! -f "$art" ]] || ! grep -Fq "$claim" "$art"; then
+  # The validator collapsed the claim's internal whitespace (tabs/newlines) to
+  # single spaces, but the article body still has the original line breaks — so a
+  # claim that wrapped across two lines would never `grep -Fq` against the raw
+  # file. Flatten the article's whitespace the same way before matching so the
+  # round-trip holds for multi-line claims.
+  if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | grep -Fq "$claim"; then
     STALE=$((STALE+1)); continue
   fi
   printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
@@ -160,10 +165,13 @@ surface the failing paths and stop.
 
 ## Step 5: Aggregate findings + dedup by URL
 
-Read every `_enrich-*.md` batch file and combine the rows. Then **dedup by
-URL**: if two gaps picked the same URL, you will stage that source once and note
-every gap it serves (a single staged file can ground multiple claims). Group the
-rows by verdict for the operator:
+Read every `_enrich-*.md` batch file and parse each row's 8 tab fields
+(`KIND, gap_id, slug, source_ref, url, tier, title, quote`). Then **dedup by
+URL — only over `CANDIDATE`/`WEAK` rows with a non-empty `url`** (never group
+`NOSOURCE` rows, whose `url` is empty, or they collapse into one bogus group): if
+two gaps picked the same URL, you will stage that source once and note every gap
+it serves (a single staged file can ground multiple claims). Group the rows by
+verdict for the operator:
 
 - `CANDIDATE` / `WEAK` — a fetchable URL that grounds the claim (WEAK = tier 4 only).
 - `DUP` — already-filed source; no fetch, the operator just adds a citation.
@@ -171,8 +179,11 @@ rows by verdict for the operator:
 
 ## Step 6: Operator approval (no writes before this)
 
-**Nothing is written to the repo until the operator approves.** Present a compact
-table — one row per gap — so the operator can see what would be staged:
+**No source is staged into the library until the operator approves.** (The
+transient working files under `dev/enrich/` — the listing, `_gaps.tsv`, and the
+batch findings — are scratch, written before this point and cleaned up below;
+nothing enters `sources/` before approval.) Present a compact table — one row per
+gap — so the operator can see what would be staged:
 
 | verdict | article (slug) | tier | source | grounds the claim? (quote) |
 |---------|----------------|------|--------|-----------------------------|
@@ -221,10 +232,16 @@ DEST=$(bash "$SCRIPTS_DIR/collision-dest.sh" "$STACK/sources/incoming" "{slug-or
 
 **Re-verify after fetch (codex #8):** a `CANDIDATE` verdict does not guarantee a
 clean re-fetch (pages change, paywall, dynamic content). After writing each
-staged file, confirm the supporting quote still appears:
+staged file, confirm the supporting quote still appears. The agent's `quote`
+field has its whitespace collapsed and carries no surrounding quotation marks, so
+flatten the re-fetched file the same way before matching (a literal `grep -Fq` of
+the raw quote against the raw page is brittle — line wraps differ):
 
 ```bash
-grep -Fq "{supporting quote}" "$DEST" || { echo "WARN: quote not found in re-fetched $DEST — skipping"; rm -f "$DEST"; }
+QUOTE_FLAT=$(printf '%s' "{supporting quote}" | tr -s '[:space:]' ' ')
+if ! tr -s '[:space:]' ' ' < "$DEST" | grep -Fq "$QUOTE_FLAT"; then
+  echo "WARN: supporting quote not found in re-fetched $DEST — skipping"; rm -f "$DEST"
+fi
 ```
 
 If the fetch fails or the quote is gone, warn and skip that source (do not stage
