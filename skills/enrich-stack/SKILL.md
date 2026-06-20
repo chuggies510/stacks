@@ -25,8 +25,10 @@ the exact claim, verifies it (not just topically related), rates its tier, and
 dedups against already-filed sources. This skill batches the gaps, gates the
 agents, dedups by URL, then **presents the findings for operator approval and
 stages only what the operator approves** into `sources/incoming/`. Nothing is
-ever auto-ingested: staged files wait in `incoming/` for a later
-`/stacks:catalog-sources` run, exactly like a hand-dropped source. Each run
+ever auto-ingested: after staging it asks one confirmation, then (if confirmed)
+closes the loop by running `catalog-sources` + `audit-stack` in the same session
+— staged files otherwise wait in `incoming/` exactly like a hand-dropped source.
+Each run
 derives its work from the latest audit artifact; there is no persistent
 enrichment ledger.
 
@@ -247,21 +249,27 @@ fi
 If the fetch fails or the quote is gone, warn and skip that source (do not stage
 a file that no longer supports the claim).
 
-## Step 8: Report (no auto-catalog, no commit)
+## Step 8: Report, then close the loop
 
-Summarize and stop. Do **not** run `catalog-sources` and do **not** commit:
-staged files sit untracked in `incoming/` exactly like a manual source drop, and
-`catalog-sources` commits them when it files them.
-
-Report:
+First report what staged:
 - **Staged**: N sources now in `sources/incoming/` (list filename → gap(s) served).
-- **Next step**: "Run `/stacks:catalog-sources $STACK` to ingest them, then
-  `/stacks:audit-stack $STACK` to confirm the gaps cleared."
 - **DUP** (manual action — enrich-stack did NOT close these): for each, print
   `slug → existing-source-slug → quote`. The operator adds that citation to the
   article; a catalog run will not add it automatically for an already-filed source.
 - **NOSOURCE**: list the gaps nothing grounded, for the operator to tighten the
   claim or accept it as inference.
+
+**Then close the loop.** The operator already made the only real decision (the
+Step 6 staging approval); catalog + audit is mechanical from here, so don't hand
+it back. Ask **one** confirmation — `catalog-sources` commits, so this is a real
+side effect worth a single Y/n — and surface any caveats on the staged sources
+the operator should know synthesis will bake in (edition notes, unverified
+sub-claims, claims to reword). If confirmed, invoke `/stacks:catalog-sources
+$STACK` then `/stacks:audit-stack $STACK` in this session and report the end
+state (which gaps the re-audit cleared, which remain). If declined, print the
+manual next step: "Run `/stacks:catalog-sources $STACK` then `/stacks:audit-stack
+$STACK` when ready." Either way, the staged sources sit untracked in `incoming/`
+exactly like a manual source drop until catalog files and commits them.
 
 Clean up the transient working files (keep nothing but the staged sources):
 

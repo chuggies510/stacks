@@ -1,3 +1,8 @@
+## 0.31.0 — 2026-06-20
+
+**enrich-stack closes its own loop instead of handing you two more commands.** After you approve staging, it now offers to catalog + audit in the same session — the approval was the only real decision, the rest was button-pushing.
+- Step 8 asks one Y/n (because `catalog-sources` commits), surfaces any caveats on the staged sources, then runs `/stacks:catalog-sources` + `/stacks:audit-stack` and reports which gaps the re-audit cleared. Decline and it prints the manual next step, same as before. (`skills/enrich-stack/SKILL.md`, stacks#67)
+
 ## 0.30.0 — 2026-06-20
 
 **Catalog runs stop leaving two manual cleanup chores behind.** Source refs and publisher dirs now come out canonical, so the operator no longer hand-fixes them after every run.
