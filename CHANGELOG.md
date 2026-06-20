@@ -1,7 +1,12 @@
+## 0.32.0 — 2026-06-20
+
+**enrich-stack just closes the loop — no confirmation.** Drops the Y/n that 0.31.0 added: the staging approval was already the operator's decision, so a second prompt was redundant ceremony.
+- After staging, Step 8 runs `/stacks:catalog-sources` + `/stacks:audit-stack` directly and reports which gaps cleared. The commit it makes is the intended outcome and reversible; the re-audit is the real check that synthesis was correct, so a pre-catalog confirm added nothing. Staged-source caveats are carried into the final report instead. (`skills/enrich-stack/SKILL.md`, stacks#67)
+
 ## 0.31.0 — 2026-06-20
 
 **enrich-stack closes its own loop instead of handing you two more commands.** After you approve staging, it now offers to catalog + audit in the same session — the approval was the only real decision, the rest was button-pushing.
-- Step 8 asks one Y/n (because `catalog-sources` commits), surfaces any caveats on the staged sources, then runs `/stacks:catalog-sources` + `/stacks:audit-stack` and reports which gaps the re-audit cleared. Decline and it prints the manual next step, same as before. (`skills/enrich-stack/SKILL.md`, stacks#67)
+- Step 8 asks one Y/n (because `catalog-sources` commits), surfaces any caveats on the staged sources, then runs `/stacks:catalog-sources` + `/stacks:audit-stack` and reports which gaps the re-audit cleared. Decline and it prints the manual next step, same as before. (`skills/enrich-stack/SKILL.md`, stacks#67) — superseded by 0.32.0 (the Y/n was removed).
 
 ## 0.30.0 — 2026-06-20
 

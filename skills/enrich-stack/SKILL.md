@@ -25,10 +25,10 @@ the exact claim, verifies it (not just topically related), rates its tier, and
 dedups against already-filed sources. This skill batches the gaps, gates the
 agents, dedups by URL, then **presents the findings for operator approval and
 stages only what the operator approves** into `sources/incoming/`. Nothing is
-ever auto-ingested: after staging it asks one confirmation, then (if confirmed)
-closes the loop by running `catalog-sources` + `audit-stack` in the same session
-— staged files otherwise wait in `incoming/` exactly like a hand-dropped source.
-Each run
+ever auto-ingested without an operator decision, but once the operator approves
+staging it closes the loop itself: it runs `catalog-sources` + `audit-stack` in
+the same session and reports which gaps cleared, rather than handing the operator
+two more commands. Each run
 derives its work from the latest audit artifact; there is no persistent
 enrichment ledger.
 
@@ -259,17 +259,16 @@ First report what staged:
 - **NOSOURCE**: list the gaps nothing grounded, for the operator to tighten the
   claim or accept it as inference.
 
-**Then close the loop.** The operator already made the only real decision (the
-Step 6 staging approval); catalog + audit is mechanical from here, so don't hand
-it back. Ask **one** confirmation — `catalog-sources` commits, so this is a real
-side effect worth a single Y/n — and surface any caveats on the staged sources
-the operator should know synthesis will bake in (edition notes, unverified
-sub-claims, claims to reword). If confirmed, invoke `/stacks:catalog-sources
-$STACK` then `/stacks:audit-stack $STACK` in this session and report the end
-state (which gaps the re-audit cleared, which remain). If declined, print the
-manual next step: "Run `/stacks:catalog-sources $STACK` then `/stacks:audit-stack
-$STACK` when ready." Either way, the staged sources sit untracked in `incoming/`
-exactly like a manual source drop until catalog files and commits them.
+**Then close the loop — don't ask, just do it.** The operator already made the
+only real decision (the Step 6 staging approval); catalog + audit is mechanical
+from here. Invoke `/stacks:catalog-sources $STACK` then `/stacks:audit-stack
+$STACK` in this session and report the end state (which gaps the re-audit
+cleared, which remain). `catalog-sources` commits the staged sources — that is
+the intended outcome, and it is reversible; the re-audit is the real check that
+synthesis handled the sources correctly, so no pre-catalog confirmation adds
+anything. Carry forward any caveats on the staged sources (edition notes,
+unverified sub-claims, claims to reword) into the final report so the operator
+sees what synthesis baked in and can edit the article if needed.
 
 Clean up the transient working files (keep nothing but the staged sources):
 
