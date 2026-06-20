@@ -41,8 +41,8 @@ Everything else is optimized for one outcome: an agent in any repo reaches the e
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :ask, :audit-stack, :process-inbox
-  agents/        ← 3 LLM workers (concept identification, synthesis, validation)
+  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :audit-stack, :enrich-stack, :lookup, :process-inbox
+  agents/        ← 4 LLM workers (concept identification, synthesis, validation, enrichment)
   scripts/       ← install.sh, init.sh, update.sh
 
 ~/my-library/    ← your repo. the content. private. the tool touches this.
@@ -101,9 +101,10 @@ Listed in lifecycle order: set up, route and ingest, maintain, query.
 | `/stacks:process-inbox` | route queued inbox files into the matching stacks | anywhere |
 | `/stacks:catalog-sources {stack}` | identify concepts in new sources, write one article per concept | inside the library |
 | `/stacks:audit-stack {stack}` | validate articles against sources, report drift / unsourced / stale | inside the library |
+| `/stacks:enrich-stack {stack}` | acquire sources for audit soft spots: web-search per gap, approve, stage into incoming/ | inside the library |
 | `/stacks:lookup {query}` | answer a question from your curated articles | anywhere |
 
-**run from** is where you can type the command, not a grouping by kind. `new-stack`, `catalog-sources`, and `audit-stack` act on the stack in your current directory, so run them inside the library. The other three don't need that: `init-library` takes a target path and writes the config, while `ask` and `process-inbox` read the library location from `~/.config/stacks/config.json`. By purpose `process-inbox` belongs with `catalog-sources`: it writes to the library and feeds the ingest. It only shares an invocation style with the read-only `ask`.
+**run from** is where you can type the command, not a grouping by kind. `new-stack`, `catalog-sources`, `audit-stack`, and `enrich-stack` act on the stack in your current directory, so run them inside the library. The others don't need that: `init-library` takes a target path and writes the config, while `lookup` and `process-inbox` read the library location from `~/.config/stacks/config.json`. By purpose `process-inbox` belongs with `catalog-sources`: it writes to the library and feeds the ingest. It only shares an invocation style with the read-only `lookup`.
 
 ---
 
@@ -125,20 +126,28 @@ sources/incoming/  →  convert-sources (PDF/Office → text; skip+report images
 
 ```
 articles/  →  [validator]  →  fix source-contradictions in place + collect soft spots
-           →  audit report  →  dev/audit/report.md (corrections applied / soft spots)
+           →  audit report  →  dev/audit/report.md  +  dev/audit/soft-spots.tsv (the enrich input)
+```
+
+**enrich-stack** (run to close soft spots — slots audit → enrich → catalog):
+
+```
+soft-spots.tsv  →  drop stale gaps  →  [enrichment × N]  →  one source per gap (search/verify/tier/dedup)
+                →  operator approval  →  stage approved into sources/incoming/  (never auto-ingests)
 ```
 
 ---
 
 ## agents
 
-Three specialized agents power the pipeline:
+Four specialized agents power the pipeline:
 
 | agent | role | used by |
 |-------|------|---------|
 | source-extractor | read one source, extract concepts and claims, map to article slugs, assign tiers | catalog-sources |
 | article-synthesizer | write/update an article-per-concept wiki entry | catalog-sources |
-| validator | verify article claims against source material, apply inline marks | audit-stack |
+| validator | verify article claims against cited sources, fix contradictions in place, collect soft spots | audit-stack |
+| enrichment | web-search one grounding source per soft spot, verify + tier + dedup it for approval | enrich-stack |
 
 ---
 
