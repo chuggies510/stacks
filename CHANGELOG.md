@@ -1,3 +1,16 @@
+## 0.28.0 — 2026-06-19
+
+**Skills find your library even before the machine is registered.** `/stacks:lookup` and `/stacks:process-inbox` used to hard-stop with "run init-library" when no config file existed — even when you were standing inside a fully-built library. They now resolve gracefully.
+- New `scripts/resolve-library.sh` honors the `$STACKS_CONFIG` override (the scripts already used it; the skills ignored it) and falls back to the current directory when it is itself a library (has `catalog.md`). Covered by `tests/resolve-library.bats`.
+- `lookup` and `process-inbox` Step 1 now call the resolver instead of each duplicating the config-read block. (`skills/lookup/SKILL.md`, `skills/process-inbox/SKILL.md`)
+- `process-inbox` re-establishes `STACKS_ROOT` in its file-move step, which runs as a separate shell where the variable would otherwise be unset.
+- Fixed `rewrite-source-refs.sh` failing on macOS: bare `sed -i` works on Linux (GNU sed) but needs `sed -i ''` on macOS (BSD sed). Now detects the flavor, so source-ref rewriting after `catalog-sources` works on both. (`scripts/rewrite-source-refs.sh`)
+- Realigned `marketplace.json` (had drifted to 0.26.2) with `plugin.json`.
+
+## 0.27.1 — 2026-06-18
+
+**`/stacks:lookup` excludes private sources by path, not tier.** The primary-sources block now excludes `liminal/`, `field-notes/`, and `internal/` by path prefix rather than by source tier, so a legitimately high-tier private source is no longer surfaced. (`skills/lookup/SKILL.md`)
+
 ## 0.27.0 — 2026-06-18
 
 **lookup: keyword-rank fallback retired; recognition over routing lines is now the sole retrieval path.**

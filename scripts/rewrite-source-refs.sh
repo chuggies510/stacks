@@ -29,4 +29,10 @@ esc=$(printf '%s' "$FNAME" | sed 's/[.[\*^$/]/\\&/g')
 shopt -s nullglob
 arts=("$ARTICLES_DIR"/*.md)
 (( ${#arts[@]} )) || exit 0
-sed -i "s#sources/incoming/${esc}#sources/${PUB}/${esc}#g" "${arts[@]}"
+# GNU sed (Linux) takes `-i`; BSD sed (macOS) needs `-i ''` or it eats the script
+# as a backup suffix and exits non-zero. Detect by probing --version.
+if sed --version >/dev/null 2>&1; then
+  sed -i "s#sources/incoming/${esc}#sources/${PUB}/${esc}#g" "${arts[@]}"
+else
+  sed -i '' "s#sources/incoming/${esc}#sources/${PUB}/${esc}#g" "${arts[@]}"
+fi

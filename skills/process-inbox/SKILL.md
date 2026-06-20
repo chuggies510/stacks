@@ -22,21 +22,16 @@ SKILL_NAME="stacks:process-inbox" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/de
 ## Step 1: Find the library
 
 ```bash
-CONFIG="$HOME/.config/stacks/config.json"
-if [[ ! -f "$CONFIG" ]]; then
-  echo "ERROR: No stacks config found at $CONFIG"
-  echo "Run /stacks:init-library to create a library first."
-  exit 1
-fi
-LIBRARY=$(jq -r '.library // empty' "$CONFIG")
-LIBRARY="${LIBRARY/#\~/$HOME}"
-if [[ -z "$LIBRARY" || ! -d "$LIBRARY" ]]; then
-  echo "ERROR: Library not found at '$LIBRARY'"
-  echo "Update $CONFIG or run /stacks:init-library to create a library."
-  exit 1
-fi
+STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
 echo "Library: $LIBRARY"
 ```
+
+`resolve-library.sh` reads `$STACKS_CONFIG` (or `~/.config/stacks/config.json`)
+for `.library`, and falls back to the current directory when it is itself a
+library (has `catalog.md`) — so this works even before the machine has been
+registered with a config. It prints a fix hint and exits non-zero when no
+library can be found.
 
 ## Step 2: Enumerate stacks
 
@@ -96,6 +91,7 @@ Using the header block (filename, H1 title, Source line, Extracted from line, fi
 For each matched file, move it to `{stack}/sources/incoming/`:
 
 ```bash
+STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 TARGET_STACK="$LIBRARY/{matched-stack}"
 mkdir -p "$TARGET_STACK/sources/incoming"
 dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$TARGET_STACK/sources/incoming" "$filename")

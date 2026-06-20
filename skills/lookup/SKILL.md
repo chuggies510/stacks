@@ -21,21 +21,15 @@ SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null 
 ## Step 1: Find the library
 
 ```bash
-CONFIG="$HOME/.config/stacks/config.json"
-if [[ ! -f "$CONFIG" ]]; then
-  echo "ERROR: No stacks config found at $CONFIG"
-  echo "Run /stacks:init-library to create a library first."
-  exit 1
-fi
-LIBRARY=$(jq -r '.library // empty' "$CONFIG")
-LIBRARY="${LIBRARY/#\~/$HOME}"
-if [[ -z "$LIBRARY" || ! -d "$LIBRARY" ]]; then
-  echo "ERROR: Library not found at '$LIBRARY'"
-  echo "Update $CONFIG or run /stacks:init-library to create a library."
-  exit 1
-fi
+STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
 echo "Library: $LIBRARY"
 ```
+
+`resolve-library.sh` reads `$STACKS_CONFIG` (or `~/.config/stacks/config.json`)
+for `.library`, and falls back to the current directory when it is itself a
+library (has `catalog.md`). It prints a fix hint and exits non-zero when no
+library can be found.
 
 ## Step 2: Read the catalog
 
