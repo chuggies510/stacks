@@ -65,13 +65,23 @@ rm -f "$STACK"/dev/audit/_audit-*.md   # clear any stale per-batch files from a 
 - **N_ARTICLES ≤ CAP:** one `Agent` call (subagent_type `stacks:validator`) over all of `${ARTICLES[@]}`, `BATCH_TAG=0`.
 - **N_ARTICLES > CAP:** in a single message, emit one `Agent` call per slice `${ARTICLES[@]:i:CAP}` (i = 0, CAP, 2·CAP, …), with `BATCH_TAG` = the slice ordinal (0, 1, 2, …). Parallel dispatch — never sequential.
 
-**Gate.** After all validators return, the parent re-runs the write-or-fail + shape gate inline over every article. The validated shape is now a populated `last_verified:` date (no inline marks):
+**Gate.** After all validators return, the parent asserts each article carries **today's** `last_verified` — the validator's success signal. This is a value check, not a file-mtime check: a clean article the validator correctly did not need to rewrite still passes (validation can be a legitimate no-op), but a stale date fails because it means the validator skipped that article this run. (Using `gate-batch.sh`'s mtime gate here would false-fail a same-day re-audit, where already-current articles have nothing to rewrite — that's why this path checks the value directly.)
 
 ```bash
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "validator-gate" article-validated "${ARTICLES[@]}"
+TODAY=$(date +%F)
+GATE_FAILED=()
+for art in "${ARTICLES[@]}"; do
+  bash "$SCRIPTS_DIR/assert-structure.sh" "$art" article-validated "validator-gate" >/dev/null 2>&1 \
+    || GATE_FAILED+=("$art")
+done
+if (( ${#GATE_FAILED[@]} > 0 )); then
+  printf 'VALIDATOR_GATE_FAILURE: last_verified not set to %s (validator skipped these):\n' "$TODAY"
+  printf '  %s\n' "${GATE_FAILED[@]}"
+  exit 1
+fi
 ```
 
-A non-zero exit means an article was not freshly written or its `last_verified` was not set to a date — surface the failing paths and stop.
+A non-zero exit means an article's `last_verified` is not today's date — the validator did not process it. Surface the failing paths and stop.
 
 ## Step 4: Audit report
 

@@ -1,3 +1,9 @@
+## 0.34.0 — 2026-06-20
+
+**A same-day re-audit no longer false-fails.** The validator gate checked file mtime to prove each article was processed, but a validator correctly leaves a clean, already-current article untouched — so re-auditing the same day flagged every unchanged article as "validator did not run."
+- The gate now checks the *value*: every article must carry **today's** `last_verified` (the validator's actual success signal), not a fresh file mtime. A clean no-op validation passes; a stale date still fails (the validator genuinely skipped it). Today-specific is also stricter than the old "any date" structure check, which silently accepted a stale date. (`scripts/assert-structure.sh`, `skills/audit-stack/SKILL.md`)
+- `gate-batch.sh`'s mtime check is unchanged — it stays correct for catalog/enrich, where an agent must produce a new file. (`tests/assert-structure.bats`: today passes, stale fails)
+
 ## 0.33.0 — 2026-06-20
 
 **Lookups now actually get recorded — with what was asked.** The old telemetry call sat at Step 0 where the model skipped it, so 660 telemetry records held zero lookups despite the skill being used.

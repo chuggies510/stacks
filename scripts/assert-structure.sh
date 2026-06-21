@@ -29,9 +29,13 @@ case "$type" in
     ;;
   article-validated)
     # The read-and-fix validator no longer stamps inline marks (#57); the success
-    # signal is a populated last_verified date (not the empty-string default).
-    grep -qE '^last_verified:[[:space:]]*"?[0-9]{4}-[0-9]{2}-[0-9]{2}' "$path" \
-      || fail "last_verified not set to a date (validator did not run)"
+    # signal is last_verified set to TODAY. Today-specific (not just "a date") so it
+    # proves the validator processed the article THIS run — a stale date means it was
+    # skipped. This replaces the old mtime freshness check, which false-failed a
+    # same-day re-audit where a clean article had nothing to rewrite.
+    today=$(date +%F)
+    grep -qE "^last_verified:[[:space:]]*\"?${today}" "$path" \
+      || fail "last_verified not set to today ($today) — validator did not run on this article"
     ;;
   enrichment-findings)
     # Every non-blank line is an 8-field tab record led by a verdict. Split on a
