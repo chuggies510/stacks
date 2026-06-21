@@ -1,3 +1,10 @@
+## 0.35.0 — 2026-06-21
+
+**Questions people ask but the library can't answer now feed enrichment.** A `/stacks:lookup` that finds no article is the highest-signal gap there is — live demand — but nothing captured it; only audit's internal soft spots fed the source-acquisition step (stacks#68).
+- `lookup` now records the stack it searched even on a miss (the answer fields stay empty), so a miss is attributable to a stack instead of vanishing. (`skills/lookup/SKILL.md`)
+- New `scripts/lookup-misses.sh` mines the telemetry log for those misses and emits them as enrichment gaps; `enrich-stack` appends them to the audit soft spots and no longer hard-fails when a stack was never audited (misses are an independent gap source). (`scripts/lookup-misses.sh`, `skills/enrich-stack/SKILL.md`, `agents/enrichment.md`)
+- A miss carries the sentinel slug `lookup-miss` (an empty leading field gets eaten by `read`/`IFS=tab`, which would silently shift the query into the slug); the enrichment agent treats it as "search the query directly." (`tests/lookup-misses.bats`: 11 cases incl. the round-trip guard)
+
 ## 0.34.0 — 2026-06-20
 
 **A same-day re-audit no longer false-fails.** The validator gate checked file mtime to prove each article was processed, but a validator correctly leaves a clean, already-current article untouched — so re-auditing the same day flagged every unchanged article as "validator did not run."
