@@ -5,8 +5,10 @@ description: |
   sources. Reads dev/audit/soft-spots.tsv (produced by audit-stack), drops
   stale gaps, dispatches the enrichment agent to web-search one grounding
   source per claim, then presents what it found for operator approval and
-  stages only approved sources into sources/incoming/ — never auto-ingests.
-  Slots between audit-stack and catalog-sources. Must be run from a library repo.
+  stages only approved sources into sources/incoming/ — never auto-ingests,
+  except under --auto (lookup's hands-free path, #69) which auto-stages the
+  agent's CANDIDATE sources. Also consumes lookup misses as gaps, not just audit
+  soft spots. Slots between audit-stack and catalog-sources. Run from a library repo.
 ---
 
 # Enrich Stack
@@ -46,15 +48,25 @@ if [[ ! -f "catalog.md" ]]; then
   echo "ERROR: Not in a library repo (no catalog.md)."
   exit 1
 fi
-STACK="$ARGUMENTS"
+# Parse args: the first non-flag token is the stack; `--auto` enables hands-free
+# staging (no operator prompt — Step 6). Env vars can't carry the signal because
+# shell state does not persist across a Skill invocation, so it rides $ARGUMENTS.
+STACK=""; AUTO=0
+for tok in $ARGUMENTS; do
+  case "$tok" in
+    --auto) AUTO=1 ;;
+    *) [[ -z "$STACK" ]] && STACK="$tok" ;;
+  esac
+done
 if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:enrich-stack {stack-name}"
+  echo "ERROR: Specify a stack name. Usage: /stacks:enrich-stack {stack-name} [--auto]"
   exit 1
 fi
 if [[ ! -f "$STACK/STACK.md" ]]; then
   echo "ERROR: Stack '$STACK' not found (no STACK.md)."
   exit 1
 fi
+echo "AUTO=$AUTO"   # 1 = hands-free (lookup-driven, #69); 0 = operator approves staging
 TSV="$STACK/dev/audit/soft-spots.tsv"
 SCRIPTS_DIR="$STACKS_ROOT/scripts"
 # soft-spots.tsv may be absent or empty — but lookup misses (#68) are an
@@ -192,11 +204,20 @@ verdict for the operator:
 
 ## Step 6: Operator approval (no writes before this)
 
-**No source is staged into the library until the operator approves.** (The
-transient working files under `dev/enrich/` — the listing, `_gaps.tsv`, and the
-batch findings — are scratch, written before this point and cleaned up below;
-nothing enters `sources/` before approval.) Present a compact table — one row per
-gap — so the operator can see what would be staged:
+**Auto mode (`AUTO=1` from Step 1, the `--auto` flag — lookup's hands-free path, #69):**
+skip the operator prompt entirely. Approve **every `CANDIDATE`** and nothing else
+— never `WEAK` (tier-4, weak grounding), `DUP`, or `NOSOURCE`. Go straight to
+Step 7. The enrichment agent's `CANDIDATE` verdict (tier 1-3, quote-verified)
+stands in for the operator's judgment, and Step 7 still re-verifies the quote
+against the re-fetched page, so a bad source is still caught. Print the table
+below for the record, then proceed. The rest of this step (the interactive
+prompt) applies only when `AUTO=0`.
+
+**No source is staged into the library until the operator approves** (interactive
+runs, `AUTO=0`). (The transient working files under `dev/enrich/` — the listing,
+`_gaps.tsv`, and the batch findings — are scratch, written before this point and
+cleaned up below; nothing enters `sources/` before approval.) Present a compact
+table — one row per gap — so the operator can see what would be staged:
 
 | verdict | article (slug) | tier | source | grounds the claim? (quote) |
 |---------|----------------|------|--------|-----------------------------|

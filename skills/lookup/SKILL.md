@@ -83,7 +83,7 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
 
 From the `## Articles` routing lines you read in Step 5, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
 
-Read the selected article files. If recognition found nothing, tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop — do not synthesize from nothing.
+Read the selected article files. If recognition found nothing (a **miss**), do not synthesize from nothing here — instead run Step 8 to log the miss, then go to **Step 9 (auto-enrich on a miss)**, which researches the gap and retries. Only if Step 9 is not applicable (no stack matched in Hop-1, or it stages nothing) do you tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}."
 
 ## Step 7: Synthesize answer
 
@@ -143,7 +143,54 @@ SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null 
      PreToolUse/UserPromptSubmit hook, which is overkill for usage stats. Add the hook
      only if skipped lookups become a real gap. -->
 
-## Step 9: Offer to file the result back (opt-in)
+## Step 9: Auto-enrich on a miss (hands-free, #69)
+
+**Only on a miss** (Step 6 found no matching article). On a hit, skip to Step 10.
+
+A miss is live demand the library could not meet. Instead of stopping, lookup
+researches the gap and retries — in one command, no second invocation. The miss
+was just logged in Step 8, so the enrich pass picks it up from telemetry.
+
+**Applicability gate.** This needs a stack to enrich. If Hop-1 (Step 4) narrowed
+to at least one stack, proceed. If Hop-1 matched **no** stack (the query is
+outside every stack's domain), there is nothing to enrich against: tell the user
+"No matching content found in stacks: {STACKS_TO_SEARCH[*]}." and stop.
+
+For each in-scope stack (usually one):
+
+1. Tell the user: `Gap detected in {stack} — researching now…`
+2. Move into the library and run the enrichment loop hands-free. `enrich-stack`
+   is library-local, so `cd` there first — working directory persists into the
+   skill invocation that follows. Re-resolve the library path here rather than
+   reusing `$LIBRARY` from Step 1: shell variables do not survive between bash
+   blocks, so the bare variable would be empty. `--auto` makes enrich-stack
+   auto-stage the agent's `CANDIDATE` sources (tier 1-3, quote-verified) without
+   an operator prompt, then catalog + audit:
+
+   ```bash
+   cd "$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh")"
+   ```
+
+   Then invoke `/stacks:enrich-stack {stack} --auto`. It reads this miss from
+   telemetry, web-searches one grounding source, stages every `CANDIDATE`,
+   catalogs them into articles, and re-audits — committing the result in the
+   library. (It also sweeps any other recent misses / open soft spots for that
+   stack in the same pass; that is extra value, not a bug.)
+
+3. After it returns, **retry the lookup for the original query**: redo Steps 5–7
+   against the now-updated `{stack}/index.md` (re-read the routing map, re-recognize,
+   re-synthesize) and deliver the enriched answer.
+
+**Fallback (#69).** If `enrich-stack` staged nothing (every gap came back
+`NOSOURCE`) or the retry still finds no confident article, say so plainly and
+name what was filed, e.g.: "Still no confident answer. Filed N source(s) to
+`{stack}/sources/incoming/`; the topic is queued for the next full audit." Do not
+fabricate an answer from thin sources.
+
+Then stop (a miss does not also run Step 10 — there is no synthesized answer to
+file back beyond what enrich already committed).
+
+## Step 10: Offer to file the result back (opt-in)
 
 Valuable answers can compound into the library rather than disappearing into chat history. Filing is **opt-in**: never write or commit an article without the user's go-ahead. After delivering the answer, assess whether filing is worth offering:
 
