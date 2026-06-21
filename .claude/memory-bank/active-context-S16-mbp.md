@@ -25,7 +25,7 @@ Built lookup-driven enrichment end to end across two features, then ran an adver
 
 ### Chat
 
-(filled in Phase 8)
+S16-lookup-enrichment-codex-review
 
 ### Changes made
 
