@@ -123,13 +123,16 @@ If no relevant articles are found: "No matching articles found in {stack}. The s
 
 Log this lookup to telemetry — what was asked and which articles answered it. This single record is both the usage count and the query log, so it replaces the old bare counter. Run it after delivering the answer, **whether or not articles were found** (a miss is signal: it flags a gap to fill).
 
-Substitute the contributing stack name(s) and article title(s) into the placeholders below (comma-separated; leave empty on a miss). The query comes from `$ARGUMENTS`:
+Substitute the placeholders below (comma-separated). The query comes from `$ARGUMENTS`:
+
+- `stacks` — the stack(s) you searched after Hop-1 narrowing (Step 4). **Populate this even on a miss** — a miss in stack X means "X was the right domain but had no article", which is exactly the gap `lookup-misses.sh` mines and `enrich-stack` closes. Leave empty only when Hop-1 matched no stack at all.
+- `articles` — the article title(s) that contributed to the answer; **empty on a miss**. `articles == ""` (with `stacks` populated) is the miss signal downstream.
 
 ```bash
 STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 TELEMETRY_EXTRA="$(jq -cn \
   --arg query "$ARGUMENTS" \
-  --arg stacks '<contributing stack name(s), comma-separated; empty on a miss>' \
+  --arg stacks '<stack(s) searched after Hop-1, comma-separated; empty only if no stack matched>' \
   --arg articles '<contributing article title(s), comma-separated; empty on a miss>' \
   '{query: $query, stacks: $stacks, articles: $articles}')" \
 SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
