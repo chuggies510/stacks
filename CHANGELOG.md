@@ -1,3 +1,10 @@
+## 0.36.0 — 2026-06-21
+
+**A lookup that finds nothing now researches the gap and answers anyway — one command, no second step.** Before, a miss just said "no matching content" and stopped; the user had to go acquire sources by hand (stacks#69).
+- On a miss, `lookup` runs the enrichment loop hands-free: it moves into the library and invokes `enrich-stack --auto`, which web-searches the query, stages the grounding source, catalogs it into an article, and re-audits — then lookup retries the original query and returns the now-enriched answer. (`skills/lookup/SKILL.md` new Step 9)
+- New `--auto` flag on `enrich-stack` skips the operator staging prompt and auto-stages only the agent's `CANDIDATE` verdicts (tier 1-3, quote re-verified after fetch — never weak/forum sources). The flag rides `$ARGUMENTS`, not an env var, because shell state does not survive a Skill invocation. (`skills/enrich-stack/SKILL.md` Steps 1 + 6)
+- If nothing grounds the query (all `NOSOURCE`) or the retry still finds no confident article, lookup says so and names what it filed, rather than fabricating an answer. The library path is re-resolved inside the new step (a bare `$LIBRARY` would be empty in a fresh bash block).
+
 ## 0.35.0 — 2026-06-21
 
 **Questions people ask but the library can't answer now feed enrichment.** A `/stacks:lookup` that finds no article is the highest-signal gap there is — live demand — but nothing captured it; only audit's internal soft spots fed the source-acquisition step (stacks#68).
