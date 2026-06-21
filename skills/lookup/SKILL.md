@@ -9,14 +9,7 @@ description: |
 
 # Lookup
 
-Query knowledge stacks from any repo.
-
-## Step 0: Telemetry
-
-```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
-SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
-```
+Query knowledge stacks from any repo. Step 8 records the lookup once the answer is delivered.
 
 ## Step 1: Find the library
 
@@ -126,7 +119,28 @@ Format the response as:
 
 If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
 
-## Step 8: Offer to file the result back (opt-in)
+## Step 8: Record the lookup
+
+Log this lookup to telemetry — what was asked and which articles answered it. This single record is both the usage count and the query log, so it replaces the old bare counter. Run it after delivering the answer, **whether or not articles were found** (a miss is signal: it flags a gap to fill).
+
+Substitute the contributing stack name(s) and article title(s) into the placeholders below (comma-separated; leave empty on a miss). The query comes from `$ARGUMENTS`:
+
+```bash
+STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+TELEMETRY_EXTRA="$(jq -cn \
+  --arg query "$ARGUMENTS" \
+  --arg stacks '<contributing stack name(s), comma-separated; empty on a miss>' \
+  --arg articles '<contributing article title(s), comma-separated; empty on a miss>' \
+  '{query: $query, stacks: $stacks, articles: $articles}')" \
+SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
+```
+
+<!-- ponytail: one telemetry line per lookup = the usage count AND the query log.
+     A run that ends early can still skip this step; guaranteed capture would need a
+     PreToolUse/UserPromptSubmit hook, which is overkill for usage stats. Add the hook
+     only if skipped lookups become a real gap. -->
+
+## Step 9: Offer to file the result back (opt-in)
 
 Valuable answers can compound into the library rather than disappearing into chat history. Filing is **opt-in**: never write or commit an article without the user's go-ahead. After delivering the answer, assess whether filing is worth offering:
 

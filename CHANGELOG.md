@@ -1,3 +1,9 @@
+## 0.33.0 — 2026-06-20
+
+**Lookups now actually get recorded — with what was asked.** The old telemetry call sat at Step 0 where the model skipped it, so 660 telemetry records held zero lookups despite the skill being used.
+- Moved the telemetry write to a new Step 8 that fires after the answer is delivered, and enriched it to carry the query plus the contributing stack(s) and article title(s) — one line per lookup is both the usage count and a query log (what people ask, what answers it, and misses that flag gaps). (`skills/lookup/SKILL.md`)
+- `telemetry.sh` takes an optional `TELEMETRY_EXTRA` JSON object merged into the record; a malformed or non-object value is ignored so a bad caller can never break the lookup. (`scripts/telemetry.sh`, `tests/telemetry.bats`)
+
 ## 0.32.0 — 2026-06-20
 
 **enrich-stack just closes the loop — no confirmation.** Drops the Y/n that 0.31.0 added: the staging approval was already the operator's decision, so a second prompt was redundant ceremony.
