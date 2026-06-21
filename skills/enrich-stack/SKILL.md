@@ -56,15 +56,11 @@ if [[ ! -f "$STACK/STACK.md" ]]; then
   exit 1
 fi
 TSV="$STACK/dev/audit/soft-spots.tsv"
-if [[ ! -f "$TSV" ]]; then
-  echo "ERROR: No soft-spots.tsv. Run /stacks:audit-stack $STACK first."
-  exit 1
-fi
-if [[ ! -s "$TSV" ]]; then
-  echo "No soft spots to enrich (soft-spots.tsv is empty — the stack audited clean). Nothing to do."
-  exit 0
-fi
 SCRIPTS_DIR="$STACKS_ROOT/scripts"
+# soft-spots.tsv may be absent or empty — but lookup misses (#68) are an
+# independent gap source (live queries the stack could not answer), so do NOT
+# hard-fail here. Step 3 gathers both and exits only if BOTH come up empty.
+[[ -s "$TSV" ]] || echo "No audit soft spots (soft-spots.tsv absent/empty); enriching from lookup misses only, if any."
 ```
 
 ## Step 2: Read STACK.md + build the filed-sources listing
@@ -100,28 +96,43 @@ article still exists), and assign each survivor a stable `gap-N` id. Searching
 for a claim that no longer exists wastes web calls and stages irrelevant sources.
 
 ```bash
+mkdir -p "$STACK/dev/enrich"
 GAPS="$STACK/dev/enrich/_gaps.tsv"   # gap_id<TAB>slug<TAB>claim<TAB>reason
 : > "$GAPS"
 i=0; STALE=0; TOTAL=0
+if [[ -f "$TSV" ]]; then
+  while IFS=$'\t' read -r slug claim reason; do
+    [[ -z "$slug" ]] && continue
+    TOTAL=$((TOTAL+1))
+    art="$STACK/articles/$slug.md"
+    # The validator collapsed the claim's internal whitespace (tabs/newlines) to
+    # single spaces, but the article body still has the original line breaks — so a
+    # claim that wrapped across two lines would never `grep -Fq` against the raw
+    # file. Flatten the article's whitespace the same way before matching so the
+    # round-trip holds for multi-line claims.
+    if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | grep -Fq "$claim"; then
+      STALE=$((STALE+1)); continue
+    fi
+    printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
+    i=$((i+1))
+  done < "$TSV"
+fi
+N_SOFT=$i
+# Lookup misses (#68): live queries the stack could not answer. These gaps carry
+# the sentinel slug `lookup-miss` (no home article), so they never hit the article
+# stale-check above — the enrichment agent searches the `claim` (the query)
+# directly. lookup-misses.sh already dedups its queries; cross-dedup against soft
+# spots is unnecessary (a query and an article-claim are different shapes).
+MISS=0
 while IFS=$'\t' read -r slug claim reason; do
-  [[ -z "$slug" ]] && continue
-  TOTAL=$((TOTAL+1))
-  art="$STACK/articles/$slug.md"
-  # The validator collapsed the claim's internal whitespace (tabs/newlines) to
-  # single spaces, but the article body still has the original line breaks — so a
-  # claim that wrapped across two lines would never `grep -Fq` against the raw
-  # file. Flatten the article's whitespace the same way before matching so the
-  # round-trip holds for multi-line claims.
-  if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | grep -Fq "$claim"; then
-    STALE=$((STALE+1)); continue
-  fi
+  [[ -z "$claim" ]] && continue
   printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-  i=$((i+1))
-done < "$TSV"
+  i=$((i+1)); MISS=$((MISS+1))
+done < <(bash "$SCRIPTS_DIR/lookup-misses.sh" "$STACK")
 N_GAPS=$i
-echo "Soft spots: $TOTAL total, $STALE stale (claim no longer in article), $N_GAPS to enrich."
+echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich."
 if [[ "$N_GAPS" -eq 0 ]]; then
-  echo "All soft spots are stale — the articles changed since the audit. Re-run /stacks:audit-stack $STACK."
+  echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
   rm -f "$GAPS"
   exit 0
 fi
@@ -216,7 +227,7 @@ indistinguishable from a hand-dropped source:
 **Published:** {date if known, else omit}
 **Tier:** {N} ({tier label from STACK.md})
 **Fetched:** {today}
-**Supports gap:** {slug(s) this source grounds}
+**Supports gap:** {slug(s) this source grounds, or the query for a `lookup-miss` gap}
 
 ---
 

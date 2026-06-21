@@ -2,7 +2,8 @@
 
 # lookup-misses.sh mines telemetry for /stacks:lookup misses (articles=="")
 # whose searched stacks include the target stack, and emits them as enrichment
-# gap rows: <TAB>{query}<TAB>lookup miss (empty slug — a miss has no article).
+# gap rows: lookup-miss<TAB>{query}<TAB>lookup miss (sentinel slug — a miss has
+# no home article, and an empty leading field can't survive read/IFS=$'\t').
 
 setup() {
   TEST_TMP=$(mktemp -d)
@@ -22,7 +23,7 @@ teardown() { rm -rf "$TEST_TMP"; }
   rec "stacks:lookup" "llm" "" "what is constrained decoding"
   run bash "$SCRIPT" llm "$LOG"
   [ "$status" -eq 0 ]
-  [ "$output" = $'\twhat is constrained decoding\tlookup miss' ]
+  [ "$output" = $'lookup-miss\twhat is constrained decoding\tlookup miss' ]
 }
 
 @test "a hit (articles populated) is NOT emitted" {
@@ -42,13 +43,13 @@ teardown() { rm -rf "$TEST_TMP"; }
 @test "stack match is case-insensitive (LLM record, llm arg)" {
   rec "stacks:lookup" "LLM" "" "self refine loops"
   run bash "$SCRIPT" llm "$LOG"
-  [ "$output" = $'\tself refine loops\tlookup miss' ]
+  [ "$output" = $'lookup-miss\tself refine loops\tlookup miss' ]
 }
 
 @test "matches one stack inside a comma-separated searched set" {
   rec "stacks:lookup" "swe, llm" "" "generator verifier gap"
   run bash "$SCRIPT" llm "$LOG"
-  [ "$output" = $'\tgenerator verifier gap\tlookup miss' ]
+  [ "$output" = $'lookup-miss\tgenerator verifier gap\tlookup miss' ]
 }
 
 @test "identical miss queries dedup to one row" {
@@ -69,7 +70,7 @@ teardown() { rm -rf "$TEST_TMP"; }
   rec "stacks:lookup" "llm" "" "valid miss"
   run bash "$SCRIPT" llm "$LOG"
   [ "$status" -eq 0 ]
-  [ "$output" = $'\tvalid miss\tlookup miss' ]
+  [ "$output" = $'lookup-miss\tvalid miss\tlookup miss' ]
 }
 
 @test "a tab inside the query is flattened so the row stays 3-field" {
@@ -78,6 +79,17 @@ teardown() { rm -rf "$TEST_TMP"; }
   [ "$status" -eq 0 ]
   # exactly two tabs in the emitted row (slug sep + reason sep), none from the query
   [ "$(printf '%s' "$output" | tr -cd '\t' | wc -c | tr -d ' ')" -eq 2 ]
+}
+
+@test "emitted row survives a read/IFS=tab round-trip (slug is the sentinel, not the query)" {
+  # The empty-leading-slug form gets mangled by `read` (a leading tab is stripped
+  # as IFS whitespace), shifting the query into the slug. The sentinel prevents it.
+  rec "stacks:lookup" "llm" "" "round trip query"
+  run bash "$SCRIPT" llm "$LOG"
+  IFS=$'\t' read -r slug claim reason <<< "$output"
+  [ "$slug" = "lookup-miss" ]
+  [ "$claim" = "round trip query" ]
+  [ "$reason" = "lookup miss" ]
 }
 
 @test "missing telemetry file exits clean with no output" {

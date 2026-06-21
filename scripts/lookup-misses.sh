@@ -13,12 +13,15 @@ set -uo pipefail
 #   lookup-misses.sh <stack> [<telemetry_file>]
 #
 # Output (stdout): zero or more rows, one per distinct miss query, in the same
-# tab layout enrich-stack reads (slug<TAB>claim<TAB>reason) but with an EMPTY
-# slug — a miss has no home article yet:
-#   <TAB>{query}<TAB>lookup miss
+# tab layout enrich-stack reads (slug<TAB>claim<TAB>reason). The slug is the
+# literal sentinel `lookup-miss` — a miss has no home article, and an empty slug
+# field cannot survive a `read`/IFS=$'\t' round-trip (a leading tab is stripped
+# as IFS whitespace, shifting every field left). Downstream keys on this slug:
+#   lookup-miss<TAB>{query}<TAB>lookup miss
 #
 # Always exits 0 (missing/empty/garbled telemetry → no rows, never an error):
 # this feeds an enrich run, and a telemetry hiccup must not break it.
+MISS_SLUG="lookup-miss"
 
 STACK="${1:?usage: lookup-misses.sh <stack> [telemetry_file]}"
 LOG="${2:-$HOME/.chuggiesmart/telemetry.jsonl}"
@@ -38,5 +41,5 @@ jq -rR --arg stack "$STACK" '
   | (.query // "") | gsub("[[:space:]]+"; " ") | gsub("^ +| +$"; "")
   | select(length > 0)
 ' "$LOG" | sort -u | while IFS= read -r q; do
-  printf '\t%s\tlookup miss\n' "$q"
+  printf '%s\t%s\tlookup miss\n' "$MISS_SLUG" "$q"
 done

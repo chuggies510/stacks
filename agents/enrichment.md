@@ -19,9 +19,9 @@ Passed as the per-batch task content:
 
 - **Assigned gaps**: a slice of soft spots, each a tab-separated row `gap_id<TAB>slug<TAB>claim<TAB>reason`:
   - `gap_id` — stable id for this gap (one article can hold several gaps, so the slug alone does not identify it).
-  - `slug` — the article the claim lives in.
-  - `claim` — the verbatim claim sentence to find a source for.
-  - `reason` — why the validator marked it soft (context for your query).
+  - `slug` — the article the claim lives in. **The literal `lookup-miss` is a sentinel, not a real article**: it marks a lookup miss (`reason` = `lookup miss`), a live query the stack could not answer yet, with no home article. Treat the `claim` as the query to ground and search it directly; everything else (verify, tier, dedup, verdict) is identical. You still write one row per gap (echo the `lookup-miss` slug back in `gap_id`'s row as given).
+  - `claim` — the verbatim claim sentence (for a soft spot) or the user's query (for a lookup miss) to find a source for.
+  - `reason` — why this is a gap: the validator's note for a soft spot, or `lookup miss` for a query the stack could not answer.
 - **STACK.md** (source-hierarchy + scope sections): the tier table (1 = vendor/official … 4 = forum/general) and what the stack covers (to disambiguate an ambiguous query).
 - **Filed-sources listing**: the sources already filed in this stack, as `slug<TAB>url` rows, for dedup. A candidate whose URL is already in this list is a `DUP`.
 - **`$STACK`** (stack root) and **`$BATCH_TAG`** (your batch id): where and under what name to write your findings file.
