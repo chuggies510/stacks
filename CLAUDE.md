@@ -109,6 +109,10 @@ sources/trash/*
 
 Sub-agents dispatched via the Task tool return a text response to the calling session. They do not return a shell exit code. Any gate the main session wants to enforce against sub-agent success must parse the returned text for an observable signal, or — as both pipelines do — gate on the file the sub-agent was told to write (`gate-batch.sh` checks size + mtime + content-shape). A hallucinated "success" line cannot fake a file that wasn't freshly written. Symptom on failure: main session sees truncated or empty text and hangs or silently marks the work done.
 
+### Shell env does not persist between a skill's Bash blocks; cwd does
+
+A SKILL.md that sets `STACK=...`, `SCRIPTS_DIR=...`, an array, or `DISPATCH_EPOCH=$(date +%s)` in one Bash block and reads it in a later block gets an EMPTY value: the harness re-initializes the shell each call (env vars and functions are lost). The working directory IS preserved across calls, so a `cd` in one block holds for the next (including into a nested skill invocation). Consequences for skill prose: never pass a signal between blocks via an env var — re-derive it in the block that needs it (e.g. re-run `resolve-library.sh` rather than reuse `$LIBRARY`), or pass it through `$ARGUMENTS` of a nested skill (the 0.36/0.37 lookup→enrich path passes `--auto`/`--query` this way, not env). This bit the lookup auto-path twice (an unset `$LIBRARY` `cd`, a lost sentinel). Moving deterministic state into one checked-in orchestration script per skill is tracked in #72.
+
 ## Chuggies Bot
 
 @chuggies_bot is a Telegram-based AI assistant that reads memory banks and issues across repos. It runs on Dev Pi (192.168.3.4) via OpenClaw. Memory bank handoffs are consumed by the bot's nightly refresh (2am Pacific) — keep `active-context.md` structured and current.

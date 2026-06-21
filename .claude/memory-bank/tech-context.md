@@ -6,9 +6,9 @@
 |----------------|---------|
 | `.claude-plugin/plugin.json` | Plugin identity and version |
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
-| `agents/` | 3 worker subagent definitions: source-extractor, article-synthesizer, validator |
-| `skills/{name}/SKILL.md` | User-invocable skills: lookup, audit-stack, catalog-sources, init-library, new-stack, process-inbox |
-| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, locate-plugin-root.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, telemetry.sh) |
+| `agents/` | 4 worker subagent definitions: source-extractor, article-synthesizer, validator, enrichment |
+| `skills/{name}/SKILL.md` | User-invocable skills: lookup, audit-stack, catalog-sources, enrich-stack, init-library, new-stack, process-inbox |
+| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, locate-plugin-root.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, convert-sources.sh, rank-articles.sh, rewrite-source-refs.sh, resolve-library.sh, lookup-misses.sh, telemetry.sh) |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
 | `references/` | `default-topic-template.md` (the only reference doc; wave-engine/refresh-procedure/obsidian were removed in 0.21.0) |

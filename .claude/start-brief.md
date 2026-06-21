@@ -1,8 +1,8 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
-Distilled 2026-06-20 from:
-  tech-context.md @ 1df8f5e8103d04e1ecd111025ba96d5203166846
-  system-patterns.md @ 935d56bce53231433497d1d1ab5b543ac0d285ba
+Distilled 2026-06-21 from:
+  tech-context.md @ ce7bfc6e5f14a26697736eef4d63653aa4ffb2dd
+  system-patterns.md @ cb95d04c50aee7588536ff3174364cf0b7e6d359
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
@@ -62,25 +62,27 @@ Three-layer plugin; holds no knowledge, manipulates user-owned library repos.
 
 ### Audit and enrich pipeline (stateless)
 
-`/stacks:audit-stack {stack}`: A1 dispatch `validator` over articles (one agent unless count exceeds the 25 cap, then inline `${ARRAY[@]:i:CAP}` slices in parallel, each with a `BATCH_TAG`). Each validator fixes claims that contradict their cited source in place (excludes `sources/incoming/` + `sources/trash/`), records corrections + soft spots to `dev/audit/_audit-${BATCH_TAG}.md`, sets `last_verified`, no inline body marks. Parent re-gates each article (`article-validated` = populated `last_verified` date) → aggregate into `dev/audit/report.md` → commit. Each run is independent: re-checks from scratch, no findings ledger, no carry-forward, no convergence loop, no glossary synthesis. `/stacks:enrich-stack` reads `dev/audit/soft-spots.tsv`, web-searches one grounding source per claim, presents for operator approval, stages only approved sources into `sources/incoming/` (never auto-ingests). Slots between audit and catalog.
+`/stacks:audit-stack {stack}`: A1 dispatch `validator` over articles (one agent unless count exceeds the 25 cap, then inline `${ARRAY[@]:i:CAP}` slices in parallel, each with a `BATCH_TAG`). Each validator fixes claims that contradict their cited source in place (excludes `sources/incoming/` + `sources/trash/`), records corrections + soft spots to `dev/audit/_audit-${BATCH_TAG}.md`, sets `last_verified`, no inline body marks. Parent re-gates each article (`article-validated` = populated `last_verified` date) → aggregate into `dev/audit/report.md` → commit. Each run is independent: re-checks from scratch, no findings ledger, no carry-forward, no convergence loop, no glossary synthesis. `/stacks:enrich-stack {stack}` acquires sources for **gaps** = audit soft spots (`dev/audit/soft-spots.tsv`) + lookup misses (mined from telemetry by `lookup-misses.sh`, sentinel slug `lookup-miss`). The `enrichment` agent web-searches one grounding source per gap, verifies it grounds the specific claim, tiers + dedups it. Two staging modes: interactive (default) stages only operator-approved sources; `--auto` (lookup's hands-free path) auto-stages `CANDIDATE` verdicts only (tier 1-3, quote re-verified). `--query <text>` scopes a run to one gap. Then it closes the loop (catalog + audit). Slots between audit and catalog.
 
 ### Other flows
 
 - `/stacks:init-library {path}`: copy `templates/library/` → create private GitHub repo → write config.
 - `/stacks:new-stack {name}`: copy `templates/stack/` to `{name}/` → register in library `catalog.md`.
 - `/stacks:process-inbox`: read library `inbox/*.md` → classify against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only.
-- `/stacks:lookup {question}` (north star): read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}`, else all) → recognize matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`, LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank → load matches → synthesize cited answer → optional Karpathy-loop file-back (extend or write an article, then commit). The system optimizes two axes: retrieval friction (the path to the right article via per-article `routing:` lines) and per-article truthfulness (article matches its sources).
+- `/stacks:lookup {question}` (north star): read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}`, else all) → recognize matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`, LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank → load matches → synthesize cited answer → optional Karpathy-loop file-back (extend or write an article, then commit). **On a miss** (no article recognized), lookup logs it (with the searched stack) then auto-enriches hands-free: `enrich-stack {stack} --auto --query "{query}"` researches just that query, auto-stages a CANDIDATE source, catalogs + re-audits, then retries and answers (#69). The system optimizes two axes: retrieval friction (the path to the right article via per-article `routing:` lines) and per-article truthfulness (article matches its sources).
 
 ### Cross-cutting harness patterns
 
 - Parent-side sharded dispatch: scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched directly by the parent skill, not an orchestrator. Orchestrators were removed because nested Task dispatch silently fell back to inline and hit "Prompt is too long". Bounds: 1 source per W1 agent, 25 agents per W2 wave, 25 articles per validator. Sharding uses inline `${ARRAY[@]:i:CAP}`.
-- Write-or-fail gate: caller captures `DISPATCH_EPOCH=$(date +%s)` before dispatch; each expected file must be non-empty AND mtime strictly newer than the epoch (size alone misses a stale file, mtime alone misses an empty write), then pass `assert-structure.sh`. Sub-agents return only text, no exit code, so the file-based gate is the success signal. The gate enumerates file paths, never a directory.
+- Write-or-fail gate: caller captures `DISPATCH_EPOCH=$(date +%s)` before dispatch; each expected file must be non-empty AND mtime strictly newer than the epoch (size alone misses a stale file, mtime alone misses an empty write), then pass `assert-structure.sh`. `gate-batch.sh` mtime is portable (GNU `stat -c %Y` + BSD `-f %m` fallback). Sub-agents return only text, no exit code, so the file-based gate is the success signal. The gate enumerates file paths, never a directory.
 - Slug immutability: W1 cannot rename an existing article's slug — it matches by claim overlap and reuses the slug. With W1b dedup this eliminates silent overwrite by parallel W2 writes to the same filename.
+- Shell env does NOT persist between a skill's Bash blocks (cwd does). Re-derive state in the block that needs it, or pass it via a nested skill's `$ARGUMENTS` (never an env var). Bit the lookup auto-path twice; structural fix tracked in #72.
 
 ### Known weak spots
 
-- `regenerate-moc.sh` / `normalize-tags.sh` use `awk`, not tested against mawk-only environments.
-- `gate-batch.sh` uses Linux `stat -c %Y`; macOS/BSD syntax differs, unsupported.
+- `regenerate-moc.sh` / `normalize-tags.sh` use `awk`, not tested against mawk-only environments (both now parse inline + block tag forms).
+- Output gates prove a file was written, not that every dispatched item was processed; audit gate keys on `last_verified == today` (#71).
+- Lookup-miss enrichment runs off global telemetry that can't tell libraries apart or mark a miss resolved — batch path only (#73).
 
 ---
 

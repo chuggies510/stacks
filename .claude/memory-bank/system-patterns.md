@@ -4,8 +4,8 @@
 
 Three-layer plugin:
 
-1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `process-inbox`, `lookup`. Each is a SKILL.md with a procedural walkthrough.
-2. **Agents**: 3 workers (`source-extractor`, `article-synthesizer`, `validator`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources` and `audit-stack` skills directly — there are no orchestrator agents.
+1. **Skills** (user-facing): `init-library`, `new-stack`, `catalog-sources`, `audit-stack`, `enrich-stack`, `process-inbox`, `lookup`. Each is a SKILL.md with a procedural walkthrough.
+2. **Agents**: 4 workers (`source-extractor`, `article-synthesizer`, `validator`, `enrichment`). Scale-sensitive dispatch (sharding work across N sub-agents) is done parent-side by the `catalog-sources`, `audit-stack`, and `enrich-stack` skills directly — there are no orchestrator agents.
 3. **Templates** (scaffolding): `templates/library/` and `templates/stack/` are copied into user repos to bootstrap structure.
 
 The plugin itself holds no knowledge. It manipulates user-owned library repos.
@@ -29,8 +29,13 @@ The plugin itself holds no knowledge. It manipulates user-owned library repos.
 
 Each audit run is independent: the validator re-marks from scratch and the report is rebuilt from the current marks. There is no `findings.md` ledger, no carry-forward, no convergence pass-loop, and no glossary/invariants/contradictions synthesis — those (and the catalog↔audit extraction-hash flywheel) were removed in 0.21.0.
 
+### Enrich pipeline (gap → source acquisition)
+`/stacks:enrich-stack {stack}` slots `audit → enrich → catalog`: it acquires sources for **gaps**, then closes the loop (runs `catalog-sources` + `audit-stack` itself). A gap is either an audit soft spot (a claim with no cited source, from `dev/audit/soft-spots.tsv`) or a **lookup miss** (a query the stack could not answer, mined from telemetry by `lookup-misses.sh`; sentinel slug `lookup-miss`, no home article). Step 3 stale-drops soft spots whose claim left the article, appends misses, and dispatches the `enrichment` agent (CAP=12) one source per gap: web-search, verify the source grounds the *specific* claim (not just the topic), tier it against `STACK.md`, dedup by URL. Two staging modes: **interactive** (default) presents findings and stages only operator-approved sources; **`--auto`** (lookup's hands-free path) skips the prompt and auto-stages `CANDIDATE` verdicts only (tier 1-3, quote re-verified after fetch — never `WEAK`/`DUP`/`NOSOURCE`). `--query <text>` scopes a run to exactly one gap (the live miss path uses it so one lookup never enriches the whole backlog). No persistent enrichment ledger; each run derives its work fresh.
+
 ### Lookup
 `/stacks:lookup {question}` (from any repo) → read `~/.config/stacks/config.json` → open library catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}` scope, else all stacks) → **recognize** matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`; the LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank over bodies for body-content matches and un-migrated stacks → load the matched articles → synthesize a cited answer → optional Step 7 Karpathy-loop file-back (extend an existing article or write a new one, then commit). Article-only; the legacy guide mode and the `extraction_hash` frontmatter field are gone.
+
+**Auto-enrich on a miss (#69):** when lookup recognizes no article (a miss), it logs the miss (telemetry, with the searched stack) then invokes `/stacks:enrich-stack {stack} --auto --query "{query}"` hands-free — research the gap, auto-stage a `CANDIDATE` source, catalog + re-audit, then retry the query and return the enriched answer. `--query` keeps it scoped to the one missed query (0.37.0 fix; 0.36.0 had it enriching the whole backlog off a single miss).
 
 **Routing map (project-brief "Design principle", #59):** `index.md` is a concept-routing map — the synthesizer emits a `routing:` frontmatter line per article (what it covers / questions it answers, in asker's terms), `regenerate-moc.sh` composes those into the `## Articles` list, and `/stacks:lookup` recognizes over them. Articles synthesized before #59 carry no `routing:`, so they render as bare title links until re-cataloged (no backfill shipped — that's an LLM batch over existing libraries). The two axes the whole system optimizes are retrieval friction (the path to the right article) and per-article truthfulness (the article matches its sources).
 
@@ -59,5 +64,7 @@ This mirrors the ChuggiesMart pattern — same mechanism, single-plugin variant.
 
 ## Known Weak Spots
 
-- W4 MoC generator (`regenerate-moc.sh`) and the tag parse in `normalize-tags.sh` use `awk`; not exercised against mawk-only environments.
-- `gate-batch.sh` uses Linux `stat -c %Y`; macOS/BSD `stat` syntax differs and is unsupported.
+- W4 MoC generator (`regenerate-moc.sh`) and the tag parse in `normalize-tags.sh` use `awk`; not exercised against mawk-only environments. (Both now parse inline and block tag forms — fixed 0.37.0.)
+- **Shell state does not persist between Bash blocks** (env vars/functions are lost; cwd persists). The skills set `STACK`/`SCRIPTS_DIR`/arrays/epochs in one block and use them in later blocks, relying on the model to re-thread them — fragile for derived state (a pre-dispatch epoch can't be re-derived). Bit the 0.36.0 lookup auto-path twice. Structural fix (move orchestration into scripts) tracked in **#72**. See also the stacks CLAUDE.md gotcha.
+- **Output gates prove a file was written, not that every dispatched item was processed.** `gate-batch.sh`/`assert-structure.sh` check shape + freshness, not per-item coverage, and the audit gate keys on `last_verified == today` (a same-day rerun passes articles an aborted validator skipped). Run-manifest redesign tracked in **#71**.
+- Lookup-miss enrichment is driven off global telemetry that can't tell two libraries apart and never marks a miss resolved (batch path only; the live `--query` path is unaffected). Tracked in **#73**.
