@@ -22,17 +22,24 @@ audit-stack   →   enrich-stack   →   catalog-sources
 (finds gaps)      (acquires sources)   (ingests them)
 ```
 
-For each soft spot the `enrichment` agent web-searches one source that grounds
-the exact claim, verifies it (not just topically related), rates its tier, and
-dedups against already-filed sources. This skill batches the gaps, gates the
-agents, dedups by URL, then **presents the findings for operator approval and
-stages only what the operator approves** into `sources/incoming/`. Nothing is
-ever auto-ingested without an operator decision, but once the operator approves
-staging it closes the loop itself: it runs `catalog-sources` + `audit-stack` in
-the same session and reports which gaps cleared, rather than handing the operator
-two more commands. Each run
-derives its work from the latest audit artifact; there is no persistent
-enrichment ledger.
+For each gap the `enrichment` agent web-searches one source that grounds the
+exact claim, verifies it (not just topically related), rates its tier, and dedups
+against already-filed sources. This skill batches the gaps, gates the agents,
+dedups by URL, then stages sources into `sources/incoming/`.
+
+**Two staging modes, by invocation:**
+- **Interactive (default):** presents the findings and **stages only what the
+  operator approves**. Nothing enters the library without an operator decision.
+- **`--auto` (lookup's hands-free path, #69):** no operator prompt — auto-stages
+  the agent's `CANDIDATE` verdicts only (tier 1-3, quote re-verified after fetch;
+  never `WEAK`/`DUP`/`NOSOURCE`). This trades the human gate for the agent's
+  verdict, so it is deliberately narrow: lookup invokes it with `--query` to scope
+  the run to the single query that missed, never a bulk backlog sweep.
+
+Either way it then closes the loop itself — runs `catalog-sources` + `audit-stack`
+in the same session and reports which gaps cleared. A batch run derives its work
+from the latest audit artifact plus mined lookup misses; a `--query` run derives
+exactly one gap. There is no persistent enrichment ledger.
 
 ## Step 0: Telemetry
 
@@ -48,25 +55,33 @@ if [[ ! -f "catalog.md" ]]; then
   echo "ERROR: Not in a library repo (no catalog.md)."
   exit 1
 fi
-# Parse args: the first non-flag token is the stack; `--auto` enables hands-free
-# staging (no operator prompt — Step 6). Env vars can't carry the signal because
-# shell state does not persist across a Skill invocation, so it rides $ARGUMENTS.
+# Parse args. The first non-flag token is the stack. `--auto` enables hands-free
+# staging (no operator prompt — Step 6). `--query <text>` scopes this run to ONE
+# gap (that query) instead of mining audit soft spots + telemetry misses; it MUST
+# come last because it consumes the rest of the string (so a multi-word query
+# survives word-splitting). lookup's live auto-path passes both (#69); a manual
+# operator run passes neither and gets the full batch. Env vars can't carry any of
+# this — shell state does not persist across a Skill invocation — so it rides
+# $ARGUMENTS.
+QUERY=""
+case "$ARGUMENTS" in *--query\ *) QUERY="${ARGUMENTS#*--query }" ;; esac
+HEAD="${ARGUMENTS%%--query*}"   # args before --query (or the whole string if absent)
 STACK=""; AUTO=0
-for tok in $ARGUMENTS; do
+for tok in $HEAD; do
   case "$tok" in
     --auto) AUTO=1 ;;
     *) [[ -z "$STACK" ]] && STACK="$tok" ;;
   esac
 done
 if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:enrich-stack {stack-name} [--auto]"
+  echo "ERROR: Specify a stack name. Usage: /stacks:enrich-stack {stack-name} [--auto] [--query <text>]"
   exit 1
 fi
 if [[ ! -f "$STACK/STACK.md" ]]; then
   echo "ERROR: Stack '$STACK' not found (no STACK.md)."
   exit 1
 fi
-echo "AUTO=$AUTO"   # 1 = hands-free (lookup-driven, #69); 0 = operator approves staging
+echo "AUTO=$AUTO QUERY=${QUERY:-<none>}"   # AUTO=1 hands-free (#69); QUERY set = single-gap scope
 TSV="$STACK/dev/audit/soft-spots.tsv"
 SCRIPTS_DIR="$STACKS_ROOT/scripts"
 # soft-spots.tsv may be absent or empty — but lookup misses (#68) are an
@@ -111,8 +126,22 @@ for a claim that no longer exists wastes web calls and stages irrelevant sources
 mkdir -p "$STACK/dev/enrich"
 GAPS="$STACK/dev/enrich/_gaps.tsv"   # gap_id<TAB>slug<TAB>claim<TAB>reason
 : > "$GAPS"
+
+# Targeted mode (--query, lookup's live auto-path, #69): enrich exactly ONE gap —
+# the query that just missed — and nothing else. No soft-spot scan, no telemetry
+# mining. One user lookup authorizes researching only that query, not the stack's
+# entire backlog (it would otherwise web-search every historical miss + open soft
+# spot and commit them all off a single miss). Skip straight past the batch build.
+if [[ -n "$QUERY" ]]; then
+  q_flat=$(printf '%s' "$QUERY" | tr -s '[:space:]' ' ')
+  printf 'gap-0\tlookup-miss\t%s\tlookup miss\n' "$q_flat" > "$GAPS"
+  N_GAPS=1
+  echo "Targeted enrich: 1 gap (the lookup miss \"$q_flat\")."
+fi
+
+# Batch mode (no --query): audit soft spots + mined lookup misses.
 i=0; STALE=0; TOTAL=0
-if [[ -f "$TSV" ]]; then
+if [[ -z "$QUERY" && -f "$TSV" ]]; then
   while IFS=$'\t' read -r slug claim reason; do
     [[ -z "$slug" ]] && continue
     TOTAL=$((TOTAL+1))
@@ -136,17 +165,19 @@ N_SOFT=$i
 # directly. lookup-misses.sh already dedups its queries; cross-dedup against soft
 # spots is unnecessary (a query and an article-claim are different shapes).
 MISS=0
-while IFS=$'\t' read -r slug claim reason; do
-  [[ -z "$claim" ]] && continue
-  printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-  i=$((i+1)); MISS=$((MISS+1))
-done < <(bash "$SCRIPTS_DIR/lookup-misses.sh" "$STACK")
-N_GAPS=$i
-echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich."
-if [[ "$N_GAPS" -eq 0 ]]; then
-  echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
-  rm -f "$GAPS"
-  exit 0
+if [[ -z "$QUERY" ]]; then
+  while IFS=$'\t' read -r slug claim reason; do
+    [[ -z "$claim" ]] && continue
+    printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
+    i=$((i+1)); MISS=$((MISS+1))
+  done < <(bash "$SCRIPTS_DIR/lookup-misses.sh" "$STACK")
+  N_GAPS=$i
+  echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich."
+  if [[ "$N_GAPS" -eq 0 ]]; then
+    echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
+    rm -f "$GAPS"
+    exit 0
+  fi
 fi
 ```
 

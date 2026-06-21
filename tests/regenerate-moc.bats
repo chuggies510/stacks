@@ -52,6 +52,23 @@ EOF
   grep -qF '[[wikilink-title|Bash test conditional syntax]]' "$STACK/index.md"
 }
 
+@test "inline flow-list tags group by first tag, not uncategorized (#18)" {
+  # STACK.md's template demonstrates the inline form; normalize-tags.sh accepts it.
+  # regenerate-moc must too, or an inline-tagged article silently lands in
+  # 'uncategorized' despite carrying a valid tag.
+  cat > "$STACK/articles/econ.md" <<'EOF'
+---
+title: Economizer
+tags: [controls, airflow]
+---
+Body.
+EOF
+  bash "$SCRIPT" "$STACK"
+  grep -qF '### controls' "$STACK/index.md"
+  ! grep -qF '### uncategorized' "$STACK/index.md"
+  grep -qF '[[econ|Economizer]]' "$STACK/index.md"
+}
+
 @test "preserves the Reading Paths section verbatim" {
   cat > "$STACK/index.md" <<'EOF'
 # hvac: Map of Contents

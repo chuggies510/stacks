@@ -1,3 +1,12 @@
+## 0.37.0 — 2026-06-21
+
+**A lookup miss now enriches only the query that missed, not the whole backlog.** Review of 0.36.0 found the hands-free path authorized far more automatic work than the user asked for: one miss triggered a web-search + commit of *every* historical miss and open soft spot for that stack.
+- `enrich-stack` takes a new `--query <text>` flag that scopes a run to exactly one gap (that query), skipping the audit-soft-spot scan and telemetry mining entirely. `lookup` passes it on a miss (`enrich-stack {stack} --auto --query "…"`), so the live auto-path researches just the missed question and commits just that. The bulk batch path (manual `enrich-stack {stack}`, operator-approved) is unchanged. (`skills/enrich-stack/SKILL.md` Steps 1+3, `skills/lookup/SKILL.md` Step 9)
+- The enrich-stack overview no longer claims it "never auto-ingests" unconditionally — it documents the two staging modes (interactive approval vs. `--auto` CANDIDATE-only) honestly. The lookup fallback no longer says "queued for the next audit" when enrich already cataloged and committed.
+- `gate-batch.sh` mtime check is now portable: GNU `stat -c %Y` with a BSD `stat -f %m` fallback, so the catalog/enrich gates work whether or not GNU coreutils is on PATH (before, the wrong syntax silently returned 0 and failed every batch). (`scripts/gate-batch.sh`)
+- `regenerate-moc.sh` now parses inline `tags: [a, b]` frontmatter, not only block lists — an inline-tagged article was silently filed under "uncategorized" in the Map of Contents even though the STACK.md template demonstrates the inline form. (`scripts/regenerate-moc.sh`, `tests/regenerate-moc.bats`)
+- New `tests/version-sync.bats` enforces plugin.json == marketplace.json == top CHANGELOG version (was policy-only).
+
 ## 0.36.0 — 2026-06-21
 
 **A lookup that finds nothing now researches the gap and answers anyway — one command, no second step.** Before, a miss just said "no matching content" and stopped; the user had to go acquire sources by hand (stacks#69).

@@ -33,6 +33,15 @@ shift 3
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Portable mtime in epoch seconds: GNU coreutils `stat -c %Y` (Linux, and macOS
+# with Homebrew coreutils on PATH) vs BSD `stat -f %m` (stock macOS). Try GNU
+# first, fall back to BSD, else 0. Without this, the wrong syntax silently returns
+# nothing and the `|| echo 0` makes every file look older than the epoch — so
+# every batch fails its gate on a host with only the other `stat`.
+mtime_epoch() {
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
 FAILED=()
 for path in "$@"; do
   # Write-or-fail gate (size + mtime): the file must be non-empty AND freshly
@@ -41,7 +50,7 @@ for path in "$@"; do
   # wall-clock second as the epoch capture — accept it (`<`, not `<=`, else a
   # fast same-second agent write is wrongly failed). Size alone misses a stale
   # leftover; mtime alone misses an empty write.
-  if [[ ! -s "$path" ]] || (( $(stat -c %Y "$path" 2>/dev/null || echo 0) < DISPATCH_EPOCH )); then
+  if [[ ! -s "$path" ]] || (( $(mtime_epoch "$path") < DISPATCH_EPOCH )); then
     FAILED+=("$path")
   elif [[ "$STRUCTURE_KIND" != "-" ]]; then
     if ! "$SCRIPT_DIR/assert-structure.sh" "$path" "$STRUCTURE_KIND" "$AGENT_LABEL" 2>/dev/null; then

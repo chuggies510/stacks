@@ -171,20 +171,26 @@ For each in-scope stack (usually one):
    cd "$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh")"
    ```
 
-   Then invoke `/stacks:enrich-stack {stack} --auto`. It reads this miss from
-   telemetry, web-searches one grounding source, stages every `CANDIDATE`,
-   catalogs them into articles, and re-audits — committing the result in the
-   library. (It also sweeps any other recent misses / open soft spots for that
-   stack in the same pass; that is extra value, not a bug.)
+   Then invoke `/stacks:enrich-stack {stack} --auto --query "{the user's query}"`.
+   The `--query` scopes the run to **this one gap**: enrich-stack web-searches a
+   grounding source for exactly this query, stages it if `CANDIDATE` (tier 1-3,
+   quote re-verified), catalogs it into an article, and re-audits — committing the
+   result in the library. It does **not** touch the stack's other soft spots or
+   historical misses; one miss authorizes researching only the query that missed.
+   (Pass the query as the literal last argument; `--query` consumes the rest of
+   the string, so it needs no quoting gymnastics on the enrich side.)
 
 3. After it returns, **retry the lookup for the original query**: redo Steps 5–7
    against the now-updated `{stack}/index.md` (re-read the routing map, re-recognize,
    re-synthesize) and deliver the enriched answer.
 
-**Fallback (#69).** If `enrich-stack` staged nothing (every gap came back
-`NOSOURCE`) or the retry still finds no confident article, say so plainly and
-name what was filed, e.g.: "Still no confident answer. Filed N source(s) to
-`{stack}/sources/incoming/`; the topic is queued for the next full audit." Do not
+**Fallback (#69).** Report enrich-stack's actual outcome — it already catalogs
+and commits, so do not say "queued for the next audit" (the sources are already
+ingested or were never staged). If it staged nothing (`NOSOURCE` — nothing on the
+web grounds the query) say so: "No groundable source found for this query;
+nothing was added." If it staged and cataloged a source but the retry still finds
+no confident article, say: "Researched and filed a source on this, but it didn't
+synthesize into a confident answer — see the new article in `{stack}`." Do not
 fabricate an answer from thin sources.
 
 Then stop (a miss does not also run Step 10 — there is no synthesized answer to
