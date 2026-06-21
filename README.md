@@ -101,8 +101,8 @@ Listed in lifecycle order: set up, route and ingest, maintain, query.
 | `/stacks:process-inbox` | route queued inbox files into the matching stacks | anywhere |
 | `/stacks:catalog-sources {stack}` | identify concepts in new sources, write one article per concept | inside the library |
 | `/stacks:audit-stack {stack}` | validate articles against sources, report drift / unsourced / stale | inside the library |
-| `/stacks:enrich-stack {stack}` | acquire sources for audit soft spots: web-search per gap, approve, stage into incoming/ | inside the library |
-| `/stacks:lookup {query}` | answer a question from your curated articles | anywhere |
+| `/stacks:enrich-stack {stack}` | acquire sources for gaps (audit soft spots + lookup misses): web-search per gap, approve, stage into incoming/ | inside the library |
+| `/stacks:lookup {query}` | answer a question from your curated articles; on a miss, auto-research the gap and answer anyway | anywhere |
 
 **run from** is where you can type the command, not a grouping by kind. `new-stack`, `catalog-sources`, `audit-stack`, and `enrich-stack` act on the stack in your current directory, so run them inside the library. The others don't need that: `init-library` takes a target path and writes the config, while `lookup` and `process-inbox` read the library location from `~/.config/stacks/config.json`. By purpose `process-inbox` belongs with `catalog-sources`: it writes to the library and feeds the ingest. It only shares an invocation style with the read-only `lookup`.
 
@@ -129,12 +129,19 @@ articles/  →  [validator]  →  fix source-contradictions in place + collect s
            →  audit report  →  dev/audit/report.md  +  dev/audit/soft-spots.tsv (the enrich input)
 ```
 
-**enrich-stack** (run to close soft spots — slots audit → enrich → catalog):
+**enrich-stack** (run to close gaps — slots audit → enrich → catalog):
 
 ```
-soft-spots.tsv  →  drop stale gaps  →  [enrichment × N]  →  one source per gap (search/verify/tier/dedup)
+soft-spots.tsv  +  lookup misses (telemetry)  →  drop stale gaps  →  [enrichment × N]
+                →  one source per gap (search/verify/tier/dedup)
                 →  operator approval  →  stage approved into sources/incoming/  (never auto-ingests)
 ```
+
+Gaps come from two places: audit soft spots (claims with no cited source) and
+**lookup misses** — questions `/stacks:lookup` could not answer (mined from
+telemetry). With `--auto` the operator-approval step is skipped and the agent's
+`CANDIDATE` sources stage automatically; this is the hands-free path `lookup`
+takes on a miss to research the gap and answer in one command.
 
 ---
 
@@ -147,7 +154,7 @@ Four specialized agents power the pipeline:
 | source-extractor | read one source, extract concepts and claims, map to article slugs, assign tiers | catalog-sources |
 | article-synthesizer | write/update an article-per-concept wiki entry | catalog-sources |
 | validator | verify article claims against cited sources, fix contradictions in place, collect soft spots | audit-stack |
-| enrichment | web-search one grounding source per soft spot, verify + tier + dedup it for approval | enrich-stack |
+| enrichment | web-search one grounding source per gap (audit soft spot or lookup miss), verify + tier + dedup it for approval | enrich-stack |
 
 ---
 
