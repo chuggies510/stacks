@@ -7,3 +7,7 @@ node_modules/
 .env*
 __pycache__/
 *.pyc
+
+# transient /start /stop session markers (accidentally committed S11, untracked S16)
+.claude/.session-main-active
+.worktree-active
