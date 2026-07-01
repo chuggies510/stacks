@@ -1,3 +1,8 @@
+## 0.38.0 — 2026-07-01
+
+**A universal entry point that routes to the right stacks skill.** New `using-stacks` skill — the front door, modeled on `using-agent-skills` / `using-code-library`.
+- Routes a task to the correct one of the seven skills via a decision tree (lookup / catalog-sources / process-inbox / audit-stack / enrich-stack / new-stack / init-library), and carries the discipline they share: source-grounded-or-it-doesn't-ship, one-article-per-concept, the routing map earns its keep, query-anywhere-build-in-library, a-miss-is-a-gap-to-close, and operator-approves-what-enters. Invoke it when unsure which `/stacks:*` skill applies, or before ingesting sources. (`skills/using-stacks/SKILL.md`)
+
 ## 0.37.0 — 2026-06-21
 
 **A lookup miss now enriches only the query that missed, not the whole backlog.** Review of 0.36.0 found the hands-free path authorized far more automatic work than the user asked for: one miss triggered a web-search + commit of *every* historical miss and open soft spot for that stack.

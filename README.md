@@ -41,7 +41,7 @@ Everything else is optimized for one outcome: an agent in any repo reaches the e
 
 ```
 stacks/          ← this repo. the tool. public. knows nothing about you.
-  skills/        ← /stacks:init-library, :new-stack, :catalog-sources, :audit-stack, :enrich-stack, :lookup, :process-inbox
+  skills/        ← /stacks:using-stacks (entry point), :lookup, :catalog-sources, :process-inbox, :audit-stack, :enrich-stack, :new-stack, :init-library
   agents/        ← 4 LLM workers (concept identification, synthesis, validation, enrichment)
   scripts/       ← install.sh, init.sh, update.sh
 
