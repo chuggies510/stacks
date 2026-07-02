@@ -251,6 +251,8 @@ CONCEPT_SLUGS=($ALL_SLUGS)
 
 The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug.
 
+**Near-dup review gate (stacks#78).** Exact-slug dedup cannot catch two NEW slugs that are the same concept under different names — parallel extractors are blind to each other. The Python pass flags them by title similarity into `NEAR_DUP_PAIRS` (`slugA~slugB` entries) and prints a WARNING per pair. If `NEAR_DUP_PAIRS` is non-empty, STOP before W2: for each flagged pair, read the two `_dedup-{slug}.md` blocks and decide — same concept → merge them (fold one block's `source_paths` and claims into the other, `rm` the absorbed `_dedup-{slug}.md`, drop the absorbed slug from `CONCEPT_SLUGS`) so synthesis emits one article, not two stubs; genuinely distinct → leave both. This is report-and-decide, never auto-merge: a wrong merge buries a tier-4 claim under a tier-1 block.
+
 ## Step 5.75: W2 — Parent-side parallel article-synthesizer dispatch
 
 Article-synthesizer is naturally 1-per-slug — each agent reads one `_dedup-{slug}.md` and writes one `articles/{slug}.md`. No batching needed.

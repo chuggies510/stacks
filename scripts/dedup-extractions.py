@@ -4,6 +4,8 @@
 # Side-output: writes _dedup-meta.txt to extr_dir; caller must source it for env var injection.
 
 import os, re, sys, glob
+from difflib import SequenceMatcher
+from itertools import combinations
 
 extr_dir, dedup_path = sys.argv[1], sys.argv[2]
 batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
@@ -102,6 +104,28 @@ with open(dedup_path, "w") as f:
     for slug in sorted(slug_sources):
         write_block(f, slug)
 
+# W1b near-dup pass: catch the inverse of the shared-slug collision — two NEW slugs
+# that are really the same concept under different names. Exact-slug match can't see
+# these (they never collide), so two thin stubs would ship forever. Extractors run
+# blind to each other, so this can only be caught here, after all blocks are merged.
+# Title is the cheap high-signal field present in every block (routing lives in the
+# article, not the extraction). Flag pairs above a similarity floor for the operator
+# to merge before synthesis; report-only, never auto-merges (a wrong merge is worse
+# than two stubs). Only NEW slugs — an updated slug already has its article. (stacks#78)
+NEAR_DUP_FLOOR = 0.72
+new_slugs = sorted(s for s in slug_sources if not slug_target_article[s])
+near_dup_pairs = []
+for a, b in combinations(new_slugs, 2):
+    ratio = SequenceMatcher(None, _norm_title(slug_title[a]), _norm_title(slug_title[b])).ratio()
+    if ratio >= NEAR_DUP_FLOOR:
+        near_dup_pairs.append((a, b, ratio))
+        print(
+            f"WARNING: new slugs '{a}' and '{b}' have {ratio:.0%}-similar titles "
+            f"('{slug_title[a]}' vs '{slug_title[b]}') — likely the same concept split "
+            "across parallel extractors; review and merge before synthesis.",
+            file=sys.stderr,
+        )
+
 # Emit slug list, new/updated classification, and counts to _dedup-meta.txt for caller to source.
 updated_slugs = [s for s in slug_sources if slug_target_article[s]]
 with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
@@ -112,6 +136,7 @@ with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
     f.write("ALL_SLUGS=" + " ".join(sorted(slug_sources)) + "\n")
     f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
     f.write("TITLE_MISMATCH_SLUGS=" + " ".join(sorted(title_mismatch_slugs)) + "\n")
+    f.write("NEAR_DUP_PAIRS=" + " ".join(f"{a}~{b}" for a, b, _ in near_dup_pairs) + "\n")
 
 # Write one _dedup-{slug}.md per unique slug so article-synthesizer agents each
 # read a self-contained single-concept file rather than parsing _dedup.md.

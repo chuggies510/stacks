@@ -280,11 +280,18 @@ indistinguishable from a hand-dropped source:
 **Tier:** {N} ({tier label from STACK.md})
 **Fetched:** {today}
 **Supports gap:** {slug(s) this source grounds, or the query for a `lookup-miss` gap}
+**Excerpt:** {yes — only if you truncated; omit the line when the body is the full fetched text}
 
 ---
 
-{fetched text / the relevant excerpt}
+{verbatim fetched text — see grounding discipline below}
 ```
+
+**Grounding discipline (stacks#79).** The body below the `---` is publication text, not your writing. Otherwise the grounding chain becomes model-grounded-in-model: a future validator would "verify" a claim against text this step wrote to match that claim.
+
+- **Store the full fetched text by default.** Paste the page's main content verbatim. Do not hand-pick a claim-sized snippet — a model-selected excerpt bakes in selection bias the later quote re-verify cannot catch.
+- **Excerpt only above a size cap.** If the fetched text exceeds ~1500 words, take a generous *contiguous* span (the whole section the supporting passage sits in, headings included), not a claim-tailored sentence. When you truncate, add `**Excerpt:** yes` to the header so the source is honestly labeled as partial.
+- **No commentary in the body, ever.** No arithmetic, restatement, or framing tailored to the claim (e.g. "737 chars ≈ 184 tokens, within the 180–220 range"). Everything you want to say about *why* this grounds the claim lives in the header (`**Supports gap:**`) or the findings row, never interleaved into the source text.
 
 Generate the filename with `collision-dest.sh` (it returns a non-colliding path
 in the target dir):

@@ -4,6 +4,10 @@
 
 *What does this stack cover? What domains, topics, or subject areas?*
 
+### What does not belong
+
+Pure reference material is out of scope for every stack: CLI flag listings, API reference pages, configuration-key catalogs, and step-by-step setup guides for a specific product. These belong in that tool's own documentation. The test is behavior vs. reference, not tool-name presence: knowledge of how a named tool *behaves* — documented bugs, workarounds, version quirks, performance characteristics, failure modes — is in scope even though it names the tool, because it is hard-won operating experience the vendor docs omit. Out of scope is material whose only content is *what the flags, endpoints, or settings are*: if stripping the how-to-invoke detail leaves nothing but a restatement of the reference manual, produce no concept blocks and discard it.
+
 ## Source Hierarchy
 
 How to rank conflicting sources. Higher tiers win conflicts.

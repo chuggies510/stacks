@@ -60,3 +60,43 @@ EOF
   [[ "$output" == *"Arc-fault breakers"* ]]
   grep -q '^TITLE_MISMATCH_SLUGS=.*legacy-wiring-hazards' "$EXTR/_dedup-meta.txt"
 }
+
+@test "flags two new slugs with near-identical titles as a near-dup pair (stacks#78)" {
+  cat > "$EXTR/batch-2-concepts.md" <<'EOF'
+## Concept: Knob-and-tube wiring hazards
+
+slug: knob-and-tube-hazards
+title: Legacy wiring hazards in old homes
+source_paths:
+  - sources/incoming/cpsc-old-homes.md
+target_article: ""
+tier: 1
+
+### Claims
+- Knob-and-tube runs hot under insulation.
+EOF
+  run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"similar titles"* ]]
+  grep -q '^NEAR_DUP_PAIRS=.*knob-and-tube-hazards~legacy-wiring-hazards\|^NEAR_DUP_PAIRS=.*legacy-wiring-hazards~knob-and-tube-hazards' "$EXTR/_dedup-meta.txt"
+}
+
+@test "does not flag two new slugs with unrelated titles" {
+  cat > "$EXTR/batch-2-concepts.md" <<'EOF'
+## Concept: Grounding electrode conductors
+
+slug: grounding-electrode-conductors
+title: Grounding electrode conductor sizing
+source_paths:
+  - sources/incoming/nec-250.md
+target_article: ""
+tier: 1
+
+### Claims
+- The GEC is sized from Table 250.66.
+EOF
+  run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
+  [ "$status" -eq 0 ]
+  grep -q '^NEAR_DUP_PAIRS=$' "$EXTR/_dedup-meta.txt"
+}

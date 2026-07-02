@@ -91,7 +91,7 @@ Requirements:
 - If the articles don't fully answer the question, say what's missing
 - Do not invent information beyond what the articles contain
 
-**Collect primary sources.** Before formatting the response, gather the vera base sources from every article read. Each article has a `sources:` frontmatter list of relative paths (e.g. `swe/sources/fowler-bliki/fowler-harness-engineering.md`). For each unique path, read the first 8 lines of `$LIBRARY/{path}` and extract:
+**Collect primary sources.** Before formatting the response, gather the base sources from every article read. Each article has a `sources:` frontmatter list of relative paths. The corpus carries two live forms (stacks#77): the **bare** form `sources/{publisher}/{file}.md` and the **stack-prefixed** form `{stack}/sources/{publisher}/{file}.md` (e.g. `swe/sources/fowler-bliki/fowler-harness-engineering.md`). Resolve each robustly so a citation never silently drops: if the path already begins with a stack name (i.e. `{stack}/sources/...`), read `$LIBRARY/{path}`; if it begins with a bare `sources/...`, prepend the stack the article belongs to and read `$LIBRARY/{stack}/{path}`. If the first attempt does not exist, try the other form before giving up. For each unique resolved path, read the first 8 lines and extract:
 - The H1 heading (title of the original publication)
 - `Source:` line (URL)
 - `Author:` line (if present)
