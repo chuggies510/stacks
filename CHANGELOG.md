@@ -1,3 +1,9 @@
+## 0.41.1 — 2026-07-02
+
+**Un-did a silent regression: the audit validator was chewing 25 articles per agent again.** A deliberate "smaller batches" fix (Apr 29, `7cbcb0e`) had dropped the validator to 3 articles per agent for per-article isolation; the later stateless-audit rewrite reset it to 25 without carrying the reason forward.
+- **`audit-stack` validator cap 25 → 3 articles per agent.** Each validator re-reads every article in its slice *plus* the sources each claim cites, so a 25-wide slice both risks "prompt too long" and lets one article's claim get checked against another's source (cross-article contamination). Restored the isolation value and pinned the rationale inline so a future refactor doesn't bump it back for "fewer agents". (`skills/audit-stack/SKILL.md`)
+- **Fixed the stale cross-reference in `enrich-stack`** that justified its own `CAP=12` as "smaller than the validator's 25" — the validator is no longer 25, and the two caps guard different things (validator = context isolation, enrich = serial web-call fan-out). Reworded; enrich's 12 stands. (`skills/enrich-stack/SKILL.md`)
+
 ## 0.41.0 — 2026-07-02
 
 **Finish the review backlog: the deferred near-dup pass, the second grounding side-door, and the scope rule the corpus contradicted.** 0.40.0 did a first pass over #77-#80; these are the remaining halves, done from the library side too.

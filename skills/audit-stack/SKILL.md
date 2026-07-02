@@ -49,12 +49,12 @@ Read `$STACK/STACK.md` for the source-hierarchy section. The validator needs it 
 
 ## Step 3: A1 — Validate articles against sources
 
-Dispatch the `stacks:validator` agent over the articles. One agent unless the article count exceeds the cap (the cap bounds how many articles a single agent re-reads in one pass, and — when sliced — how many subagents spawn at once). Slice inline with the same `${ARRAY[@]:i:CAP}` idiom catalog W2 uses.
+Dispatch the `stacks:validator` agent over the articles. One agent unless the article count exceeds the cap (the cap bounds how many articles a single agent re-reads in one pass — each with its cited sources — and, when sliced, how many subagents spawn at once). Keep it small: a validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. Slice inline with the same `${ARRAY[@]:i:CAP}` idiom catalog W2 uses.
 
 ```bash
 mapfile -t ARTICLES < <(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
 N_ARTICLES=${#ARTICLES[@]}
-CAP=25
+CAP=3   # articles per validator agent. Small on purpose: each agent also reads every cited source, so a big slice risks prompt-overflow + cross-article contamination. Raise only if dispatch fan-out (N/3 agents) becomes the bottleneck, never for "fewer agents".
 DISPATCH_EPOCH=$(date +%s)
 mkdir -p "$STACK/dev/audit"
 rm -f "$STACK"/dev/audit/_audit-*.md   # clear any stale per-batch files from a prior run
