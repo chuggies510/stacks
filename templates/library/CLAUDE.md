@@ -55,6 +55,13 @@ Derive "Next" from state:
 - **index.md is the stack index.** Each stack's index.md is the routing map of all
   articles for that stack (the recognition list `/stacks:lookup` reads). catalog-sources
   regenerates it. Do not edit manually.
+- **Deep reference is the handbook shelf.** `{stack}/reference/{book}/` holds gated,
+  reference-grade handbook chapters (produced by `/stacks:ingest-book`), cited to the
+  printed page. Chapter files are LLM-maintained like articles — do not hand-edit; their
+  `index.md` is generated. `/stacks:lookup` reads them behind the articles (articles are
+  the first-class answer, reference is the shelf behind them). Raw PDFs there are
+  gitignored (local only). To promote a chapter into synthesized articles, copy it into
+  `sources/incoming/` and run `/stacks:catalog-sources`.
 - **log.md is append-only.** Records what operations happened and when.
 - **STACK.md is the schema.** Defines source hierarchy, topic template, and filing
   rules for that stack. Edit this to change how the stack is curated.

@@ -65,11 +65,12 @@ Rewrite `STACKS_TO_SEARCH` to contain only the selected stack name(s) before pro
 ## Step 5: Read the routing map for all stacks in scope
 
 For each stack in `STACKS_TO_SEARCH`:
-- Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no index yet" and skip it.
+- Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no article index yet".
 - The `## Articles` section is the routing map: `- [[slug|title]] — {routing line}`, where the routing line says what the article covers and the questions it answers (#59). This is the recognition surface for Step 6.
 - Capture any `## Reading Paths` section as supplementary retrieval context.
+- **Deep-reference tier** (stacks#85): also read every `$LIBRARY/{stack}/reference/*/index.md` that exists (one per ingested handbook; most stacks have none — skip silently when the glob is empty). Each is a `## Chapters` map of gated handbook chapters: `- [[chapter-slug|Vol V Ch C: Title]] — {topics} (printed pp. N-M)`. This is the recognition surface for Step 6.5. Schema: the plugin's `references/reference-tier.md`.
 
-If all stacks were skipped (none had an index), tell the user to run `/stacks:catalog-sources` in the library repo.
+If a stack has neither an article index nor any reference index, note it as "no index yet" and skip it. If ALL stacks were skipped (no index of either kind anywhere), tell the user to run `/stacks:catalog-sources` in the library repo.
 
 ## Step 6: Recognize matching articles across stacks
 
@@ -79,17 +80,30 @@ If all stacks were skipped (none had an index), tell the user to run `/stacks:ca
 
 From the `## Articles` routing lines you read in Step 5, select every article whose routing line (or title) matches the query's intent. The routing line is written in an asker's words, so match on meaning, not just shared tokens. Take as many as genuinely match — do not pad to a fixed count, and do not cap a broad question at a few when more are on-topic.
 
-Read the selected article files. If recognition found nothing (a **miss**), do not synthesize from nothing here — instead run Step 8 to log the miss, then go to **Step 9 (auto-enrich on a miss)**, which researches the gap and retries. Only if Step 9 is not applicable (no stack matched in Hop-1, or it stages nothing) do you tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}."
+Read the selected article files. If article recognition found nothing, do **not** conclude a miss yet — the deep-reference tier (Step 6.5) may still answer the query. Proceed to Step 6.5; the miss decision is made there, once both the article map and the reference map have been checked.
+
+## Step 6.5: Recognize matching reference chapters (stacks#85)
+
+<!-- Retrieval contract: input = (QUERY, the reference `## Chapters` maps read in Step 5).
+     Output = the chapter file paths whose routing line matches the query; Step 7 reads
+     them alongside the articles. -->
+
+From the `## Chapters` routing lines in the reference indexes you read in Step 5, select every chapter whose line (topics + title) matches the query's intent — same recognition as Step 6, matching on meaning. Most queries match zero chapters (the stack has no book, or the book doesn't cover this); that is normal.
+
+Read the selected chapter files (each is reference-grade handbook Markdown with provenance frontmatter). They feed Step 7 as **backing reference behind the articles** — articles stay the first-class answer (the firm's design guides); a chapter is the handbook page the answer traces to.
+
+**Miss decision (both surfaces now checked).** A **miss** is: Step 6 found no article AND Step 6.5 found no chapter. On a miss, do not synthesize from nothing — run Step 8 to log it, then go to **Step 9 (auto-enrich on a miss)**. Only if Step 9 is not applicable (no stack matched in Hop-1, or it stages nothing) tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." If Step 6.5 found chapters even though Step 6 found no article, that is a **hit** — synthesize from the chapters in Step 7; do not auto-enrich.
 
 ## Step 7: Synthesize answer
 
-Using the article content, synthesize an answer to the user's query.
+Using the article content — and any reference chapters recognized in Step 6.5 — synthesize an answer to the user's query.
 
 Requirements:
 - Cite which article(s) the answer comes from (by title, not path)
 - Include specific data points, formulas, rules of thumb, and field notes from the articles
-- If the articles don't fully answer the question, say what's missing
-- Do not invent information beyond what the articles contain
+- For any content drawn from a **reference chapter** (Step 6.5), cite it to the printed book: book name, volume/chapter, and the printed page range from its frontmatter (`book`, `volume`, `chapter`, `printed_pages`). A handbook chapter IS a citable primary source.
+- If the articles and chapters don't fully answer the question, say what's missing
+- Do not invent information beyond what the articles and chapters contain
 
 **Collect primary sources.** Before formatting the response, gather the base sources from every article read. Each article has a `sources:` frontmatter list of relative paths. The corpus carries two live forms (stacks#77): the **bare** form `sources/{publisher}/{file}.md` and the **stack-prefixed** form `{stack}/sources/{publisher}/{file}.md` (e.g. `swe/sources/fowler-bliki/fowler-harness-engineering.md`). Resolve each robustly so a citation never silently drops: if the path already begins with a stack name (i.e. `{stack}/sources/...`), read `$LIBRARY/{path}`; if it begins with a bare `sources/...`, prepend the stack the article belongs to and read `$LIBRARY/{stack}/{path}`. If the first attempt does not exist, try the other form before giving up. For each unique resolved path, read the first 8 lines and extract:
 - The H1 heading (title of the original publication)
@@ -106,6 +120,7 @@ Format the response as:
 {synthesized answer with specific citations inline}
 
 **Library articles**: {article titles that contributed}
+**Reference chapters**: {book — Vol V Ch C: Title (printed pp. N-M) for each chapter that contributed; omit this line if none}
 **Stack**: {stack name(s) that contributed — use singular "Stack" if only one}
 
 **Primary sources:**
@@ -113,7 +128,9 @@ Format the response as:
 - {repeat per unique citable source}
 ```
 
-If no relevant articles are found: "No matching articles found in {stack}. The stack covers: {list article titles from index.md}. Consider adding sources and running /stacks:catalog-sources {stack}."
+Omit the `**Reference chapters**` line entirely when no chapter contributed (the common case). It appears only for stacks carrying an ingested handbook.
+
+If no article matched but reference chapters did (an article-less hit), synthesize from the chapters and note that no firm article covers this topic yet — a candidate to catalog (copy the chapter into `sources/incoming/`). A **true miss** (neither article nor chapter matched) is handled in Step 6.5 → Step 8 → Step 9, not here — you do not reach Step 7 on a true miss.
 
 ## Step 8: Record the lookup
 
@@ -122,14 +139,14 @@ Log this lookup to telemetry — what was asked and which articles answered it. 
 Substitute the placeholders below (comma-separated). The query comes from `$ARGUMENTS`:
 
 - `stacks` — the stack(s) you searched after Hop-1 narrowing (Step 4). **Populate this even on a miss** — a miss in stack X means "X was the right domain but had no article", which is exactly the gap `lookup-misses.sh` mines and `enrich-stack` closes. Leave empty only when Hop-1 matched no stack at all.
-- `articles` — the article title(s) that contributed to the answer; **empty on a miss**. `articles == ""` (with `stacks` populated) is the miss signal downstream.
+- `articles` — the title(s) that contributed to the answer: article titles AND any reference-chapter titles recognized in Step 6.5 (a chapter answered the query, so it is not a miss). **Empty only on a true miss** — no article and no chapter matched. `articles == ""` (with `stacks` populated) is the miss signal `lookup-misses.sh` mines, so a reference-only hit must record its chapter title(s) here or it is falsely enriched later.
 
 ```bash
 STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 TELEMETRY_EXTRA="$(jq -cn \
   --arg query "$ARGUMENTS" \
   --arg stacks '<stack(s) searched after Hop-1, comma-separated; empty only if no stack matched>' \
-  --arg articles '<contributing article title(s), comma-separated; empty on a miss>' \
+  --arg articles '<contributing article AND reference-chapter title(s), comma-separated; empty only on a true miss (no article and no chapter)>' \
   '{query: $query, stacks: $stacks, articles: $articles}')" \
 SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
@@ -141,7 +158,7 @@ SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null 
 
 ## Step 9: Auto-enrich on a miss (hands-free, #69)
 
-**Only on a miss** (Step 6 found no matching article). On a hit, lookup is done once the answer is delivered.
+**Only on a true miss** (the Step 6.5 decision: no article AND no reference chapter matched). On a hit — including an article-less hit where only a reference chapter matched — lookup is done once the answer is delivered; do not enrich.
 
 A miss is live demand the library could not meet. Instead of stopping, lookup
 researches the gap and retries — in one command, no second invocation. The miss

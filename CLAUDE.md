@@ -17,7 +17,8 @@ This repo is the **stacks tool**. It is NOT a knowledge library. Do not store kn
 - `/stacks:process-inbox` — Route inbox/*.md files to matching stacks
 - `/stacks:audit-stack` — Validate articles against their cited sources, fix contradictions in place, identify gaps
 - `/stacks:enrich-stack` — Acquire sources to close audit soft spots
-- `/stacks:lookup` — Look up knowledge from the configured library
+- `/stacks:ingest-book` — Convert a handbook PDF chapter-by-chapter (doc-tools faithful mode) into the deep-reference tier
+- `/stacks:lookup` — Look up knowledge from the configured library (articles + deep reference)
 - `/stacks:using-stacks` — Entry point that routes to the right stacks skill
 
 ## Plugin Structure
@@ -27,13 +28,13 @@ stacks/
 ├── .claude-plugin/
 │   ├── plugin.json            # Plugin identity and version
 │   └── marketplace.json       # Single-plugin marketplace descriptor
-├── skills/{name}/SKILL.md     # User-invocable skills (init-library, new-stack, catalog-sources, lookup, audit-stack, enrich-stack, process-inbox, using-stacks)
+├── skills/{name}/SKILL.md     # User-invocable skills (init-library, new-stack, catalog-sources, lookup, audit-stack, enrich-stack, ingest-book, process-inbox, using-stacks)
 ├── agents/                    # 4 subagent definitions (source-extractor, article-synthesizer, validator, enrichment)
 ├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
 ├── templates/
 │   ├── library/               # Files copied when /stacks:init-library creates a library
 │   └── stack/                 # Files copied when /stacks:new-stack scaffolds a stack
-└── references/                # Reference docs (web-fetch-routing.md)
+└── references/                # Reference docs (web-fetch-routing.md, reference-tier.md)
 ```
 
 ## Frontmatter Convention

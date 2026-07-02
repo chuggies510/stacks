@@ -4,3 +4,6 @@ sources/trash/*
 !sources/trash/.gitkeep
 sources/.raw/
 dev/audit/_audit-*.md
+# Deep-reference tier: raw handbook PDFs stay local (re-pull any page), never
+# committed. The gated chapter .md files under reference/{book}/ ARE tracked.
+reference/**/*.pdf
