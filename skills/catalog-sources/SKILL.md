@@ -35,11 +35,11 @@ fi
 ARGS="$ARGUMENTS"
 FROM_PATH=""
 if [[ "$ARGS" == *"--from"* ]]; then
-  STACK=$(echo "$ARGS" | sed 's/--from.*//' | tr -d '[:space:]')
+  STACK=$(echo "$ARGS" | sed 's/--from.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
   FROM_PATH=$(echo "$ARGS" | sed 's/.*--from[[:space:]]*//' | sed 's/[[:space:]]*$//')
   FROM_PATH="${FROM_PATH/#\~/$HOME}"
 else
-  STACK=$(echo "$ARGS" | tr -d '[:space:]')
+  STACK=$(echo "$ARGS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 fi
 
 if [[ -n "$FROM_PATH" ]] && [[ ! -d "$FROM_PATH" ]]; then
@@ -80,7 +80,7 @@ else
 fi
 ```
 
-For the remainder of the skill (Steps 2-10), when `STACK_QUEUE` contains multiple stacks, treat each stack as an independent cataloging run: iterate through them sequentially, performing all steps for one stack before moving to the next. Commit per stack (Step 10) so a failure mid-queue still leaves prior stacks in a clean state.
+For the remainder of the skill (Steps 2-9), when `STACK_QUEUE` contains multiple stacks, treat each stack as an independent cataloging run: iterate through them sequentially, performing all steps for one stack before moving to the next. Commit per stack (Step 9) so a failure mid-queue still leaves prior stacks in a clean state.
 
 ## Step 1.5: Stage sources from --from path (if provided)
 
@@ -171,7 +171,7 @@ fi
 
 If `NEW_SOURCES` is empty, tell the user: "All sources already indexed. Nothing to catalog." and stop.
 
-## Step 6: W1 — Parent-side parallel source-extractor dispatch
+## Step 5: W1 — Parent-side parallel source-extractor dispatch
 
 The parent skill (this session) shards sources directly and dispatches `source-extractor` agents in parallel. The `source-extractor-orchestrator` agent is **deprecated for this skill**: same root cause as the audit-stack orchestrators. Nested Task dispatch was unreliable and the orchestrator silently fell back to inline execution, defeating the sharding. Parent-side dispatch keeps Task usage shallow and lets the parent run the deterministic W1b merge in code.
 
@@ -207,7 +207,7 @@ done
 bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH_W1" "source-extractor" concept-batch "${W1_PATHS[@]}"
 ```
 
-## Step 6.5: W1b — Deterministic dedup in the parent
+## Step 5.5: W1b — Deterministic dedup in the parent
 
 Group concept blocks across all W1 outputs by slug. For any slug appearing in multiple batches, merge `source_paths[]` into a single unified block. Classify each unique slug as `new` (no `target_article` in any contributing block) or `updated`. All deterministic; no agent needed.
 
@@ -244,14 +244,14 @@ python3 "$SCRIPTS_DIR/dedup-extractions.py" "$STACK/dev/extractions" "$DEDUP"
   || { echo "STRUCTURE_FAILURE: dedup meta malformed — missing or empty ALL_SLUGS"; exit 1; }
 
 # Load the meta into shell vars (ALL_SLUGS, UPDATED_SLUGS, N_NEW, N_UPDATED,
-# N_UNIQUE_CONCEPTS, INPUT_BLOCKS — used by W2 dispatch and the Step 10 commit).
+# N_UNIQUE_CONCEPTS, INPUT_BLOCKS — used by W2 dispatch and the Step 9 commit).
 source <(grep -E '^[A-Z_]+=' "$STACK/dev/extractions/_dedup-meta.txt" | sed 's/^/export /')
 CONCEPT_SLUGS=($ALL_SLUGS)
 ```
 
 The Python pass merges `source_paths[]` deterministically (set-of-seen with first-seen-order preservation) and writes a single canonical `_dedup.md` plus one `_dedup-{slug}.md` per unique slug.
 
-## Step 6.75: W2 — Parent-side parallel article-synthesizer dispatch
+## Step 5.75: W2 — Parent-side parallel article-synthesizer dispatch
 
 Article-synthesizer is naturally 1-per-slug — each agent reads one `_dedup-{slug}.md` and writes one `articles/{slug}.md`. No batching needed.
 
@@ -291,15 +291,15 @@ if (( ${#W2_FAILED[@]} > 0 )); then
 fi
 ```
 
-The counts needed for the Step 10 commit (`N_SOURCES`, `N_NEW`, `N_UPDATED`) are already in shell vars (`N_SOURCES` from W1; `N_NEW`/`N_UPDATED` sourced from the dedup meta at W1b). Clean up the working meta file:
+The counts needed for the Step 9 commit (`N_SOURCES`, `N_NEW`, `N_UPDATED`) are already in shell vars (`N_SOURCES` from W1; `N_NEW`/`N_UPDATED` sourced from the dedup meta at W1b). Clean up the working meta file:
 
 ```bash
 rm -f "$STACK/dev/extractions/_dedup-meta.txt"
 ```
 
-Downstream steps (tag drift check, W3 source filing, W4 MoC update) remain in this skill after Step 6.75 succeeds.
+Downstream steps (tag drift check, W3 source filing, W4 MoC update) remain in this skill after Step 5.75 succeeds.
 
-## Step 7: Tag drift check
+## Step 6: Tag drift check
 
 After W2, enforce the tag vocabulary declared in `STACK.md`. The check reads `allowed_tags:` from the stack root and halts the pipeline if any article carries an out-of-vocabulary tag. No auto-rewrite — drift is a surfaced defect the operator resolves by editing either the offending article or the vocabulary list.
 
@@ -309,7 +309,7 @@ After W2, enforce the tag vocabulary declared in `STACK.md`. The check reads `al
 
 On non-zero exit, halt the catalog pipeline and surface the `TAG_DRIFT:` stderr lines to the user. Do not proceed to W3 (source filing) — sources for drifted articles stay in `incoming/` so the next run retries after the operator fixes the tags. When `allowed_tags:` is absent or empty, the script emits a `normalize-tags: allowed_tags not declared, skipping drift check` warning to stderr and exits 0 (backward-compat for stacks that haven't migrated).
 
-## Step 8: W3 — Source filing
+## Step 7: W3 — Source filing
 
 Move successfully synthesized source files from `sources/incoming/` to their publisher directory. Only move sources for which all expected articles passed their W2 write gates. Failed articles block their sources' filing at W3 below.
 
@@ -342,7 +342,7 @@ mv "$src_file" "$dest_dir/"
 
 Partial failure is acceptable: unmoved sources remain in `incoming/` and are picked up on the next `/stacks:catalog-sources` run. Sources for failed concepts stay in `incoming/` and are picked up on the next run. No rollback.
 
-## Step 9: W4 — MoC update
+## Step 8: W4 — MoC update
 
 Regenerate `$STACK/index.md` from article frontmatter. The generator reads the existing `index.md`, preserves any `## Reading Paths` section verbatim, and rewrites all other sections.
 
@@ -352,7 +352,7 @@ Regenerate `$STACK/index.md` from article frontmatter. The generator reads the e
 
 The `## Reading Paths` section is preserved verbatim. Any user-curated reading path content in that section survives across catalog runs unchanged. All other sections (title, generated article groupings by `tags[0]`) are rewritten.
 
-## Step 10: Log + commit
+## Step 9: Log + commit
 
 Prepend an entry to `$STACK/log.md`:
 

@@ -38,7 +38,9 @@ cataloged=0
 for stack_dir in "$LIBRARY"/*/; do
   [[ -f "${stack_dir}STACK.md" ]] || continue
   stack=$(basename "$stack_dir")
-  count=$(find "${stack_dir}sources/incoming" -maxdepth 1 -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+  # Count all queued files, not just .md — catalog-sources Step 3.5 converts
+  # PDFs/docx to text before enumeration, so a PDF-only queue must still trigger.
+  count=$(find "${stack_dir}sources/incoming" -maxdepth 1 ! -name '.gitkeep' -type f 2>/dev/null | wc -l | tr -d ' ')
   if [[ "$count" -gt 0 ]]; then
     log "cataloging $stack ($count file(s))..."
     claude -p "/stacks:catalog-sources $stack" >> "$LOG" 2>&1 \

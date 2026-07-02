@@ -45,7 +45,7 @@ SCRIPTS_DIR="$STACKS_ROOT/scripts"
 
 ## Step 2: Read STACK.md
 
-Read `$STACK/STACK.md` for the source-hierarchy section. The validator needs it to resolve conflicts when two sources disagree (higher-tier source wins → lower-tier claim marked `[STALE]`).
+Read `$STACK/STACK.md` for the source-hierarchy section. The validator needs it to resolve conflicts when two sources disagree (higher-tier source wins; the losing claim is fixed in place to match it — no inline mark is stamped).
 
 ## Step 3: A1 — Validate articles against sources
 

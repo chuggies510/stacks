@@ -12,7 +12,6 @@ After `/workspace-toolkit:start` runs, always do the following before asking wha
 
 **1. Enumerate stacks:**
 ```bash
-find . -maxdepth 1 -name "*.md" -path "./*" 2>/dev/null | head -0  # dummy
 STACKS=$(find . -maxdepth 1 -type d ! -name ".*" ! -name "dev" | sort | xargs -I{} sh -c '[ -f "{}/STACK.md" ] && echo "{}"' 2>/dev/null)
 for STACK in $STACKS; do
   NAME=$(basename "$STACK")
@@ -53,8 +52,9 @@ Derive "Next" from state:
   and skipped by `catalog-sources` and `audit-stack`. Recover by moving the file back.
 - **Articles are LLM-maintained.** Do not hand-edit article files. Use `/stacks:catalog-sources`
   to update them from sources.
-- **index.md is the stack index.** Each stack's index.md lists all sources and articles
-  for that stack. catalog-sources regenerates it. Do not edit manually.
+- **index.md is the stack index.** Each stack's index.md is the routing map of all
+  articles for that stack (the recognition list `/stacks:lookup` reads). catalog-sources
+  regenerates it. Do not edit manually.
 - **log.md is append-only.** Records what operations happened and when.
 - **STACK.md is the schema.** Defines source hierarchy, topic template, and filing
   rules for that stack. Edit this to change how the stack is curated.

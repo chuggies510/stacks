@@ -24,7 +24,7 @@ ARTICLES_DIR=$1; FNAME=$2; PUB=$3
 
 # W0 rejects parens in source filenames, but escape regex/sed metachars anyway so
 # a literal `.` in a fname can't match more than intended.
-esc=$(printf '%s' "$FNAME" | sed 's/[.[\*^$/]/\\&/g')
+esc=$(printf '%s' "$FNAME" | sed 's/[.[\*^$/#&]/\\&/g')
 
 shopt -s nullglob
 arts=("$ARTICLES_DIR"/*.md)

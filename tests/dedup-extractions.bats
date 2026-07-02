@@ -37,3 +37,26 @@ teardown() { rm -rf "$TEST_TMP"; }
   python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
   grep -q '^  - sources/incoming/neta-field.md$' "$EXTR/_dedup.md"
 }
+
+@test "warns and records a slug shared by two different-titled concepts" {
+  cat > "$EXTR/batch-2-concepts.md" <<'EOF'
+## Concept: Arc-fault breakers
+
+slug: legacy-wiring-hazards
+title: Arc-fault breakers
+source_paths:
+  - sources/incoming/nec-arc-fault.md
+target_article: ""
+tier: 4
+
+### Claims
+- AFCIs detect arcing conditions on branch circuits.
+EOF
+  run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"legacy-wiring-hazards"* ]]
+  [[ "$output" == *"Legacy wiring hazards"* ]]
+  [[ "$output" == *"Arc-fault breakers"* ]]
+  grep -q '^TITLE_MISMATCH_SLUGS=.*legacy-wiring-hazards' "$EXTR/_dedup-meta.txt"
+}

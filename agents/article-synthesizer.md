@@ -17,7 +17,7 @@ Length follows the grounded claims: write what they support and stop — do NOT 
 
 - One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
 - `articles/{slug}.md` — read this if `target_article` is set (existing article to update)
-- `STACK.md` — for source hierarchy, to understand relative trust of conflicting claims
+- `STACK.md` — for source hierarchy (relative trust of conflicting claims) AND its Topic Template section: use the template's section list as the article's skeleton so section shape is consistent across the stack. Omit any section the grounded claims don't support — the no-padding rule wins; never add an empty or invented section to match the template.
 
 ## Output
 

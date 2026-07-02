@@ -14,6 +14,10 @@ slug_title = {}                # slug -> human title
 slug_tier = {}                 # slug -> tier
 slug_claims = {}               # slug -> list of claim lines (concatenated across batches)
 input_blocks_total = 0
+title_mismatch_slugs = set()   # slugs where a later block's title disagreed with the first-seen title
+
+def _norm_title(s):
+    return re.sub(r"\s+", " ", s.strip()).casefold()
 
 block_re = re.compile(r"^## Concept: ", re.MULTILINE)
 
@@ -56,6 +60,18 @@ for bf in batch_files:
         slug = fields["slug"]
         if not slug: continue
         input_blocks_total += 1
+        # Same slug, different concept: extractors run in parallel per-source and can
+        # collide on a slug for genuinely different titles. Warn instead of silently
+        # merging under the first-seen title/tier. Detecting the inverse (same concept,
+        # different slug) needs a similarity pass and is deferred, out of scope here.
+        if slug in slug_title and _norm_title(fields["title"]) != _norm_title(slug_title[slug]):
+            print(
+                f"WARNING: slug '{slug}' has conflicting titles: "
+                f"first-seen '{slug_title[slug]}' vs '{fields['title']}' in {bf} "
+                "(different concepts sharing a slug are being merged under the first-seen title/tier)",
+                file=sys.stderr,
+            )
+            title_mismatch_slugs.add(slug)
         if slug not in slug_sources:
             slug_sources[slug] = []
             slug_target_article[slug] = fields["target_article"]
@@ -95,6 +111,7 @@ with open(os.path.join(extr_dir, "_dedup-meta.txt"), "w") as f:
     f.write(f"N_UPDATED={len(updated_slugs)}\n")
     f.write("ALL_SLUGS=" + " ".join(sorted(slug_sources)) + "\n")
     f.write("UPDATED_SLUGS=" + " ".join(sorted(updated_slugs)) + "\n")
+    f.write("TITLE_MISMATCH_SLUGS=" + " ".join(sorted(title_mismatch_slugs)) + "\n")
 
 # Write one _dedup-{slug}.md per unique slug so article-synthesizer agents each
 # read a self-contained single-concept file rather than parsing _dedup.md.

@@ -99,26 +99,3 @@ review). Querying the library is also how you discover what to grow next.
 what it found and stages only approved sources into `sources/incoming/` (the
 `--auto` fast path excepted). The human decides what the library is allowed to
 believe.
-
-## Lifecycle
-
-```
-init-library ──▶ new-stack ──▶ (sources in) ──▶ catalog-sources ──▶ articles ──▶ lookup
-   once            per topic        │                                              │
-                                    ├── process-inbox  (from other sessions)       │
-                                    │                                              │
-   quality loop:   audit-stack ──▶ enrich-stack ──▶ catalog-sources ──▶ audit-stack ◀┘
-                   (find soft spots) (get sources)   (re-synthesize)
-```
-
-## Quick reference
-
-| Skill | Use when | Runs from |
-|-------|----------|-----------|
-| `lookup` | you need an answer from the library | any repo |
-| `catalog-sources` | turn a batch of sources into articles | library repo |
-| `process-inbox` | ingest files queued by other sessions | any repo |
-| `audit-stack` | check articles vs their cited sources | library repo |
-| `enrich-stack` | acquire sources to close audit soft spots | library repo |
-| `new-stack` | add a topic to an existing library | library repo |
-| `init-library` | create a new knowledge library | any repo |

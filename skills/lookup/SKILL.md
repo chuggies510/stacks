@@ -34,10 +34,6 @@ If catalog.md contains no stack entries (no lines starting with `- [`), tell the
 
 `$ARGUMENTS` contains the full query text.
 
-```bash
-QUERY=$(echo "$ARGUMENTS" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-```
-
 Resolve `STACKS_TO_SEARCH` from catalog.md:
 
 ```bash
@@ -145,7 +141,7 @@ SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null 
 
 ## Step 9: Auto-enrich on a miss (hands-free, #69)
 
-**Only on a miss** (Step 6 found no matching article). On a hit, skip to Step 10.
+**Only on a miss** (Step 6 found no matching article). On a hit, lookup is done once the answer is delivered.
 
 A miss is live demand the library could not meet. Instead of stopping, lookup
 researches the gap and retries — in one command, no second invocation. The miss
@@ -193,57 +189,4 @@ no confident article, say: "Researched and filed a source on this, but it didn't
 synthesize into a confident answer — see the new article in `{stack}`." Do not
 fabricate an answer from thin sources.
 
-Then stop (a miss does not also run Step 10 — there is no synthesized answer to
-file back beyond what enrich already committed).
-
-## Step 10: Offer to file the result back (opt-in)
-
-Valuable answers can compound into the library rather than disappearing into chat history. Filing is **opt-in**: never write or commit an article without the user's go-ahead. After delivering the answer, assess whether filing is worth offering:
-
-**Worth offering if the answer:**
-- Synthesized something non-obvious across multiple topics (the synthesis didn't exist as a single place before)
-- Resolved a contradiction or ambiguity between articles
-- Produced a comparison or decision table that would be useful again
-- Revealed a gap that is now partially answered by the synthesis itself
-
-**Not worth offering if the answer:**
-- Simply restated what one existing article already says clearly
-- Was a lookup that required no synthesis
-- Is ephemeral context specific to the current task
-
-If it's worth offering, ask the user once — name the target stack(s) and whether it would extend an existing article or create a new one, e.g.: *"This synthesizes X across {stacks}. File it? (extend `{slug}` / new article `{slug}` / skip)"*. Do nothing further unless the user opts in. On skip (or no response), stop here — the answer was already delivered.
-
-If the user opts in, file to the chosen stack(s):
-
-1. Determine whether the answer extends an existing article (a concept already covered, but the synthesis adds material the article does not have) or is a new concept that needs its own article.
-
-2. **Extends existing article:** read `$LIBRARY/{stack}/articles/{slug}.md`, append the synthesized material under an appropriate heading, merge any new source paths into the `sources:` frontmatter list, set `updated: <today>` and `last_verified: ""` (forces revalidation on the next audit). Use inline `[source-slug]` citations to match the article convention.
-
-3. **New article:** create `$LIBRARY/{stack}/articles/{slug}.md` with this frontmatter:
-   ```yaml
-   ---
-   last_verified: ""
-   updated: <YYYY-MM-DD today>
-   sources:
-     - <path/to/source1.md>
-   title: <human-readable title>
-   routing: <one line — what this article covers and the questions it answers, in an asker's words>
-   tags:
-     - <tag>
-   ---
-   ```
-   Body follows the 300-800 word target with inline `[source-slug]` citations. Do not add `[VERIFIED]` / `[DRIFT]` / `[UNSOURCED]` / `[STALE]` marks. Add the new entry to `$LIBRARY/{stack}/index.md` under the Articles list as `- [[slug|title]] — {routing}` (keep alphabetical).
-
-**After each stack filed:**
-
-Update `$LIBRARY/{stack}/log.md`, prepending:
-```
-## [YYYY-MM-DD] query | "{short query summary}" → filed to {target}
-Synthesized answer filed. {new | updated} article: {slug}.
-```
-
-**After all chosen stacks are filed** (only reached because the user opted in above):
-
-```bash
-cd "$LIBRARY" && git add . && git commit -m "feat: file query result — {short description}"
-```
+Then stop; enrich already committed whatever it filed.
