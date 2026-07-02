@@ -1,3 +1,10 @@
+## 0.39.0 — 2026-07-01
+
+**The pipeline now trims claims that overstate their sources instead of serving them as fact.** A review found the dominant corpus defect is not contradiction but *amplification* — an article claim that carries a citation while asserting more than the source states (an added mechanism, rationale, number, or "consistently"/"the primary" generalization). One stack's latest audit showed 0 corrections and 16 soft spots, ~12 of them exactly this, every one still served by `/stacks:lookup`.
+- The validator now fixes overstatement in place as a `CORRECTION` (trim the claim to what the source supports), instead of filing it as a `SOFTSPOT` that stays in the served article body. Soft spots are now reserved for claims with *no* cited source at all. Adds the fourth match branch + a worked example. (`agents/validator.md`)
+- The article-synthesizer no longer pads to a 300-word floor — that floor forced it to expand thin claims into confident prose past what the sources said, which is where overstatement was manufactured. Length now follows the grounded claims (write what they support and stop; too thin → don't write). It also cites every claim, not just "non-obvious" ones, and may not state anything stronger than the extracted claim. (`agents/article-synthesizer.md`)
+- `gate-batch.sh` freshness gate no longer disables itself on a bad epoch. An empty or non-numeric dispatch timestamp (a shell var lost across a skill's bash-block boundary) made `(( mtime < "" ))` a swallowed arithmetic error that silently *passed* every stale file; it now fails loud with a clear message. Adds empty/non-numeric regression tests. (`scripts/gate-batch.sh`, `tests/gate-batch.bats`)
+
 ## 0.38.0 — 2026-07-01
 
 **A universal entry point that routes to the right stacks skill.** New `using-stacks` skill — the front door, modeled on `using-agent-skills` / `using-code-library`.

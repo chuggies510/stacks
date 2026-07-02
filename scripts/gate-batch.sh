@@ -31,6 +31,15 @@ AGENT_LABEL=$2
 STRUCTURE_KIND=$3
 shift 3
 
+# The epoch MUST be a positive integer. If a caller passes it empty (a var lost
+# across a skill's bash-block boundary — see plugin CLAUDE.md), `(( mtime < "" ))`
+# below is an arithmetic syntax error; swallowed inside the `||` it makes every
+# file PASS the freshness gate silently. Fail loud instead of ungating the batch.
+if [[ ! "$DISPATCH_EPOCH" =~ ^[0-9]+$ ]]; then
+  echo "gate-batch.sh: dispatch_epoch must be a positive integer, got '$DISPATCH_EPOCH'" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Portable mtime in epoch seconds: GNU coreutils `stat -c %Y` (Linux, and macOS

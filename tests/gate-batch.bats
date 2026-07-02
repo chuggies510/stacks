@@ -48,6 +48,25 @@ make_concept_batch() {
   [[ "$output" == *"AGENT_WRITE_FAILURE"* ]]
 }
 
+@test "rejects an empty dispatch_epoch instead of silently passing stale files" {
+  # Regression: an epoch lost across a skill bash-block boundary arrives as "".
+  # `(( mtime < "" ))` is a swallowed arithmetic error that ungated every file.
+  local f="$TEST_TMP/batch-1-concepts.md"
+  make_concept_batch "$f"
+  touch -d 2020-01-01 "$f"   # stale: must NOT pass
+  run bash "$SCRIPT" "" "concept-identifier" concept-batch "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"dispatch_epoch must be a positive integer"* ]]
+}
+
+@test "rejects a non-numeric dispatch_epoch" {
+  local f="$TEST_TMP/batch-1-concepts.md"
+  make_concept_batch "$f"
+  run bash "$SCRIPT" "not-a-number" "concept-identifier" concept-batch "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"dispatch_epoch must be a positive integer"* ]]
+}
+
 @test "skips structure check when structure_kind is -" {
   local f="$TEST_TMP/batch-1.md"
   # Content has no concept header — would fail structure check.

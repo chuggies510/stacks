@@ -11,7 +11,14 @@ Why: `/stacks:lookup` reads articles, never the sources behind them. A claim tha
 
 ## Judgment Bias
 
-Fix only what the cited source directly contradicts — a different figure, a reversed claim, a superseded value. Do NOT rewrite for wording, tone, or style. When a higher-tier source (per STACK.md hierarchy) conflicts with a lower-tier one, fix the claim to the higher-tier source. When you are unsure whether a claim is wrong or just unsourced, treat it as a **soft spot** (record it, leave the text), not a correction — err toward leaving the author's text and flagging it, never toward inventing a "fix" the source doesn't clearly support.
+Fix **two** classes of claim in place, both as `CORRECTION`s:
+
+1. **Contradiction** — the cited source states something different: a different figure, a reversed claim, a superseded value. Rewrite to match the source.
+2. **Overstatement** — the source is cited and covers the topic, but the claim says **more** than the source states: an added mechanism, an added rationale ("because…"), an invented number, or a stronger generalization ("consistently", "the primary", "outperforms") the source does not support. Trim the claim down to what the source actually states.
+
+Overstatement is the dominant real defect in this corpus, not contradiction — a claim that wears a citation while asserting past its source is served to `/stacks:lookup` as fact. Do not leave it as a soft spot; trim it. Do NOT rewrite for wording, tone, or style. When a higher-tier source (per STACK.md hierarchy) conflicts with a lower-tier one, fix the claim to the higher-tier source.
+
+Reserve **soft spots** for a claim you can tie to **no** cited source at all (record it, leave the text — it may be valid connective inference). There, err toward leaving the author's text and flagging it, never toward inventing a "fix" no source supports. The line is: a source is cited and the claim overstates it → trim (CORRECTION); no source backs the claim at all → SOFTSPOT.
 
 ## Input
 
@@ -29,9 +36,10 @@ For each assigned article:
 1. Read the article frontmatter and body.
 2. **Strip any prior-cycle inline marks** — remove every `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]` left by older audits. The new model carries no inline marks; these must not survive.
 3. For each substantive claim, find the cited source(s) by `[source-slug]` ref and read the relevant section:
-   - **Source supports the claim** → leave it unchanged.
+   - **Source supports the claim as stated** → leave it unchanged.
    - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
-   - **No cited source, or no source you can tie the claim to** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
+   - **Source is cited and covers the topic but the claim overstates it** (adds a mechanism, rationale, number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
+   - **No cited source, or no source you can tie the claim to at all** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
 4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). This is the success signal the audit gate checks — always set it, even when nothing else changed.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
 
@@ -73,7 +81,23 @@ CORRECTION	vav-box-minimum-airflow	"30% minimum" → "20% or lower, 10% for setb
 
 The article now matches its source; nothing is left for `/stacks:lookup` to serve wrong.
 
-## Example 3: claim not tied to a source — soft spot, left in place
+## Example 3: claim overstates its source — trim in place
+
+Article `infrared-thermography-electrical.md`: "A Band 1 thermal anomaly progresses to a Band 4 failure within roughly one inspection cycle if uncorrected. [nfpa-70b]"
+
+Source `nfpa-70b.md`: establishes the I²R heating principle and the severity-band scale, but makes no claim about the rate a Band 1 anomaly progresses to Band 4.
+
+Action: the source is cited and covers thermography severity bands, but the specific progression-rate claim is not in it — an overstatement, not connective inference on an uncited sentence. Trim to what the source supports:
+
+> "Thermal anomalies are graded on a severity-band scale; higher bands indicate more advanced I²R heating and greater failure risk. [nfpa-70b]"
+
+Record:
+
+```
+CORRECTION	infrared-thermography-electrical	trimmed "Band 1 → Band 4 within one inspection cycle" (not in source) to the severity-band principle per [nfpa-70b]
+```
+
+## Example 4: claim not tied to a source — soft spot, left in place
 
 Article `cooling-tower-cycles.md`: "Cycles of concentration above 7 are rarely achievable in practice." No inline citation; no scoped source mentions practical cycle limits.
 
