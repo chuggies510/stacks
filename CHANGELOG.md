@@ -1,3 +1,8 @@
+## 0.43.0 — 2026-07-03
+
+**ingest-book can now fan a whole volume's chapters out in parallel, not just one at a time.** The 0.42.0 skill was sequential-only; a 10+ chapter book run serially compacts the orchestrating session's context repeatedly. This lands the scale path deferred in 0.42.0.
+- **New Step 3B workflow-batch run mode in `/stacks:ingest-book`.** Pre-run the deterministic mechanical prep (slice → dual-convert → prep → seed) for every chapter in Bash, then fan the model work (haiku patch + conditional sonnet equation audit) across chapters with a `Workflow`, gating and filing outside it (a workflow script has no filesystem or Bash access, so prep and the gate stay in the orchestrator). Prose-only chapters (no table/equation/figure) skip the agent and are gated directly. Needs the operator's explicit multi-agent opt-in. Serial (Step 3) stays the default for 1–3 chapters; the whole-volume default is now the batch. (`skills/ingest-book/SKILL.md`)
+
 ## 0.42.0 — 2026-07-02
 
 **Handbooks now have a home: a deep-reference tier for whole-book PDFs, and a skill that fills it chapter by chapter.** Faithful-mode conversion (doc-tools) could produce reference-grade handbook chapters, but the library had nowhere to put them — not sources (already-cataloged inputs), not articles (synthesized guides) — so ~1,470 pages of tier-1 ASPE text stayed invisible to lookup. Closes stacks#85 and stacks#84.

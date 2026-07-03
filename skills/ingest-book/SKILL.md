@@ -14,17 +14,31 @@ description: |
 
 # Ingest Book
 
-Convert a book-scale PDF into the deep-reference tier one chapter at a time, reusing the
-proven single-chapter faithful pipeline (doc-tools `extract-pdf`). Sequential and
-operator-visible: you confirm the chapter map once, then each chapter is sliced,
-dual-converted, patch-agent-repaired, gated by `verify-merge.py`, and filed.
+Convert a book-scale PDF into the deep-reference tier, reusing the proven single-chapter
+faithful pipeline (doc-tools `extract-pdf`). You confirm the chapter map once, then each
+chapter is sliced, dual-converted, patch-agent-repaired, gated by `verify-merge.py`, and
+filed.
 
 Schema for the tier this produces (layout, chapter frontmatter, index format):
 the plugin's `references/reference-tier.md`. Read it before filing.
 
-> Scale note: this ingests chapters serially. Fanning a full 51-chapter volume out in
-> parallel with per-chapter model+effort control is a Workflow-orchestrated upgrade
-> (tracked separately) — not needed to ingest a book, only to ingest one fast. Start here.
+## Run mode: serial or workflow batch
+
+Two ways to run Step 3, same per-chapter mechanics either way:
+
+- **Serial (Step 3)** — one chapter at a time, fully operator-visible. Correct for 1–3
+  chapters, or when you want to watch each gate. A 10+ chapter book run serially will
+  compact the orchestrating session's context repeatedly (many tool round-trips per
+  chapter), so it is slow wall-clock for a whole volume.
+- **Workflow batch (Step 3B)** — pre-run the deterministic mechanical prep for every
+  chapter in Bash, then fan the model work (patch + equation audit) out across chapters
+  with a `Workflow`, gate and file outside it. Right for a whole volume: fastest, keeps
+  the orchestrator's context clean, one bad chapter is skipped not fatal. **Needs the
+  operator's explicit multi-agent opt-in** (the harness bars launching `Workflow` without
+  it) — offer it when the confirmed map has many chapters.
+
+Pick the mode after Step 2 (map confirmed). The default for a full volume is the workflow
+batch; drop to serial for a handful of chapters.
 
 ## Step 0: Telemetry
 
@@ -156,6 +170,49 @@ last_ingested: {today YYYY-MM-DD}
   mkdir -p "$STACK/reference/$BOOK_SLUG"
   # then Write the frontmatter + gated body to "$STACK/reference/$BOOK_SLUG/$SLUG.md"
   ```
+
+## Step 3B: Workflow batch (parallel, opt-in) — alternative to Step 3
+
+Same mechanics as Step 3, reorganized so the model work runs concurrently. The pipeline
+splits into three parts by WHERE each runs: mechanical prep and the gate are Bash you run
+in the orchestrator (a `Workflow` script has no filesystem or Bash access); only the two
+model passes go inside the workflow.
+
+**1. Pre-run mechanical prep (F1–F4) for every confirmed chapter, in one Bash loop.** For
+each chapter run the faithful steps F1 slice → F2 dual-convert → F3 `faithful-prep.py` →
+F4 seed `merged.md`, into that chapter's deterministic `OUTDIR`. Drive the doc-tools
+scripts from SOURCE if the plugin cache may lag the fix you need (a `/reload-plugins`
+updates the cache on disk but a running session keeps the old copy until restart). After
+prep, read each `worklist.json` and emit a manifest row per chapter carrying: `outdir`,
+`firstprinted`, `offset`, and the `tables` / `equations` / `figures` / `hotspot_tables` /
+`pdfplumber_crosscheck` id lists. This manifest is the workflow's input.
+
+**2. Split prose-only chapters out.** A chapter with zero tables, equations, AND figures
+has no model work — the patch agent would do nothing. Gate it directly (it passes on
+prose alone) and file it in Step 3b; keep it OUT of the workflow. Only chapters with at
+least one table/equation/figure go to the workflow.
+
+**3. Fan the model work out with a `Workflow`.** Pass the model-work manifest rows as
+`args` (defensively `JSON.parse` if it arrives stringified). `pipeline` over the chapters,
+two stages, each chapter independent:
+- stage 1 — `agent(patchPrompt(ch), {model:'haiku', effort:'low', agentType:'general-purpose', phase:'Patch'})`.
+  Build `patchPrompt` from the doc-tools F5 template with this chapter's slots filled;
+  DROP a task whose inventory is empty (no tables → no TABLES task, etc.), keep TASK
+  SELF-CHECK always.
+- stage 2 — only if `ch.equations.length`, `agent(auditPrompt(ch), {model:'sonnet', effort:'low', agentType:'general-purpose', phase:'Audit'})`
+  from the F5.5 template. Equations are the one element the gate cannot verify, so this
+  pass is mandatory for equation-bearing chapters.
+
+Agents edit each chapter's own `merged.md` in place — different files, so no worktree
+isolation is needed. The workflow does NOT gate (never trust an agent self-report).
+
+**4. Gate and file each chapter yourself (Bash), after the workflow returns.** Run
+`verify-merge.py` on every chapter (prose-only ones from step 2 included). `PASS` → file
+per Step 3b. `FAIL` → re-dispatch that one chapter's patch once with sonnet (Step F6
+escalation); a second `FAIL` → skip it, record it, continue. Then proceed to Step 4.
+
+Gate policy is unchanged: file only `GATE: PASS`, never write `gate: PASS` for a chapter
+the gate failed.
 
 ## Step 4: Stash the raw PDF + regenerate the book index
 
