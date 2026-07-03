@@ -1,3 +1,9 @@
+## 0.43.1 — 2026-07-03
+
+**Two ingest-book gotchas that cost real round-trips on the first whole-volume run (ASPE Vol 1).** Both are guidance-only refinements to the 0.43.0 skill.
+- **Pin the last chapter's end against the back-matter boundary.** Every chapter's end is the next chapter's start minus one, except the final content chapter — its end must be pinned against where the Index/glossary/appendices begin, and that back matter is not a chapter. A cumulative index often starts a few pages earlier than a single probe suggests; the visible symptom of getting it wrong is a last chapter that produces zero page anchors (index pages pulled into the slice). (`skills/ingest-book/SKILL.md` Step 2)
+- **Escalate a gate FAIL by its class.** A count FAIL (`tables N/M`, `figures N/M`, an equation body) re-dispatches sonnet on the current `merged.md` so rebuilt tables and the equation audit survive. A prose/anchor FAIL (`paraphrased`, `anchors N/M`) means the patch agent edited outside its scope and corrupted the file — re-seed from `draft.md` first, because re-dispatching on the damaged file cannot recover dropped anchors. (`skills/ingest-book/SKILL.md` Step 3B)
+
 ## 0.43.0 — 2026-07-03
 
 **ingest-book can now fan a whole volume's chapters out in parallel, not just one at a time.** The 0.42.0 skill was sequential-only; a 10+ chapter book run serially compacts the orchestrating session's context repeatedly. This lands the scale path deferred in 0.42.0.

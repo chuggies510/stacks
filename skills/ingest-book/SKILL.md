@@ -106,6 +106,14 @@ Book conversion is expensive (~190k tokens/chapter). The chapter map is confirme
    | 4 | Piping Systems | vol2-ch04-piping-systems | 90–120 | 110–140 |
 
    - Slug form: `[vol{V}-]ch{NN}-{kebab-title}` (drop the `vol` segment for a single-volume book).
+   - Each chapter's end is the next chapter's start minus one — EXCEPT the last content
+     chapter, which has no next chapter. Pin its end explicitly against where back matter
+     begins (Index, glossary, appendices), and do NOT ingest that back matter as a chapter.
+     A cumulative index often starts a few pages before you'd guess from a single probe, so
+     confirm the exact boundary by probing the pages just before the presumed end for
+     index/glossary bleed (alphabetized entries, "V1:NNN" page refs). Getting this wrong
+     pulls index pages into the last chapter — which then produces zero page anchors, the
+     first visible symptom.
    - The operator may narrow the run to a subset ("just Ch 4 and 5") — honor it; the map is the work-list for Step 3.
 
    **Do not proceed to Step 3 until the operator confirms the map.**
@@ -208,8 +216,16 @@ isolation is needed. The workflow does NOT gate (never trust an agent self-repor
 
 **4. Gate and file each chapter yourself (Bash), after the workflow returns.** Run
 `verify-merge.py` on every chapter (prose-only ones from step 2 included). `PASS` → file
-per Step 3b. `FAIL` → re-dispatch that one chapter's patch once with sonnet (Step F6
-escalation); a second `FAIL` → skip it, record it, continue. Then proceed to Step 4.
+per Step 3b. `FAIL` → escalate once with sonnet, by FAIL class:
+- **A count FAIL** (`tables N/M`, `figures N/M`, an equation body) — the agent under-did
+  its work. Re-dispatch a sonnet patch on the CURRENT `merged.md` so rebuilt tables and
+  the equation audit survive; tell it exactly which count is short.
+- **A prose or anchor FAIL** (`paraphrased`, `verbatim N/M`, `anchors N/M` where the
+  chapter had more) — the agent edited outside its scope and corrupted the file. Re-seed
+  `merged.md` from `draft.md` FIRST (Step F4), then re-dispatch. Re-dispatching on the
+  damaged file cannot recover dropped anchors or un-paraphrase prose.
+
+A second `FAIL` after escalation → skip the chapter, record it, continue. Then Step 4.
 
 Gate policy is unchanged: file only `GATE: PASS`, never write `gate: PASS` for a chapter
 the gate failed.
