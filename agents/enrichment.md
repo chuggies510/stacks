@@ -49,18 +49,19 @@ A network or fetch failure is a `NOSOURCE` whose `quote` says the search/fetch f
 
 ## Output
 
-One findings file at `$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Write **one tab-separated row per assigned gap** (every gap gets a row, including `NOSOURCE`). Strip each field's own tabs/newlines (collapse to single spaces):
+One findings file at `$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Write **exactly one tab-separated row per assigned `gap_id`** (every gap in your batch gets a row, including `NOSOURCE`). Strip each field's own tabs/newlines (collapse to single spaces):
 
 ```
 KIND<TAB>gap_id<TAB>slug<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote
 ```
 
 - `KIND` ∈ `CANDIDATE | WEAK | DUP | NOSOURCE`.
+- `gap_id` — **column 2, the coverage key.** Echo back the exact `gap_id` you were assigned (e.g. `gap-7`), verbatim. This is the receipt the parent's `check-coverage.sh --field 2` reconciles against the dispatch manifest: a gap you were assigned but drop a row for fails the gate by name, and an id you invent (never dispatched) fails as an unknown. Do not renumber, merge, or skip gaps.
 - `source_ref` — the filed-source slug for `DUP`; empty otherwise.
 - `url` / `tier` / `title` — populated for `CANDIDATE`/`WEAK`/`DUP`; empty for `NOSOURCE`.
 - `quote` — the supporting passage (`CANDIDATE`/`WEAK`/`DUP`) or the short reason (`NOSOURCE`). Record the passage as **plain text with no surrounding quotation marks** and whitespace collapsed to single spaces: the skill re-verifies this exact text against the re-fetched page, so decorative quotes or line breaks would make a valid source fail the check.
 
-Write the file with the Write tool (overwrite if it exists). Every assigned gap produces exactly one row.
+Keep the row **exactly 8 tab fields** — the parent's structure gate rejects any row with a different field count. Write the file with the Write tool (overwrite if it exists). Every assigned `gap_id` produces exactly one row: your row set must equal your assigned gap set, no omissions, no duplicates, no invented ids.
 
 ## Example 1: CANDIDATE — a source grounds the claim
 

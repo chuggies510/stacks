@@ -48,191 +48,89 @@ STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 SKILL_NAME="stacks:enrich-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
-## Step 1: Gate check
+## Step 1: Prep — resolve, parse args, assemble gaps (`enrich.sh prep`)
+
+`enrich.sh prep` does everything deterministic in one call: resolve+cd the
+library, parse args (the first non-flag token is the stack; `--auto` = hands-free
+staging, no operator prompt at Step 6; `--query <text>` scopes the run to ONE gap
+and must come last so a multi-word query survives), build the filed-sources
+listing, stale-check the audit soft spots, mine telemetry misses, shard the
+survivors into `CAP=5` batches, and write the run-state files
+(`dev/enrich/dispatch.tsv`, `dev/enrich/run.env`, `_filed-sources.tsv`). It
+prints a per-batch summary and the paths the dispatch below reads. `--auto`/
+`--query` come from lookup's live auto-path (#69); a manual run passes neither
+and gets the full batch.
 
 ```bash
-LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") || exit 1
-cd "$LIBRARY" || exit 1
-# Parse args. The first non-flag token is the stack. `--auto` enables hands-free
-# staging (no operator prompt — Step 6). `--query <text>` scopes this run to ONE
-# gap (that query) instead of mining audit soft spots + telemetry misses; it MUST
-# come last because it consumes the rest of the string (so a multi-word query
-# survives word-splitting). lookup's live auto-path passes both (#69); a manual
-# operator run passes neither and gets the full batch. Env vars can't carry any of
-# this — shell state does not persist across a Skill invocation — so it rides
-# $ARGUMENTS.
-QUERY=""
-case "$ARGUMENTS" in *--query\ *) QUERY="${ARGUMENTS#*--query }" ;; esac
-HEAD="${ARGUMENTS%%--query*}"   # args before --query (or the whole string if absent)
-STACK=""; AUTO=0
-for tok in $HEAD; do
-  case "$tok" in
-    --auto) AUTO=1 ;;
-    *) [[ -z "$STACK" ]] && STACK="$tok" ;;
-  esac
-done
-if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:enrich-stack {stack-name} [--auto] [--query <text>]"
-  exit 1
-fi
-if [[ ! -f "$STACK/STACK.md" ]]; then
-  echo "ERROR: Stack '$STACK' not found (no STACK.md)."
-  exit 1
-fi
-echo "AUTO=$AUTO QUERY=${QUERY:-<none>}"   # AUTO=1 hands-free (#69); QUERY set = single-gap scope
-TSV="$STACK/dev/audit/soft-spots.tsv"
-SCRIPTS_DIR="$STACKS_ROOT/scripts"
-# soft-spots.tsv may be absent or empty — but lookup misses (#68) are an
-# independent gap source (live queries the stack could not answer), so do NOT
-# hard-fail here. Step 3 gathers both and exits only if BOTH come up empty.
-[[ -s "$TSV" ]] || echo "No audit soft spots (soft-spots.tsv absent/empty); enriching from lookup misses only, if any."
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" prep $ARGUMENTS
 ```
 
-## Step 2: Read STACK.md + build the filed-sources listing
+If it prints **"Nothing to enrich"** (no live gaps — soft spots all stale/absent
+and no lookup misses), stop here. Otherwise note the printed `AUTO=` value (it
+drives Step 6) and the manifest/listing/stack-root paths (they feed the dispatch).
 
-Read `$STACK/STACK.md` — the **source-hierarchy** section (the tier table the
-agent rates candidates against) and the **scope** section (what the stack
-covers, so the agent disambiguates an ambiguous query). Both are passed to every
-agent.
+## Step 2: Read STACK.md
 
-Build the filed-sources listing the agents dedup against — `slug<TAB>url` for
-every already-filed source (a candidate whose URL is already here is a `DUP`,
-not a new fetch). Read the URL from each source's `**Source:**` header line (or
-`source_url:` frontmatter); exclude `incoming/`, `trash/`, and `.raw/`.
+Read `$STACK/STACK.md` (the stack root path is in prep's output) — the
+**source-hierarchy** section (the tier table the agent rates candidates against)
+and the **scope** section (what the stack covers, so the agent disambiguates an
+ambiguous query). Both are passed to every agent. (The filed-sources listing the
+agents dedup against was already built by `prep` at the `Listing:` path it
+printed.)
 
-```bash
-mkdir -p "$STACK/dev/enrich"
-LISTING="$STACK/dev/enrich/_filed-sources.tsv"
-: > "$LISTING"
-while IFS= read -r f; do
-  url=$(grep -m1 -oiE '(\*\*Source:\*\*|source_url:)[[:space:]]*https?://[^[:space:]]+' "$f" 2>/dev/null \
-        | grep -oE 'https?://[^[:space:]]+' | head -1)
-  [[ -n "$url" ]] && printf '%s\t%s\n' "$(basename "$f" .md)" "$url" >> "$LISTING"
-done < <(find "$STACK/sources" -type f -name '*.md' \
-           ! -path '*/incoming/*' ! -path '*/trash/*' ! -path '*/.raw/*' 2>/dev/null)
-echo "Filed-sources listing: $(wc -l < "$LISTING") sources with URLs (for dedup)."
-```
+## Step 3: Dispatch the enrichment agent over the gap batches
 
-## Step 3: Stale-check — drop gaps the articles no longer contain
+`prep` already sharded the gaps into `CAP=5` batches — **CAP=5** is the measured
+sweet spot from the batch-size experiment (#76): batch~5 beat batch~12 on source
+quality, wall-clock, and blast radius per agent death, at +15% tokens; below 5
+doubles per-gap cost for no gain and batch=1 regresses on scope-exclusion. It is
+specific to this web-search-heavy agent, not the validator's or catalog's caps.
+(Change the cap in `enrich.sh`'s `CAP=` constant, not here.)
 
-`soft-spots.tsv` is a snapshot from the last audit; articles can change after.
-Keep only gaps whose **verbatim claim still occurs** in the article (and whose
-article still exists), and assign each survivor a stable `gap-N` id. Searching
-for a claim that no longer exists wastes web calls and stages irrelevant sources.
-
-```bash
-mkdir -p "$STACK/dev/enrich"
-GAPS="$STACK/dev/enrich/_gaps.tsv"   # gap_id<TAB>slug<TAB>claim<TAB>reason
-: > "$GAPS"
-
-# Targeted mode (--query, lookup's live auto-path, #69): enrich exactly ONE gap —
-# the query that just missed — and nothing else. No soft-spot scan, no telemetry
-# mining. One user lookup authorizes researching only that query, not the stack's
-# entire backlog (it would otherwise web-search every historical miss + open soft
-# spot and commit them all off a single miss). Skip straight past the batch build.
-if [[ -n "$QUERY" ]]; then
-  q_flat=$(printf '%s' "$QUERY" | tr -s '[:space:]' ' ')
-  printf 'gap-0\tlookup-miss\t%s\tlookup miss\n' "$q_flat" > "$GAPS"
-  N_GAPS=1
-  echo "Targeted enrich: 1 gap (the lookup miss \"$q_flat\")."
-fi
-
-# Batch mode (no --query): audit soft spots + mined lookup misses.
-i=0; STALE=0; TOTAL=0
-if [[ -z "$QUERY" && -f "$TSV" ]]; then
-  while IFS=$'\t' read -r slug claim reason; do
-    [[ -z "$slug" ]] && continue
-    TOTAL=$((TOTAL+1))
-    art="$STACK/articles/$slug.md"
-    # The validator collapsed the claim's internal whitespace (tabs/newlines) to
-    # single spaces, but the article body still has the original line breaks — so a
-    # claim that wrapped across two lines would never `grep -Fq` against the raw
-    # file. Flatten the article's whitespace the same way before matching so the
-    # round-trip holds for multi-line claims.
-    if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | grep -Fq "$claim"; then
-      STALE=$((STALE+1)); continue
-    fi
-    printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-    i=$((i+1))
-  done < "$TSV"
-fi
-N_SOFT=$i
-# Lookup misses (#68): live queries the stack could not answer. These gaps carry
-# the sentinel slug `lookup-miss` (no home article), so they never hit the article
-# stale-check above — the enrichment agent searches the `claim` (the query)
-# directly. lookup-misses.sh already dedups its queries; cross-dedup against soft
-# spots is unnecessary (a query and an article-claim are different shapes).
-MISS=0
-if [[ -z "$QUERY" ]]; then
-  while IFS=$'\t' read -r slug claim reason; do
-    [[ -z "$claim" ]] && continue
-    printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-    i=$((i+1)); MISS=$((MISS+1))
-  done < <(bash "$SCRIPTS_DIR/lookup-misses.sh" "$STACK")
-  N_GAPS=$i
-  echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich."
-  if [[ "$N_GAPS" -eq 0 ]]; then
-    echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
-    rm -f "$GAPS"
-    exit 0
-  fi
-fi
-```
-
-## Step 4: Dispatch the enrichment agent over gap batches
-
-Dispatch the `stacks:enrichment` agent over the surviving gaps. One agent unless
-the gap count exceeds the cap. **CAP=5** — set by the controlled batch-size
-experiment in issue #76: batch~5 beat batch~12 on every axis measured (found a
-source the batch-12 agent missed, ran in about half the wall-clock, and loses
-fewer gaps per agent death since each agent carries a smaller slice), for a
-+15% token cost that the other gains outweigh. Smaller isn't free either: below
-5 the per-gap token cost roughly doubles for no quality gain, and a batch of 1
-regresses on scope-exclusion (a single-gap agent is more likely to wrongly call
-a claim out of scope). 5 is the measured sweet spot for this web-search-heavy
-agent, not a guess — it does not apply to the validator's or catalog's caps.
-
-```bash
-mapfile -t GAP_ROWS < "$GAPS"
-CAP=5
-DISPATCH_EPOCH=$(date +%s)
-rm -f "$STACK"/dev/enrich/_enrich-*.md   # clear any stale per-batch files from a prior run
-```
-
-**Dispatch.** In a single message, emit one `Agent` tool call per slice
-`${GAP_ROWS[@]:i:CAP}` (i = 0, CAP, 2·CAP, …), `subagent_type` =
-`stacks:enrichment`, with `BATCH_TAG` = the slice ordinal (`0`, `1`, `2`, …; use
-`0` for the single-agent case). Each agent prompt names: its assigned gap rows
-(`gap_id<TAB>slug<TAB>claim<TAB>reason`), the path to `$STACK/STACK.md`
-(source-hierarchy + scope), the filed-sources listing `$LISTING`, the stack root
-`$STACK`, and its `$BATCH_TAG`. Tell each agent to write its findings to
+Read the manifest `dev/enrich/dispatch.tsv` (`Manifest:` path from prep) — each
+row is `batch_tag<TAB>gap_id<TAB>slug<TAB>claim<TAB>reason`. **In a single
+message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` =
+`stacks:enrichment`. Each agent prompt names: its assigned gap rows as
+`gap_id<TAB>slug<TAB>claim<TAB>reason` (columns 2-5 of that batch's manifest
+rows), the path to `$STACK/STACK.md` (source-hierarchy + scope), the filed-sources
+listing (the `Listing:` path), the stack root `$STACK`, and its `BATCH_TAG` (the
+`batch_tag` value). Tell each agent to write its findings to
 `$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Parallel dispatch — never sequential.
 
-**Gate.** After all agents return, gate every expected batch file (write-or-fail
-+ the `enrichment-findings` shape). Build the expected paths from the same slice
-ordinals you dispatched:
+## Step 4: Gate — every dispatched gap must be receipted (`enrich.sh gate`)
+
+After all agents return, gate the batch. `enrich.sh gate` re-reads the run-state
+from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh`
+(write-or-fail + `enrichment-findings` shape) on every expected `_enrich-<tag>.md`,
+then `check-coverage.sh` (reconciles the dispatched `gap_id`s against the `gap_id`
+column of the findings rows). A dropped, duplicated, unknown, or missing findings
+row fails **by name**.
 
 ```bash
-BATCHFILES=()
-n=${#GAP_ROWS[@]}
-for ((i=0, tag=0; i<n; i+=CAP, tag++)); do BATCHFILES+=("$STACK/dev/enrich/_enrich-${tag}.md"); done
-bash "$SCRIPTS_DIR/gate-batch.sh" "$DISPATCH_EPOCH" "enrichment" enrichment-findings "${BATCHFILES[@]}"
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" gate $ARGUMENTS
 ```
 
-A non-zero exit means an agent did not write a well-formed findings file —
-surface the failing paths and stop.
+A non-zero exit means an agent did not write a well-formed findings file, or a
+gap it was assigned has no receipt row — surface the named failure and stop.
 
-## Step 5: Aggregate findings + dedup by URL
+## Step 5: Consolidate findings — dedup by URL (`enrich.sh finish`)
 
-Read every `_enrich-*.md` batch file and parse each row's 8 tab fields
-(`KIND, gap_id, slug, source_ref, url, tier, title, quote`). Then **dedup by
-URL — only over `CANDIDATE`/`WEAK` rows with a non-empty `url`** (never group
-`NOSOURCE` rows, whose `url` is empty, or they collapse into one bogus group): if
-two gaps picked the same URL, you will stage that source once and note every gap
-it serves (a single staged file can ground multiple claims). Group the rows by
-verdict for the operator:
+`enrich.sh finish` reads every `_enrich-*.md`, dedups `CANDIDATE`/`WEAK` rows by
+URL (never `NOSOURCE` — its url is empty and would collapse into one bogus group),
+merges the `gap_id`s/`slug`s a single URL serves, prints the consolidated rows,
+then removes the transient run files (the deduped view is now in your context;
+nothing on disk is needed for the approval/staging below, so an operator cancel
+at Step 6 already leaves a clean end state).
 
-- `CANDIDATE` / `WEAK` — a fetchable URL that grounds the claim (WEAK = tier 4 only).
+```bash
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" finish $ARGUMENTS
+```
+
+Each printed row is `KIND<TAB>gap_ids<TAB>slugs<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote`.
+Group them by verdict for the operator:
+
+- `CANDIDATE` / `WEAK` — a fetchable URL that grounds the claim (WEAK = tier 4 only);
+  a single row may list several `gap_ids`/`slugs` (one source grounds several claims).
 - `DUP` — already-filed source; no fetch, the operator just adds a citation.
 - `NOSOURCE` — nothing grounds it; the operator tightens the claim or accepts it.
 
@@ -261,11 +159,8 @@ explicit opt-in (tier-4 sources are weak grounding); never stage `DUP`/`NOSOURCE
 Ask the operator to confirm — approve all candidates, select a subset, also
 include weak ones, or cancel. (Per the 4-option `AskUserQuestion` cap, present
 the table in prose and take a free-text confirmation rather than a per-source
-picker.) On **cancel**: clean up and write nothing —
-
-```bash
-rm -f "$STACK"/dev/enrich/_enrich-*.md "$STACK/dev/enrich/_gaps.tsv" "$STACK/dev/enrich/_filed-sources.tsv"
-```
+picker.) On **cancel**: write nothing — `finish` (Step 5) already removed the
+transient run files, so cancelling leaves the library untouched.
 
 ## Step 7: Stage approved sources into incoming/
 
@@ -297,13 +192,15 @@ indistinguishable from a hand-dropped source:
 - **No commentary in the body, ever.** No arithmetic, restatement, or framing tailored to the claim (e.g. "737 chars ≈ 184 tokens, within the 180–220 range"). Everything you want to say about *why* this grounds the claim lives in the header (`**Supports gap:**`) or the findings row, never interleaved into the source text.
 
 Generate the filename with `collision-dest.sh` (it returns a non-colliding path
-in the target dir):
+in the target dir). Substitute `{stack-root}` with the absolute stack path from
+prep's `Stack root:` line — do not rely on a `$STACK` variable, shell state does
+not survive across these blocks:
 
 ```bash
-TODAY=$(date +%Y-%m-%d)
-DEST=$(bash "$SCRIPTS_DIR/collision-dest.sh" "$STACK/sources/incoming" "{slug-or-title}.md")
-# write the staged markdown to "$DEST"
+bash "$CLAUDE_PLUGIN_ROOT/scripts/collision-dest.sh" "{stack-root}/sources/incoming" "{slug-or-title}.md"
 ```
+
+Write the staged markdown (the header block above) to the path it printed.
 
 **Re-verify after fetch (codex #8):** a `CANDIDATE` verdict does not guarantee a
 clean re-fetch (pages change, paywall, dynamic content). After writing each
@@ -312,10 +209,13 @@ field has its whitespace collapsed and carries no surrounding quotation marks, s
 flatten the re-fetched file the same way before matching (a literal `grep -Fq` of
 the raw quote against the raw page is brittle — line wraps differ):
 
+Substitute `{dest-path}` with the path you just wrote (not a `$DEST` variable —
+shell state does not survive between these blocks):
+
 ```bash
 QUOTE_FLAT=$(printf '%s' "{supporting quote}" | tr -s '[:space:]' ' ')
-if ! tr -s '[:space:]' ' ' < "$DEST" | grep -Fq "$QUOTE_FLAT"; then
-  echo "WARN: supporting quote not found in re-fetched $DEST — skipping"; rm -f "$DEST"
+if ! tr -s '[:space:]' ' ' < "{dest-path}" | grep -Fq "$QUOTE_FLAT"; then
+  echo "WARN: supporting quote not found in re-fetched {dest-path} — skipping"; rm -f "{dest-path}"
 fi
 ```
 
@@ -343,8 +243,5 @@ anything. Carry forward any caveats on the staged sources (edition notes,
 unverified sub-claims, claims to reword) into the final report so the operator
 sees what synthesis baked in and can edit the article if needed.
 
-Clean up the transient working files (keep nothing but the staged sources):
-
-```bash
-rm -f "$STACK"/dev/enrich/_enrich-*.md "$STACK/dev/enrich/_gaps.tsv" "$STACK/dev/enrich/_filed-sources.tsv"
-```
+(No cleanup step here — `finish` at Step 5 already removed every transient working
+file, so the only thing this run leaves behind is the staged sources.)
