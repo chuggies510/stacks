@@ -1,8 +1,8 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
-Distilled 2026-06-21 from:
-  tech-context.md @ ce7bfc6e5f14a26697736eef4d63653aa4ffb2dd
-  system-patterns.md @ cb95d04c50aee7588536ff3174364cf0b7e6d359
+Distilled 2026-07-07 from:
+  tech-context.md @ 16cc60cff0a612acbd95cf2e1cd119da13d18fbf
+  system-patterns.md @ b27153e7f555b7b030e94c19957270099d7ba7f4
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
@@ -69,6 +69,7 @@ Three-layer plugin; holds no knowledge, manipulates user-owned library repos.
 - `/stacks:init-library {path}`: copy `templates/library/` → create private GitHub repo → write config.
 - `/stacks:new-stack {name}`: copy `templates/stack/` to `{name}/` → register in library `catalog.md`.
 - `/stacks:process-inbox`: read library `inbox/*.md` → classify against existing stacks via content + source metadata → move matched to target stack's `sources/incoming/` → report unmatched. Routing only.
+- `/stacks:ingest-book {stack} {pdf}` (0.42–0.43): converts a handbook PDF chapter-by-chapter (doc-tools faithful mode) into the **deep-reference tier** `{stack}/reference/{book}/` (gated `.md` with printed-page provenance + generated `index.md`); lookup reads it behind the articles. Serial for 1–3 chapters; a `Workflow`-batch run mode fans a whole volume out in parallel (needs operator multi-agent opt-in). Schema in `references/reference-tier.md`.
 - `/stacks:lookup {question}` (north star): read config → open catalog + per-stack `index.md` (resolve `--stack {name|a,b,c}`, else all) → recognize matching articles over the `## Articles` routing map (each entry `- [[slug|title]] — {routing line}`, LLM matches on meaning), supplemented by `rank-articles.sh` keyword rank → load matches → synthesize cited answer → optional Karpathy-loop file-back (extend or write an article, then commit). **On a miss** (no article recognized), lookup logs it (with the searched stack) then auto-enriches hands-free: `enrich-stack {stack} --auto --query "{query}"` researches just that query, auto-stages a CANDIDATE source, catalogs + re-audits, then retries and answers (#69). The system optimizes two axes: retrieval friction (the path to the right article via per-article `routing:` lines) and per-article truthfulness (article matches its sources).
 
 ### Cross-cutting harness patterns
@@ -76,12 +77,16 @@ Three-layer plugin; holds no knowledge, manipulates user-owned library repos.
 - Parent-side sharded dispatch: scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched directly by the parent skill, not an orchestrator. Orchestrators were removed because nested Task dispatch silently fell back to inline and hit "Prompt is too long". Bounds: 1 source per W1 agent, 25 agents per W2 wave, 25 articles per validator. Sharding uses inline `${ARRAY[@]:i:CAP}`.
 - Write-or-fail gate: caller captures `DISPATCH_EPOCH=$(date +%s)` before dispatch; each expected file must be non-empty AND mtime strictly newer than the epoch (size alone misses a stale file, mtime alone misses an empty write), then pass `assert-structure.sh`. `gate-batch.sh` mtime is portable (GNU `stat -c %Y` + BSD `-f %m` fallback). Sub-agents return only text, no exit code, so the file-based gate is the success signal. The gate enumerates file paths, never a directory.
 - Slug immutability: W1 cannot rename an existing article's slug — it matches by claim overlap and reuses the slug. With W1b dedup this eliminates silent overwrite by parallel W2 writes to the same filename.
-- Shell env does NOT persist between a skill's Bash blocks (cwd does). Re-derive state in the block that needs it, or pass it via a nested skill's `$ARGUMENTS` (never an env var). Bit the lookup auto-path twice; structural fix tracked in #72.
+- Shell env does NOT persist between a skill's Bash blocks (cwd does). Re-derive state in the block that needs it, or pass it via a nested skill's `$ARGUMENTS` (never an env var). Bit the lookup auto-path twice; structural fix is **epic #87**.
+
+### Pipeline orchestration migration (epic #87, in progress)
+
+Deterministic pipeline control flow is moving out of SKILL.md Bash blocks into one checked-in script per pipeline (`scripts/pipeline/{catalog,audit,enrich}.sh`) with `prep|gate|finish` phases; state crosses phases via `dev/<phase>/{run.env,dispatch.tsv}` files, never shell env (#72). A shared `scripts/check-coverage.sh` reconciles the dispatch manifest against per-item receipt rows, failing by name on omission/duplicate/unknown/missing (#71). `references/article-contract.md` is the one SSOT for the article schema (five stages point at it instead of restating). **Shipped: enrich (0.46.0) + the SSOT + the gate (0.45.x).** Audit (T7) + catalog (T8) pending; substrate decision in ADR-001 / `dev/specs/pipeline-orchestration-ssot.md`.
 
 ### Known weak spots
 
 - `regenerate-moc.sh` / `normalize-tags.sh` use `awk`, not tested against mawk-only environments (both now parse inline + block tag forms).
-- Output gates prove a file was written, not that every dispatched item was processed; audit gate keys on `last_verified == today` (#71).
+- Output gates prove a file was written, not per-item coverage — `check-coverage.sh` fixes this but is wired into **enrich only**; audit still keys on `last_verified == today`, catalog gates on files only (#71 / #87 T7-T8). Global-not-per-batch reconciliation gap: #92.
 - Lookup-miss enrichment runs off global telemetry that can't tell libraries apart or mark a miss resolved — batch path only (#73).
 
 ---
