@@ -39,7 +39,7 @@ Started from a stale S16 handoff (0.37.0); the library maintainer had left a fre
 
 ### Chat
 
-`(filled in Phase 8)`
+`S17-pipeline-orchestration-first-slice`
 
 ### Changes made
 
