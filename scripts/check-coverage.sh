@@ -8,7 +8,7 @@ set -euo pipefail
 # on disk and knows nothing about Agent-vs-Workflow fan-out.
 #
 # Usage:
-#   bash check-coverage.sh [--field N] <dispatch.tsv> <output-file>...
+#   bash check-coverage.sh [--field N] [--verdict TAG] <dispatch.tsv> <output-file>...
 #   bash check-coverage.sh --self-check
 #
 # Arguments:
@@ -18,6 +18,13 @@ set -euo pipefail
 #                    only the output/receipt column, which varies per pipeline
 #                    (validator: VALIDATED<TAB>{slug}<TAB>{RUN_ID} → col 2;
 #                    enrichment: verdict<TAB>gap_id<TAB>... → col 2).
+#   --verdict TAG    Count a receipt row only when its col-1 verdict equals TAG.
+#                    For a findings file that MIXES a per-item receipt row with
+#                    per-item detail rows sharing the id column — audit's
+#                    _audit-<tag>.md carries VALIDATED (receipt) plus CORRECTION/
+#                    SOFTSPOT (detail), all keyed on slug in col 2, so without the
+#                    filter a corrected article's slug double-counts as a receipt.
+#                    Omit (enrich) when every tab row is already a receipt.
 #   <dispatch.tsv>   The dispatch manifest (see below).
 #   <output-file>... One or more receipt-bearing output files. A path that does
 #                    NOT exist is a FATAL coverage failure (named on stderr): an
@@ -63,13 +70,14 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 usage() {
-  echo "usage: check-coverage.sh [--field N] <dispatch.tsv> <output-file>..." >&2
+  echo "usage: check-coverage.sh [--field N] [--verdict TAG] <dispatch.tsv> <output-file>..." >&2
   echo "       check-coverage.sh --self-check" >&2
   exit 1
 }
 
 run_reconcile() {
   local field=$1; shift
+  local verdict=$1; shift
   local dispatch=$1; shift
 
   [[ -n "$dispatch" && $# -ge 1 ]] || usage
@@ -102,7 +110,12 @@ run_reconcile() {
       echo "$f" >> "$tmp/missing"
       continue
     fi
-    awk -F'\t' -v c="$field" 'NF>=c && $c!="" {print $c}' "$f" >> "$tmp/emitted_all"
+    # When --verdict is set, a receipt line must ALSO lead with that verdict in
+    # col 1 — so a findings file mixing a per-item receipt row (VALIDATED) with
+    # per-item detail rows that reuse the id column (audit's CORRECTION/SOFTSPOT
+    # keyed on slug) counts only the receipts, not the detail.
+    awk -F'\t' -v c="$field" -v v="$verdict" \
+      'NF>=c && $c!="" && (v=="" || $1==v) {print $c}' "$f" >> "$tmp/emitted_all"
   done
 
   sort -u "$tmp/emitted_all" > "$tmp/emitted_u"
@@ -238,6 +251,38 @@ self_check() {
   printf 'CANDIDATE\ta\tR\nNOSOURCE\tb\tR\n' > "$d/outA.txt"
   check "metadata-cols-ok (5-col manifest)" 0 "" "$d/dispatch_meta.tsv" "$d/outA.txt"
 
+  # --verdict filter: a findings file that mixes a per-item receipt row (VALIDATED)
+  # with per-item DETAIL rows sharing col-2 (audit's CORRECTION/SOFTSPOT keyed on
+  # slug). Without --verdict, the detail row's slug double-counts as a receipt →
+  # false duplicate. With --verdict VALIDATED, only receipt rows count.
+  check_v() {   # like check() but injects --verdict as the leading arg
+    local name=$1 want_rc=$2 want_id=$3 verdict=$4; shift 4
+    local out rc
+    out=$( bash "$0" --verdict "$verdict" --field 2 "$@" 2>&1 ) && rc=0 || rc=$?
+    if [[ "$rc" -ne "$want_rc" ]]; then
+      echo "SELF-CHECK FAIL [$name]: expected exit $want_rc, got $rc" >&2
+      echo "$out" | sed 's/^/    /' >&2; fail=$((fail+1)); return
+    fi
+    if [[ -n "$want_id" ]] && ! grep -qw "$want_id" <<<"$out"; then
+      echo "SELF-CHECK FAIL [$name]: output did not name id '$want_id'" >&2
+      echo "$out" | sed 's/^/    /' >&2; fail=$((fail+1)); return
+    fi
+    echo "SELF-CHECK PASS [$name]: exit $rc$([[ -n "$want_id" ]] && echo ", named '$want_id'")"
+    pass=$((pass+1))
+  }
+  # (j) mixed receipt+detail file: VALIDATED a,b,c receipts + CORRECTION on a +
+  #     SOFTSPOT on b. --verdict VALIDATED → clean PASS.
+  printf 'batchA\ta\nbatchA\tb\nbatchA\tc\n' > "$d/dispatch_mix.tsv"
+  printf 'VALIDATED\ta\tRUN1\nCORRECTION\ta\t"x"->"y"\nVALIDATED\tb\tRUN1\nSOFTSPOT\tb\tsome claim\tno source\nVALIDATED\tc\tRUN1\n' > "$d/outMix.txt"
+  check_v "verdict-filter clean (mixed rows)" 0 "" "VALIDATED" "$d/dispatch_mix.tsv" "$d/outMix.txt"
+
+  # (k) same mixed file WITHOUT --verdict → 'a' and 'b' double-count as duplicates.
+  check "verdict-off double-counts detail (a dup)" 1 "a" "$d/dispatch_mix.tsv" "$d/outMix.txt"
+
+  # (l) --verdict still catches a genuinely dropped receipt: no VALIDATED for c.
+  printf 'VALIDATED\ta\tRUN1\nCORRECTION\tc\t"x"->"y"\nVALIDATED\tb\tRUN1\n' > "$d/outMix.txt"
+  check_v "verdict-filter drops non-receipt (c omitted)" 1 "c" "VALIDATED" "$d/dispatch_mix.tsv" "$d/outMix.txt"
+
   echo "---"
   echo "self-check: $pass passed, $fail failed"
   [[ "$fail" -eq 0 ]]
@@ -246,10 +291,12 @@ self_check() {
 # Arg parsing runs after the function defs so --self-check can call self_check
 # (bash defines functions top-to-bottom as it executes).
 FIELD=2
+VERDICT=""   # empty = every tab row is a receipt (enrich); set = only col-1==VERDICT rows count (audit)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --self-check) self_check; exit $? ;;
     --field) FIELD=${2:-}; shift 2 || usage ;;
+    --verdict) VERDICT=${2:-}; shift 2 || usage ;;
     --) shift; break ;;
     -*) echo "check-coverage.sh: unknown option '$1'" >&2; usage ;;
     *) break ;;
@@ -257,4 +304,4 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Anything reaching here is a real reconciliation run.
-run_reconcile "$FIELD" "$@"
+run_reconcile "$FIELD" "$VERDICT" "$@"

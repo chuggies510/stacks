@@ -12,6 +12,8 @@ description: |
 
 Validate a stack's articles against their cited sources. The validator **fixes** claims that contradict their source in place (so `/stacks:lookup` never serves a known-wrong claim) and records every fix plus every **soft spot** (a claim not tied to any cited source) for the report. No inline marks are stamped in article bodies. Each run is independent: the validator re-checks every article and the report is rebuilt from this run's findings. There is no carry-forward ledger and no multi-pass loop.
 
+The deterministic control flow (resolve, enum, shard, gate, report) lives in `scripts/pipeline/audit.sh` as `prep|gate|finish` phases; state crosses phases through `dev/audit/{run.env,dispatch.tsv}` files, never shell env. This skill dispatches the validator agents between `prep` and `gate` and does the log+commit after `finish`.
+
 ## Step 0: Telemetry
 
 ```bash
@@ -19,128 +21,70 @@ STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
-## Step 1: Gate check
+## Step 1: Prep — resolve, enum, shard (`audit.sh prep`)
+
+`audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, shard them into `CAP=3` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
 
 ```bash
-LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") || exit 1
-cd "$LIBRARY" || exit 1
-STACK="$ARGUMENTS"
-if [[ -z "$STACK" ]]; then
-  echo "ERROR: Specify a stack name. Usage: /stacks:audit-stack {stack-name}"
-  exit 1
-fi
-if [[ ! -f "$STACK/STACK.md" ]]; then
-  echo "ERROR: Stack '$STACK' not found (no STACK.md)."
-  exit 1
-fi
-ARTICLE_COUNT=$(find "$STACK/articles" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)
-if [[ "$ARTICLE_COUNT" -lt 1 ]]; then
-  echo "ERROR: No articles found in $STACK/articles/. Run /stacks:catalog-sources $STACK first."
-  exit 1
-fi
-SCRIPTS_DIR="$STACKS_ROOT/scripts"
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
 ```
+
+A non-zero exit (no stack name, stack not found, or no articles) prints the reason and stops the run. Otherwise note the printed `RUN_ID`, manifest, sources, and stack-root paths — they feed the dispatch.
 
 ## Step 2: Read STACK.md
 
-Read `$STACK/STACK.md` for the source-hierarchy section. The validator needs it to resolve conflicts when two sources disagree (higher-tier source wins; the losing claim is fixed in place to match it — no inline mark is stamped).
+Read `$STACK/STACK.md` (the stack root is in prep's output) for the source-hierarchy section. The validator needs it to resolve conflicts when two sources disagree (higher-tier source wins; the losing claim is fixed in place to match it — no inline mark is stamped).
 
-## Step 3: A1 — Validate articles against sources
+## Step 3: Dispatch the validator over the article batches
 
-Dispatch the `stacks:validator` agent over the articles. One agent unless the article count exceeds the cap (the cap bounds how many articles a single agent re-reads in one pass — each with its cited sources — and, when sliced, how many subagents spawn at once). Keep it small: a validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. Slice inline with the same `${ARRAY[@]:i:CAP}` idiom catalog W2 uses.
+`prep` already sharded the articles into `CAP=3` batches — small on purpose: each validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. (Change the cap in `audit.sh`'s `CAP=` constant, not here.)
 
-```bash
-mapfile -t ARTICLES < <(find "$STACK/articles" -maxdepth 1 -name '*.md' | sort)
-N_ARTICLES=${#ARTICLES[@]}
-CAP=3   # articles per validator agent. Small on purpose: each agent also reads every cited source, so a big slice risks prompt-overflow + cross-article contamination. Raise only if dispatch fan-out (N/3 agents) becomes the bottleneck, never for "fewer agents".
-DISPATCH_EPOCH=$(date +%s)
-mkdir -p "$STACK/dev/audit"
-rm -f "$STACK"/dev/audit/_audit-*.md   # clear any stale per-batch files from a prior run
-```
+Read the manifest `dev/audit/dispatch.tsv` (the `Manifest:` path from prep) — each row is `batch_tag<TAB>slug<TAB>article_path`. **In a single message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` = `stacks:validator`. Parallel dispatch — never sequential. Each agent prompt names:
 
-**Dispatch.** Each validator gets: the absolute article paths in its slice, the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`), the source-hierarchy context from STACK.md, the stack root `$STACK`, `$DISPATCH_EPOCH`, and a **`BATCH_TAG`** = the slice index (`0`, `1`, `2`, …; use `0` for the single-agent case). The validator strips prior-cycle marks, fixes source-contradictions in place, sets `last_verified` to today, and writes its findings to `$STACK/dev/audit/_audit-${BATCH_TAG}.md` (tab-separated `CORRECTION`/`SOFTSPOT` lines, or empty if clean).
+- its assigned **article paths** (column 3 of that batch's manifest rows),
+- the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`),
+- the source-hierarchy context from STACK.md,
+- the stack root `$STACK`,
+- its **`BATCH_TAG`** (the `batch_tag` value: `0`, `1`, …),
+- the **`RUN_ID`** from prep's output (echoed verbatim in each `VALIDATED` receipt row).
 
-- **N_ARTICLES ≤ CAP:** one `Agent` call (subagent_type `stacks:validator`) over all of `${ARTICLES[@]}`, `BATCH_TAG=0`.
-- **N_ARTICLES > CAP:** in a single message, emit one `Agent` call per slice `${ARTICLES[@]:i:CAP}` (i = 0, CAP, 2·CAP, …), with `BATCH_TAG` = the slice ordinal (0, 1, 2, …). Parallel dispatch — never sequential.
+The validator strips prior-cycle marks, fixes source-contradictions in place, sets `last_verified` to today, writes one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row per assigned article (clean articles included) plus any `CORRECTION`/`SOFTSPOT` lines, to `$STACK/dev/audit/_audit-${BATCH_TAG}.md`.
 
-**Gate.** After all validators return, the parent asserts each article carries **today's** `last_verified` — the validator's success signal. This is a value check, not a file-mtime check: a clean article the validator correctly did not need to rewrite still passes (validation can be a legitimate no-op), but a stale date fails because it means the validator skipped that article this run. (Using `gate-batch.sh`'s mtime gate here would false-fail a same-day re-audit, where already-current articles have nothing to rewrite — that's why this path checks the value directly.)
+## Step 4: Gate — every dispatched article must be receipted (`audit.sh gate`)
 
-```bash
-TODAY=$(date +%F)
-GATE_FAILED=()
-for art in "${ARTICLES[@]}"; do
-  bash "$SCRIPTS_DIR/assert-structure.sh" "$art" article-validated "validator-gate" >/dev/null 2>&1 \
-    || GATE_FAILED+=("$art")
-done
-if (( ${#GATE_FAILED[@]} > 0 )); then
-  printf 'VALIDATOR_GATE_FAILURE: last_verified not set to %s (validator skipped these):\n' "$TODAY"
-  printf '  %s\n' "${GATE_FAILED[@]}"
-  exit 1
-fi
-```
-
-A non-zero exit means an article's `last_verified` is not today's date — the validator did not process it. Surface the failing paths and stop.
-
-## Step 4: Audit report
-
-Rebuild `dev/audit/report.md` from this run's validator findings (the `_audit-*.md` batch files). The report is regenerated every run; it is not a ledger. Two sections: **corrections applied** (claims the validator fixed in place against their source) and **soft spots** (claims not tied to any cited source — left in place for the operator to source or confirm).
+After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows — the `--verdict` filter skips the `CORRECTION`/`SOFTSPOT` rows that reuse the slug column). A dropped, duplicated, unknown, or missing receipt fails **by name**.
 
 ```bash
-REPORT="$STACK/dev/audit/report.md"
-TODAY=$(date +%Y-%m-%d)
-# Aggregate the tab-separated CORRECTION/SOFTSPOT lines across all batch files.
-AUDIT_LINES=$(cat "$STACK"/dev/audit/_audit-*.md 2>/dev/null || true)
-N_CORR=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^CORRECTION'$'\t' || true)
-N_SOFT=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
-emit() { # CORRECTION only (3-field): prints "- `slug` — description"
-  printf '%s\n' "$AUDIT_LINES" | awk -F'\t' -v k="$1" '$1==k{printf "- `%s` — %s\n", $2, $3}'
-}
-{
-  echo "# $STACK — audit report ($TODAY)"
-  echo
-  echo "Regenerated fresh each audit. Not a persistent ledger."
-  echo
-  echo "Articles validated: $N_ARTICLES.  Corrections applied: $N_CORR.  Soft spots: $N_SOFT."
-  echo
-  echo "## Corrections applied"
-  echo "_Claims the validator rewrote in place to match their cited source._"
-  echo
-  if [[ "$N_CORR" -gt 0 ]]; then emit CORRECTION; else echo "_None. No cited claim contradicted its source._"; fi
-  echo
-  echo "## Soft spots"
-  echo "_Claims not tied to a cited source. Left in place — add a source or confirm._"
-  echo
-  # SOFTSPOT is 4-field (slug, claim, reason): render the verbatim claim + reason.
-  if [[ "$N_SOFT" -gt 0 ]]; then
-    printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{printf "- `%s` — \"%s\" — %s\n", $2, $3, $4}'
-  else echo "_None. Every claim ties to a cited source._"; fi
-} > "$REPORT"
-
-# Durable machine-readable soft-spot list — the /stacks:enrich-stack input.
-# slug<TAB>claim<TAB>reason, one row per soft spot. Written even when empty so
-# enrich-stack distinguishes "audited, none soft" from "never audited".
-printf '%s\n' "$AUDIT_LINES" \
-  | awk -F'\t' '$1=="SOFTSPOT"{print $2"\t"$3"\t"$4}' \
-  > "$STACK/dev/audit/soft-spots.tsv"
-
-rm -f "$STACK"/dev/audit/_audit-*.md   # transient inputs; report + soft-spots.tsv are the durable artifacts
-echo "Wrote $REPORT and $STACK/dev/audit/soft-spots.tsv ($N_SOFT soft spots)"
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
 ```
 
-## Step 5: Log and commit
+A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
 
-Prepend an entry to `$STACK/log.md`:
+## Step 5: Audit report (`audit.sh finish`)
+
+`audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (corrections applied + soft spots) and the machine-readable `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input), prints an `AUDIT_SUMMARY: articles=… corrections=… softspots=…` line, then removes the transient run files. The report is regenerated every run; it is not a ledger.
+
+```bash
+bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" finish $ARGUMENTS
+```
+
+Read the printed `AUDIT_SUMMARY` counts — they feed the log entry and commit message below.
+
+## Step 6: Log and commit
+
+Prepend an entry to `$STACK/log.md` using the counts from `AUDIT_SUMMARY`:
 
 ```markdown
 ## [YYYY-MM-DD] audit-stack
-Validated={N_ARTICLES} Corrections={N_CORR} SoftSpots={N_SOFT}. Report: dev/audit/report.md
+Validated={articles} Corrections={corrections} SoftSpots={softspots}. Report: dev/audit/report.md
 ```
 
-Then commit the corrected articles and the report:
+Then commit the corrected articles and the report. Substitute `{stack}` and the counts — shell state does not survive between these blocks, so re-resolve the library here rather than relying on a `$STACK`/`$LIBRARY` from an earlier step:
 
 ```bash
-git add "$STACK/articles/" "$STACK/dev/audit/report.md" "$STACK/dev/audit/soft-spots.tsv" "$STACK/log.md"
-git commit -m "audit($STACK): corrections=$N_CORR soft-spots=$N_SOFT"
+LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
+git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/soft-spots.tsv" "{stack}/log.md"
+git commit -m "audit({stack}): corrections={corrections} soft-spots={softspots}"
 ```
 
 Present a summary to the user: articles validated, corrections applied, soft-spot count, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff). If soft spots are high, point at the report.

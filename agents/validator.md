@@ -28,6 +28,7 @@ Passed as the per-batch task content:
 - **Scoped sources**: the source subset covering your articles' citations (resolved from each article's `sources:` frontmatter and inline `[source-slug]` refs). Excludes `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted). The parent falls back to the full sources tree only when an article has zero resolvable citations.
 - **STACK.md** (source-hierarchy section): relative trust of sources, for conflict resolution.
 - **`$STACK`** (stack root) and **`$BATCH_TAG`** (your batch id): where and under what name to write your audit file.
+- **`$RUN_ID`**: the run nonce (a Unix timestamp). Echo it verbatim in every `VALIDATED` receipt row so the parent gate can prove the row is from this run.
 
 ## Process
 
@@ -40,24 +41,28 @@ For each assigned article:
    - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
    - **Source is cited and covers the topic but the claim overstates it** (adds a mechanism, rationale, number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
    - **No cited source, or no source you can tie the claim to at all** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
-4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). This is the success signal the audit gate checks — always set it, even when nothing else changed. Full frontmatter field list, writer/reader stages, and enforcement are in `references/article-contract.md` (plugin root); this is the one field this agent writes.
+4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). Always set it, even when nothing else changed. Full frontmatter field list, writer/reader stages, and enforcement are in `references/article-contract.md` (plugin root); this is the one field this agent writes.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
+6. Record one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row for this article in your audit file (see Output). This is the per-article coverage signal the parent gate reconciles against the dispatch manifest — write it for **every** assigned article, including ones you left unchanged.
 
 ## Output
 
 **1. Each article**, edited in place: prior marks stripped, contradictions fixed, `last_verified` set to today. No inline marks of any kind.
 
-**2. One audit file** at `$STACK/dev/audit/_audit-${BATCH_TAG}.md` listing what you changed and what is soft. One record per line, tab-separated. The two kinds have different shapes:
+**2. One audit file** at `$STACK/dev/audit/_audit-${BATCH_TAG}.md` — the receipt for your batch plus what you changed and what is soft. One record per line, tab-separated. Three kinds, different shapes:
 
-- **`CORRECTION<TAB>slug<TAB>description`** — a one-line description of the fix.
+- **`VALIDATED<TAB>slug<TAB>RUN_ID`** — one per **assigned article**, including ones you left unchanged. This is the coverage receipt; a missing row fails the gate by naming the skipped slug. `RUN_ID` is the nonce passed in your input, echoed verbatim.
+- **`CORRECTION<TAB>slug<TAB>description`** — a one-line description of a fix (in addition to that article's VALIDATED row).
 - **`SOFTSPOT<TAB>slug<TAB>claim<TAB>reason`** — `claim` is the **complete, verbatim sentence** from the article body (the downstream `/stacks:enrich-stack` searches the web for a source that grounds this exact text, so a shorthand is not enough); `reason` is the one-line why-it's-soft. Collapse any internal tabs/newlines in either field to single spaces.
 
 ```
+VALIDATED	vav-box-minimum-airflow	1751846400
+VALIDATED	cooling-tower-cycles	1751846400
 CORRECTION	vav-box-minimum-airflow	"30% minimum" → "20% or lower" per [pnnl-vav-guide]
 SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achievable in practice.	no scoped source covers practical cycle limits
 ```
 
-Write this file with the Write tool (overwrite if it exists). If your batch produced no corrections and no soft spots, write the file empty (zero bytes) so the report knows the batch ran clean.
+Write this file with the Write tool (overwrite if it exists). It is **never empty**: even a fully-clean batch emits one `VALIDATED` row per assigned article.
 
 ## Example 1: claim supported — no change
 
@@ -65,7 +70,7 @@ Article `chilled-water-primary-secondary.md`: "Common pipe between primary and s
 
 Source `ashrae-guideline-36.md`: "The common pipe permits the primary and secondary circuits to operate at different flow rates simultaneously."
 
-Action: leave the claim. No CORRECTION, no SOFTSPOT line.
+Action: leave the claim. No CORRECTION, no SOFTSPOT line — but still emit this article's `VALIDATED<TAB>chilled-water-primary-secondary<TAB>{RUN_ID}` receipt row (every assigned article gets one).
 
 ## Example 2: claim contradicts source — fix in place
 

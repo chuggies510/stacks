@@ -27,15 +27,15 @@ case "$type" in
     grep -qE '^title:'           "$path" || fail "missing title field"
     grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
     ;;
-  article-validated)
-    # The read-and-fix validator no longer stamps inline marks (#57); the success
-    # signal is last_verified set to TODAY. Today-specific (not just "a date") so it
-    # proves the validator processed the article THIS run — a stale date means it was
-    # skipped. This replaces the old mtime freshness check, which false-failed a
-    # same-day re-audit where a clean article had nothing to rewrite.
-    today=$(date +%F)
-    grep -qE "^last_verified:[[:space:]]*\"?${today}" "$path" \
-      || fail "last_verified not set to today ($today) — validator did not run on this article"
+  audit-findings)
+    # Per-batch validator output (#87 T7). The success signal is no longer a
+    # today-dated last_verified per article (that date-gate false-failed nothing
+    # but couldn't prove per-article coverage); it is a VALIDATED receipt row per
+    # assigned article in this file. Structure check here = at least one receipt
+    # row exists (the validator wrote real output); check-coverage.sh --verdict
+    # VALIDATED does the per-slug reconciliation against the dispatch manifest.
+    grep -qE '^VALIDATED'$'\t' "$path" \
+      || fail "no VALIDATED receipt rows — validator wrote no per-article receipts"
     ;;
   enrichment-findings)
     # Every non-blank line is an 8-field tab record led by a verdict. Split on a

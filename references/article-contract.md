@@ -5,7 +5,7 @@ and what a W1 concept-extraction block looks like. Every stage that produces or
 consumes this shape points here instead of restating it — the same role
 `references/reference-tier.md` plays for the deep-reference tier. `scripts/assert-structure.sh`
 is the executable enforcement: its `article-md`, `dedup-md`/`concept-batch`, `dedup-meta`,
-`article-validated`, and `enrichment-findings` kinds are the machine check for the
+`audit-findings`, and `enrichment-findings` kinds are the machine check for the
 fields below. A field added here without a matching grep in `assert-structure.sh` (where
 the field is machine-checkable at all) is drift waiting to happen — keep the two in sync.
 
@@ -17,7 +17,7 @@ and `/stacks:lookup`.
 
 | Field | Type | Writer | Reader(s) | Machine-enforced? |
 |---|---|---|---|---|
-| `last_verified` | string, `""` or `"YYYY-MM-DD"` | `article-synthesizer` (sets `""` on write/update); `validator` (sets to today) | `assert-structure.sh` `article-md` (key must exist — any value, including empty, passes); `assert-structure.sh` `article-validated` (value must equal today — the audit gate's success signal, keyed on wall-clock date until T7 replaces it with a `RUN_ID` receipt) | Yes — key presence (`article-md`) and value (`article-validated`) |
+| `last_verified` | string, `""` or `"YYYY-MM-DD"` | `article-synthesizer` (sets `""` on write/update); `validator` (sets to today) | `assert-structure.sh` `article-md` (key must exist — any value, including empty, passes). NOT the audit gate's coverage signal since T7: the gate reconciles a per-article `VALIDATED<TAB>slug<TAB>RUN_ID` receipt row (`audit-findings` kind + `check-coverage.sh --verdict VALIDATED`), which proves per-article coverage a wall-clock date could not. `last_verified` is still written for provenance. | Yes — key presence (`article-md`) |
 | `updated` | date, `YYYY-MM-DD` | `article-synthesizer` | none currently | No — required by convention only; zero readers found (grep across `scripts/`, `agents/`, `skills/` turns up only the writer). Same shape as the now-dead `extraction_hash` field. Kept required per spec Decision 4 rather than dropped in this pass — flagged below, not silently reconciled. |
 | `sources` | YAML list of bare `sources/{publisher}/{file}.md` paths | `article-synthesizer` | `validator` (resolves each `[source-slug]` citation against this list); `/stacks:lookup` Step 7 (collects primary-source citations) | No (no grep kind checks list contents; `article-md` doesn't check this key) |
 | `title` | string, human-readable | `article-synthesizer` | `assert-structure.sh` `article-md`; `/stacks:lookup` (cites articles by title) | Yes — key must exist |
@@ -107,7 +107,7 @@ concatenated across all contributing blocks.
 | `concept-batch` / `dedup-md` | `^## Concept:` header present |
 | `dedup-meta` | `ALL_SLUGS=` key present with a non-empty value |
 | `article-md` | `^title:` and `^last_verified:` keys present |
-| `article-validated` | `^last_verified:` equals today's date (`YYYY-MM-DD`) |
+| `audit-findings` | a `VALIDATED<TAB>` receipt row present (the validator wrote per-article receipts; `check-coverage.sh --verdict VALIDATED` does the per-slug reconciliation) |
 | `enrichment-findings` | every non-blank line is an 8-tab-field row led by a `CANDIDATE\|WEAK\|DUP\|NOSOURCE` verdict |
 
 A field in Section 1 or Section 4 with no row above is contract-required but not

@@ -98,42 +98,36 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
-# ── article-validated ──────────────────────────────────────────────────────────
+# ── audit-findings ─────────────────────────────────────────────────────────────
+# The audit gate no longer keys on a today-dated last_verified (#87 T7); the
+# per-batch validator file must carry a VALIDATED receipt row per assigned article.
 
-@test "article-validated: today's last_verified date passes" {
-  local f="$TEST_TMP/validated.md"
-  printf 'last_verified: %s\ntitle: X\n' "$(date +%F)" > "$f"
-  run_script "$f" article-validated
+@test "audit-findings: file with a VALIDATED receipt row passes" {
+  local f="$TEST_TMP/_audit-0.md"
+  printf 'VALIDATED\tvav-box\t1700000000\n' > "$f"
+  run_script "$f" audit-findings
   [ "$status" -eq 0 ]
 }
 
-@test "article-validated: quoted today's last_verified passes" {
-  local f="$TEST_TMP/validated.md"
-  printf 'last_verified: "%s"\n' "$(date +%F)" > "$f"
-  run_script "$f" article-validated
+@test "audit-findings: receipts mixed with CORRECTION/SOFTSPOT rows pass" {
+  local f="$TEST_TMP/_audit-0.md"
+  printf 'VALIDATED\tvav-box\t1700000000\nCORRECTION\tvav-box\t"30%%"->"20%%"\nVALIDATED\tchiller\t1700000000\nSOFTSPOT\tchiller\tsome claim\tno source\n' > "$f"
+  run_script "$f" audit-findings
   [ "$status" -eq 0 ]
 }
 
-@test "article-validated: stale (non-today) last_verified fails" {
-  local f="$TEST_TMP/validated.md"
-  printf 'last_verified: 2020-01-01\ntitle: X\n' > "$f"
-  run_script "$f" article-validated
+@test "audit-findings: file with only CORRECTION rows (no receipt) fails" {
+  local f="$TEST_TMP/_audit-0.md"
+  printf 'CORRECTION\tvav-box\t"30%%"->"20%%"\n' > "$f"
+  run_script "$f" audit-findings
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
-@test "article-validated: empty last_verified fails (never audited)" {
-  local f="$TEST_TMP/validated.md"
-  printf 'last_verified: ""\ntitle: X\n' > "$f"
-  run_script "$f" article-validated
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
-}
-
-@test "article-validated: missing last_verified fails" {
-  local f="$TEST_TMP/validated.md"
-  printf 'title: X\nbody text\n' > "$f"
-  run_script "$f" article-validated
+@test "audit-findings: empty file fails" {
+  local f="$TEST_TMP/_audit-0.md"
+  : > "$f"
+  run_script "$f" audit-findings
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
