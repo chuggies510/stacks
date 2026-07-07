@@ -1,3 +1,9 @@
+## 0.44.0 — 2026-07-07
+
+**The library-maintenance skills now find the library themselves instead of only working when you are already standing in it.** `audit-stack`, `catalog-sources`, and `enrich-stack` each opened with a hard gate that aborted unless the current directory held `catalog.md`, so lookup's auto-enrich-on-miss (which calls them from a consumer repo) died at the door (stacks#74).
+- **Each skill's Step-1 gate now resolves + `cd`s to the configured library** via the existing `resolve-library.sh` (config `.library`, falling back to the current dir if it is itself a library), mirroring what `lookup` already does — so the skills run from any repo while the in-library case is unchanged. The two-line capture-then-`cd` form is deliberate: `cd "$(…failed…)"` succeeds on an empty string and would swallow the resolve error. (`skills/audit-stack/SKILL.md`, `skills/catalog-sources/SKILL.md`, `skills/enrich-stack/SKILL.md`, stacks#74)
+- Verified-closed stacks#63 (plugin-root discovery) as already-done: no skill uses the `find …/plugins/cache` dance anymore, all resolve via `$CLAUDE_PLUGIN_ROOT`, and `locate-plugin-root.sh` is gone.
+
 ## 0.43.1 — 2026-07-03
 
 **Two ingest-book gotchas that cost real round-trips on the first whole-volume run (ASPE Vol 1).** Both are guidance-only refinements to the 0.43.0 skill.

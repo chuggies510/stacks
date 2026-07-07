@@ -51,10 +51,8 @@ SKILL_NAME="stacks:enrich-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev
 ## Step 1: Gate check
 
 ```bash
-if [[ ! -f "catalog.md" ]]; then
-  echo "ERROR: Not in a library repo (no catalog.md)."
-  exit 1
-fi
+LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") || exit 1
+cd "$LIBRARY" || exit 1
 # Parse args. The first non-flag token is the stack. `--auto` enables hands-free
 # staging (no operator prompt — Step 6). `--query <text>` scopes this run to ONE
 # gap (that query) instead of mining audit soft spots + telemetry misses; it MUST

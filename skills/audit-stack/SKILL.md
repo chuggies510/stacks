@@ -22,10 +22,8 @@ SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/
 ## Step 1: Gate check
 
 ```bash
-if [[ ! -f "catalog.md" ]]; then
-  echo "ERROR: Not in a library repo (no catalog.md)."
-  exit 1
-fi
+LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") || exit 1
+cd "$LIBRARY" || exit 1
 STACK="$ARGUMENTS"
 if [[ -z "$STACK" ]]; then
   echo "ERROR: Specify a stack name. Usage: /stacks:audit-stack {stack-name}"

@@ -26,10 +26,8 @@ SKILL_NAME="stacks:catalog-sources" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/
 Parse arguments. The full argument string is `$ARGUMENTS`. Extract optional stack name and optional `--from` path:
 
 ```bash
-if [[ ! -f "catalog.md" ]]; then
-  echo "ERROR: Not in a library repo (no catalog.md)."
-  exit 1
-fi
+LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") || exit 1
+cd "$LIBRARY" || exit 1
 
 # Parse: /stacks:catalog-sources [{stack}] [--from {path}]
 ARGS="$ARGUMENTS"
