@@ -1,3 +1,10 @@
+## 0.45.1 — 2026-07-07
+
+**Closed three ways the new coverage gate (`check-coverage.sh`) could be fooled into a false PASS — a gate that can be tricked defeats its own purpose.** All three found by a codex review of the 0.45.0 slice; the `--self-check` grew three regression guards (10 cases now, red when broken).
+- **A missing output file is now a fatal failure, not a warning.** Because receipts were unioned across all files, another batch's file could cover a missing one's ids and pass — exactly the silent-shrink the gate exists to kill. A missing findings file now fails by name regardless of coverage. (`scripts/check-coverage.sh`)
+- **The same id dispatched in two manifest rows now fails** instead of being silently deduped (which let one receipt look like complete coverage of a double-dispatch). (`scripts/check-coverage.sh`)
+- **A malformed manifest row (empty item_id) now fails; optional metadata columns are explicitly allowed.** The manifest may carry per-pipeline detail in columns 3+ (the enrich pipeline puts the gap's slug/claim/reason there so the manifest doubles as the gap file); the id is always column 2, and an empty id is rejected. (`scripts/check-coverage.sh`)
+
 ## 0.45.0 — 2026-07-07
 
 **First slice of the pipeline-orchestration epic (#87): a coverage gate, one schema source-of-truth, and a saner enrichment batch size.** Foundation only — inert until the pipeline migrations wire it in (the next slice, gated behind a design review). Each piece stands alone.

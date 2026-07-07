@@ -20,15 +20,16 @@ set -euo pipefail
 #                    enrichment: verdict<TAB>gap_id<TAB>... → col 2).
 #   <dispatch.tsv>   The dispatch manifest (see below).
 #   <output-file>... One or more receipt-bearing output files. A path that does
-#                    NOT exist contributes zero receipts, so its dispatched ids
-#                    surface as omissions — a missing/empty findings file can
-#                    never pass silently (this is the fix that kills the old
-#                    `cat _audit-*.md 2>/dev/null || true` silent-shrink).
+#                    NOT exist is a FATAL coverage failure (named on stderr): an
+#                    agent that wrote no file failed, regardless of whether some
+#                    other file happens to cover its ids. This kills the old
+#                    `cat _audit-*.md 2>/dev/null || true` silent-shrink.
 #
 # Exit codes:
 #   0   Dispatched id set == emitted id set exactly. Prints a PASS line.
-#   1   Any omission, duplicate, or unknown; each category's offending ids are
-#       named on stderr. Also usage errors.
+#   1   Any omission, duplicate, unknown, missing output file, double-dispatched
+#       id, or malformed manifest row; each category's offenders are named on
+#       stderr. Also usage errors.
 #
 # ---------------------------------------------------------------------------
 # Run-state convention (this header is the convention's home — no separate doc)
@@ -42,10 +43,16 @@ set -euo pipefail
 #                             counts, and paths. Later phases source/grep it.
 #
 #   dev/<phase>/dispatch.tsv  The dispatch manifest, one row per dispatched work
-#                             item:  batch_tag<TAB>item_id
+#                             item:  batch_tag<TAB>item_id[<TAB>metadata...]
 #                             batch_tag groups items into one agent's assignment;
-#                             item_id is the natural per-pipeline key (source
-#                             path, concept slug, article slug, gap_id).
+#                             item_id (col 2) is the natural per-pipeline key
+#                             (source path, concept slug, article slug, gap_id).
+#                             Cols 3+ are OPTIONAL per-pipeline metadata (e.g.
+#                             enrich carries slug/claim/reason so the manifest is
+#                             also the gap file) and are ignored for reconciliation.
+#                             A non-blank row with an empty col-2 id is malformed
+#                             and fails; the same id in two rows is a double-
+#                             dispatch and fails (a lone receipt would mask it).
 #
 # Receipt rows (what agents emit into their output files) carry the item_id in a
 # fixed column (--field, default 2), one row per ASSIGNED id including explicit
@@ -74,18 +81,25 @@ run_reconcile() {
   local tmp; tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' RETURN
 
-  # Dispatched ids (manifest col 2), unique. A duplicate dispatch row is a
-  # manifest bug out of scope here; dedup so it does not masquerade as a receipt
-  # duplicate.
-  awk -F'\t' 'NF>=2 && $2!="" {print $2}' "$dispatch" | sort -u > "$tmp/dispatched"
+  # Dispatched ids from manifest col 2 (col 1 is batch_tag; cols 3+ are optional
+  # per-pipeline metadata, ignored). Two manifest defects fail by name instead of
+  # passing silently: a non-blank row with an empty col-2 id (malformed), and the
+  # same id in two rows (double-dispatch — a single receipt would look complete).
+  awk -F'\t' '!/^[[:space:]]*$/ && $2=="" {print NR}' "$dispatch" > "$tmp/malformed"
+  awk -F'\t' '$2!="" {print $2}' "$dispatch" > "$tmp/dispatched_all"
+  sort "$tmp/dispatched_all" | uniq -d > "$tmp/dispatch_dups"
+  sort -u "$tmp/dispatched_all" > "$tmp/dispatched"
 
-  # Emitted ids across ALL output files, WITH duplicates preserved for dup
-  # detection. A path that does not exist contributes nothing (→ its ids omit).
+  # Emitted ids across ALL output files, dups preserved for receipt-dup detection.
+  # A MISSING output path is fatal (an agent that wrote no file is a coverage
+  # failure by definition), NOT merely "its ids omit" — else another batch's file
+  # covering those ids would mask the miss.
   : > "$tmp/emitted_all"
+  : > "$tmp/missing"
   local f
   for f in "$@"; do
     if [[ ! -e "$f" ]]; then
-      echo "check-coverage.sh: output file not found: $f (its receipts count as omissions)" >&2
+      echo "$f" >> "$tmp/missing"
       continue
     fi
     awk -F'\t' -v c="$field" 'NF>=c && $c!="" {print $c}' "$f" >> "$tmp/emitted_all"
@@ -98,6 +112,21 @@ run_reconcile() {
   comm -13 "$tmp/dispatched" "$tmp/emitted_u" > "$tmp/unknowns"
 
   local rc=0
+  if [[ -s "$tmp/malformed" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d malformed manifest row(s), empty item_id at line(s): %s\n' \
+      "$(wc -l < "$tmp/malformed" | tr -d ' ')" "$(paste -sd' ' "$tmp/malformed")" >&2
+  fi
+  if [[ -s "$tmp/dispatch_dups" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d id(s) dispatched more than once: %s\n' \
+      "$(wc -l < "$tmp/dispatch_dups" | tr -d ' ')" "$(paste -sd' ' "$tmp/dispatch_dups")" >&2
+  fi
+  if [[ -s "$tmp/missing" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d output file(s) missing: %s\n' \
+      "$(wc -l < "$tmp/missing" | tr -d ' ')" "$(paste -sd' ' "$tmp/missing")" >&2
+  fi
   if [[ -s "$tmp/omissions" ]]; then
     rc=1
     printf 'COVERAGE_FAILURE: %d omitted (dispatched, no receipt): %s\n' \
@@ -184,6 +213,30 @@ self_check() {
   # and the file's other id is named too
   mk_clean; rm -f "$d/outB.txt"
   check "deleted-file names e too" 1 "e" "$d/dispatch.tsv" "$d/outA.txt" "$d/outB.txt"
+
+  # (f) missing file whose ids ARE covered elsewhere → MUST still fail (codex #2
+  #     regression: previously passed because receipts union globally).
+  printf 'V\ta\tR\nV\tb\tR\nV\tc\tR\nV\td\tR\nV\te\tR\n' > "$d/outA.txt"
+  rm -f "$d/outB.txt"
+  check "missing-file-covered (still fails)" 1 "" "$d/dispatch.tsv" "$d/outA.txt" "$d/outB.txt"
+
+  # (g) double-dispatch: 'a' in two manifest rows → fail naming 'a' (codex #1;
+  #     previously deduped and passed with a single receipt).
+  printf 'batchA\ta\nbatchB\ta\nbatchA\tc\n' > "$d/dispatch_dup.tsv"
+  printf 'V\ta\tR\nV\tc\tR\n' > "$d/outA.txt"
+  check "double-dispatch (a twice)" 1 "a" "$d/dispatch_dup.tsv" "$d/outA.txt"
+
+  # (h) malformed manifest row: non-blank row with empty col-2 id → fail (codex #3,
+  #     adapted — extra metadata cols are allowed, an empty id is not).
+  printf 'batchA\ta\nbatchA\t\nbatchA\tc\n' > "$d/dispatch_bad.tsv"
+  printf 'V\ta\tR\nV\tc\tR\n' > "$d/outA.txt"
+  check "malformed-manifest (empty id)" 1 "" "$d/dispatch_bad.tsv" "$d/outA.txt"
+
+  # (i) metadata columns allowed: a 5-col manifest (enrich's shape) still passes
+  #     when receipts on col 2 are complete.
+  printf 'batchA\ta\tslug-a\tclaim\treason\nbatchA\tb\tslug-b\tclaim\treason\n' > "$d/dispatch_meta.tsv"
+  printf 'CANDIDATE\ta\tR\nNOSOURCE\tb\tR\n' > "$d/outA.txt"
+  check "metadata-cols-ok (5-col manifest)" 0 "" "$d/dispatch_meta.tsv" "$d/outA.txt"
 
   echo "---"
   echo "self-check: $pass passed, $fail failed"
