@@ -104,8 +104,10 @@ phase_prep() {
   : > "$LISTING"
   while IFS= read -r f; do
     local url
+    # `|| true`: a source with no URL makes grep exit 1 → pipefail + set -e would
+    # kill prep on the first URL-less filed source. Absent URL is normal, not fatal.
     url=$(grep -m1 -oiE '(\*\*Source:\*\*|source_url:)[[:space:]]*https?://[^[:space:]]+' "$f" 2>/dev/null \
-          | grep -oE 'https?://[^[:space:]]+' | head -1)
+          | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
     [[ -n "$url" ]] && printf '%s\t%s\n' "$(basename "$f" .md)" "$url" >> "$LISTING"
   done < <(find "$STACK/sources" -type f -name '*.md' \
              ! -path '*/incoming/*' ! -path '*/trash/*' ! -path '*/.raw/*' 2>/dev/null)
@@ -284,6 +286,9 @@ self_check() {
   touch "$d/catalog.md"
   mkdir -p "$d/mep/articles" "$d/mep/sources/ashrae" "$d/mep/dev/audit"
   echo "# MEP" > "$d/mep/STACK.md"
+  # A filed source with NO URL: exercises the listing-loop grep-no-match path so a
+  # missing `|| true` (which killed prep under set -e + pipefail) fails prep-runs.
+  printf '# ASHRAE notes\n\nNo source url in this file.\n' > "$d/mep/sources/ashrae/notes.md"
   printf '# VAV\n\nMinimum VAV box airflow is typically 20%% of design maximum.\n' > "$d/mep/articles/vav.md"
   printf '# Chiller\n\nChilled water is commonly distributed at 44 F supply.\n'    > "$d/mep/articles/chiller.md"
   {

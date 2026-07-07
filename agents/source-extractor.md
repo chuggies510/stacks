@@ -35,6 +35,13 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 
 Write to: `dev/extractions/{batch_id}-concepts.md` (one file per batch, not per source).
 
+**Coverage obligation:** the catalog W1 gate (`catalog.sh gate-w1`) checks that your
+`{batch_id}-concepts.md` exists, is non-empty, and carries at least one `## Concept:`
+block for every dispatched source — that file IS your per-source receipt. Always write
+it. (A source you judge pure-reference under the Process step 3 discard test is the one
+exception the gate cannot yet express — surface that source to the operator in your
+returned text rather than writing an empty file; tracked upstream.)
+
 The concept-block format (one or more blocks per file) is the article contract —
 `references/article-contract.md` (plugin root), Section 4 — not restated here. Assign
 `tier` per source: it is the source-extractor's job to rate each source it reads
