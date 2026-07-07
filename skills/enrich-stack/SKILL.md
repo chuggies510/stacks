@@ -182,17 +182,19 @@ fi
 ## Step 4: Dispatch the enrichment agent over gap batches
 
 Dispatch the `stacks:enrichment` agent over the surviving gaps. One agent unless
-the gap count exceeds the cap. **CAP=12** — larger than the validator's per-agent
-slice because the constraint here is different: each gap is several web
-round-trips, and web calls within an agent are serial, so peak concurrency is
-roughly the agent count (≈3 agents for 35 gaps), not the gap count. The validator
-is capped small for context isolation (it re-reads each article's sources); enrich
-is capped for web-call fan-out, so a bigger per-agent slice is fine. No wave
-machinery is needed.
+the gap count exceeds the cap. **CAP=5** — set by the controlled batch-size
+experiment in issue #76: batch~5 beat batch~12 on every axis measured (found a
+source the batch-12 agent missed, ran in about half the wall-clock, and loses
+fewer gaps per agent death since each agent carries a smaller slice), for a
++15% token cost that the other gains outweigh. Smaller isn't free either: below
+5 the per-gap token cost roughly doubles for no quality gain, and a batch of 1
+regresses on scope-exclusion (a single-gap agent is more likely to wrongly call
+a claim out of scope). 5 is the measured sweet spot for this web-search-heavy
+agent, not a guess — it does not apply to the validator's or catalog's caps.
 
 ```bash
 mapfile -t GAP_ROWS < "$GAPS"
-CAP=12
+CAP=5
 DISPATCH_EPOCH=$(date +%s)
 rm -f "$STACK"/dev/enrich/_enrich-*.md   # clear any stale per-batch files from a prior run
 ```

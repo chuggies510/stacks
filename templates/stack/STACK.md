@@ -29,7 +29,7 @@ Sections that every topic guide in this stack should follow.
 - *Add domain-specific sections here*
 - Pitfalls — behavior that surprises an experienced practitioner who already understands the design intent. Gate: would someone who read the docs and understood the system still get burned by this? If yes, it's a pitfall. If it follows directly from understanding how the system works (general language behavior, documented API semantics, resource cleanup), it belongs in Patterns or Key Concepts instead.
 - Field Notes — practitioner experience, production lessons, design consequences, and observations that don't fit a prescriptive section
-- Sources — which sources contributed, with tier ratings (populated by `/stacks:ingest`)
+- Sources — which sources contributed, with tier ratings (populated by `/stacks:catalog-sources`)
 
 ## Filing Rules
 
@@ -47,13 +47,6 @@ allowed_tags:
 
 ## Frontmatter Convention
 
-Topic guides use this YAML frontmatter:
-
-```yaml
----
-title: Display Name
-tags: [domain-tag, topic-specific-tags]
-sources: 0
-last_ingested: YYYY-MM-DD
----
-```
+Article frontmatter (fields, writer/reader stages, and machine enforcement) is defined
+once in `references/article-contract.md` (plugin-level SSOT) — read it there rather
+than here; this file does not restate the schema.

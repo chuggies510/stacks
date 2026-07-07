@@ -35,23 +35,11 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 
 Write to: `dev/extractions/{batch_id}-concepts.md` (one file per batch, not per source).
 
-Each file contains one or more concept blocks in this format:
-
-```
-## Concept: {title}
-
-slug: {kebab-case-slug}
-title: {human-readable title}
-source_paths:
-  - {path/to/source.md}
-target_article: {existing-slug-if-updating | ""}
-tier: {1|2|3|4}
-
-### Claims
-
-- {claim text} [source: {source-slug}, line ~{N}]
-- {claim text} [source: {source-slug}]
-```
+The concept-block format (one or more blocks per file) is the article contract —
+`references/article-contract.md` (plugin root), Section 4 — not restated here. Assign
+`tier` per source: it is the source-extractor's job to rate each source it reads
+against `STACK.md`'s hierarchy; the contract's Section 3 covers how tier is meant to
+carry through merge and consumption downstream.
 
 ## Example 1: New concept with new slug
 

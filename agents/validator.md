@@ -40,7 +40,7 @@ For each assigned article:
    - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
    - **Source is cited and covers the topic but the claim overstates it** (adds a mechanism, rationale, number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
    - **No cited source, or no source you can tie the claim to at all** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
-4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). This is the success signal the audit gate checks — always set it, even when nothing else changed.
+4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). This is the success signal the audit gate checks — always set it, even when nothing else changed. Full frontmatter field list, writer/reader stages, and enforcement are in `references/article-contract.md` (plugin root); this is the one field this agent writes.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
 
 ## Output

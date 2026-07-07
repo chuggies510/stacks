@@ -33,7 +33,7 @@ For each assigned gap:
 1. Read the `claim` and `reason`. Turn the claim into a targeted search query — the precise figure, mechanism, or assertion to ground, narrowed by the stack scope. (For "Minimum VAV box airflow is typically 20% of design maximum", search the airflow-minimum guidance, not "VAV box".)
 2. `WebSearch` the query. Take the 1-3 most promising results.
 3. `WebFetch` each promising result and read the relevant section. Ask: **does this source state or directly support this exact claim?** Topically related is not enough — the source must back the claim's actual assertion. Stop at the first source that clearly grounds it.
-4. Rate that grounding source's tier against the STACK.md hierarchy (1 vendor doc / official … 4 forum / general).
+4. Rate that grounding source's tier against the STACK.md hierarchy (1 vendor doc / official … 4 forum / general) — the same tier vocabulary the article contract (`references/article-contract.md`, plugin root) uses for source tiers once this candidate is cataloged.
 5. Check the **filed-sources listing**: if the grounding source's URL is already filed, this is a `DUP` — the operator only needs to cite the existing source, no new fetch.
 
 Assign **exactly one verdict per gap**:

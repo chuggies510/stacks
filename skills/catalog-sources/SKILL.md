@@ -121,7 +121,10 @@ Read `$STACK/STACK.md` and extract:
 - Source hierarchy (tier rankings for conflict resolution)
 - Scope (what topics belong in this stack)
 - Filing rules (how to organize sources by publisher/origin)
-- Frontmatter convention (YAML fields expected in articles)
+
+Article frontmatter fields (writer/reader stages, enforcement) are defined once in
+`references/article-contract.md` (plugin root), not in STACK.md — read it there if
+you need the field list.
 
 ## Step 3: Locate plugin scripts and agents
 
