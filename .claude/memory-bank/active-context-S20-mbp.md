@@ -33,7 +33,7 @@ Resolved the remaining stacks singleton backlog across three releases. Opened by
 Full suite 119/119 green (+9 new bats), enrich self-check 12/12. Each fix's red-when-removed check was actually run (old parser proved red; per-block simulation proved new-stack; filter-stripped copies proved cross-library/stale leak).
 
 ### Chat
-(filled in Phase 8)
+S20-codex-fixes-gap-queue
 
 ### Changes made
 | Change | Status |
