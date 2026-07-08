@@ -1,8 +1,8 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
 Distilled 2026-07-07 from:
-  tech-context.md @ e2b31fd65476f77c6c0fae24496f97212c5e3649
-  system-patterns.md @ 3fca80bf60daf7ac41e2b88ebbfcc56d20db2c75
+  tech-context.md @ ed982d8c1eb2df38b25b57ea5ae278f529ca05c9
+  system-patterns.md @ c1c7bb567c1561c05697f0ff02dad02ddffa7f58
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
@@ -24,7 +24,7 @@ Claude Code plugin for building and maintaining curated domain knowledge librari
 
 - Pure markdown + bash plugin. No package manager, no build step, no `package.json`/`pyproject.toml`.
 - Core runtime deps: `jq` (version/marketplace parse), `python3` (W1b dedup, `dedup-extractions.py`), `awk` (W4 MoC + tag parse), Linux `stat -c %Y` for mtime (macOS/BSD unsupported).
-- Document-ingest deps (convert stage only): `uv` + `pdfplumber` (PDF, fetched ephemerally via `uv run --no-project --with`), `pandoc` (.docx), `libreoffice` (spreadsheets/slides/legacy Office, headless). A missing tool skips that file with a report, never crashes the pipeline.
+- Document-ingest deps (convert stage only): `uv` + `pdfplumber` (PDF), `openpyxl` (multi-sheet `.xlsx` → one CSV sidecar per sheet, 0.51.0), `pandoc` (.docx), `libreoffice` (slides/legacy Office + `.xls`/`.ods`, headless; the single-sheet fallback when openpyxl is absent). All fetched ephemerally via `uv run --no-project --with`; a missing tool skips that file with a report, never crashes the pipeline. A failed input is named in the run summary (0.51.0).
 - Tests: `bats` (`tests/gate-batch.bats`, `tests/assert-structure.bats`, `tests/dedup-extractions.bats`). Pipeline + gate scripts carry inline `--self-check` harnesses (red-when-broken).
 - Skill frontmatter is only `name` + `description` (description starts "Use when..."). No `version`/`allowed-tools`/`thinking`. Agent frontmatter: `tools`, `model`, `description`, 3+ worked examples in the prompt.
 
@@ -66,7 +66,7 @@ One checked-in definition of the article frontmatter schema, bare source-ref for
 
 ### Audit and enrich pipeline (stateless)
 
-`/stacks:audit-stack {stack}`: dispatch `validator` over articles; each fixes claims contradicting their cited source in place, records corrections + soft spots + a per-article `VALIDATED` receipt row, sets `last_verified`. Each run is independent (no carry-forward ledger). `/stacks:enrich-stack {stack}` acquires sources for **gaps** = audit soft spots + lookup misses; the `enrichment` agent web-searches one grounding source per gap. Two staging modes: interactive (operator-approved) and `--auto` (lookup's hands-free path, CANDIDATE verdicts only).
+`/stacks:audit-stack {stack}`: dispatch `validator` over articles; each fixes claims contradicting their cited source in place, records corrections + soft spots + a per-article `VALIDATED` receipt row, sets `last_verified`. Each run is independent (no carry-forward ledger). `/stacks:enrich-stack {stack}` acquires sources for **gaps** = audit soft spots + lookup misses; the `enrichment` agent web-searches one grounding source per gap. Two staging modes: interactive (operator-approved) and `--auto` (lookup's hands-free path, CANDIDATE verdicts only). Lookup misses are scoped per-library + a 30-day recency window (0.51.0/#73): each lookup records its resolved library in telemetry, `lookup-misses.sh` filters to the enriching library and drops stale misses.
 
 ### Pipeline orchestration (epic #87 + #77 cluster, both closed)
 
@@ -74,7 +74,7 @@ Deterministic control flow lives in one checked-in script per pipeline (`scripts
 
 ### Other flows
 
-- `/stacks:init-library {path}` / `/stacks:new-stack {name}` / `/stacks:process-inbox` (routing only) / `/stacks:ingest-book {stack} {pdf}` (handbook PDF → deep-reference tier `{stack}/reference/{book}/`, schema in `references/reference-tier.md`).
+- `/stacks:init-library {path}` / `/stacks:new-stack {name}` (like every stacks skill, runs from any repo — resolves the library from config, not cwd; the field-usage model, 0.50.0/#54) / `/stacks:process-inbox` (routing only) / `/stacks:ingest-book {stack} {pdf}` (handbook PDF → deep-reference tier `{stack}/reference/{book}/`, schema in `references/reference-tier.md`).
 - `/stacks:lookup {question}` (north star): read config → open catalog + per-stack `index.md` → recognize matching articles over the `## Articles` routing map + reference chapters → synthesize cited answer → optional Karpathy-loop file-back. **On a miss**, logs it then auto-enriches hands-free (`enrich-stack {stack} --auto --query`), catalogs + re-audits, retries (#69). Optimizes two axes: retrieval friction (per-article `routing:` lines) and per-article truthfulness (article matches its sources).
 
 ### Cross-cutting harness patterns
@@ -86,7 +86,7 @@ Deterministic control flow lives in one checked-in script per pipeline (`scripts
 ### Known weak spots
 
 - `regenerate-moc.sh` / `normalize-tags.sh` use `awk`, not tested against mawk-only environments.
-- Lookup-miss enrichment runs off global telemetry that can't tell libraries apart or mark a miss resolved — batch path only (#73).
+- Lookup-miss enrichment mines global telemetry; per-library + 30-day recency scoping shipped (0.51.0/#73, closed). Still deferred: a durable ledger that marks a miss *resolved* once its article lands — the recency window is the stand-in.
 
 ---
 

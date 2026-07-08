@@ -63,7 +63,8 @@ Runtime dependencies:
 - `awk` (W4 MoC `regenerate-moc.sh`, tag parse in `normalize-tags.sh`)
 - `uv` + `pdfplumber` (PDF→text in `convert-sources.sh`; pdfplumber fetched ephemerally via `uv run --no-project --with`, no install)
 - `pandoc` (`.docx`→text in `convert-sources.sh`)
-- `libreoffice` (spreadsheets/slides/legacy Office→text in `convert-sources.sh`, headless with an isolated profile)
+- `openpyxl` (multi-sheet `.xlsx`→one CSV sidecar per sheet in `convert-sources.sh`, via `uv run --no-project --with`; 0.51.0)
+- `libreoffice` (slides/legacy Office + `.xls`/`.ods` spreadsheets→text in `convert-sources.sh`, headless with an isolated profile; the single-sheet fallback when openpyxl is unavailable)
 - document-ingest tools degrade gracefully: a missing tool skips that file with a report, never crashes the pipeline
 - Linux `stat -c %Y` (mtime extraction in `gate-batch.sh`; macOS/BSD not supported)
 
