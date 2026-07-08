@@ -1,3 +1,8 @@
+## 0.53.1 — 2026-07-08
+
+**`enrich-stack` no longer silently hides a real gap when the flagged claim contains inline formatting — a soft spot whose claim has a `code span` or bold text now surfaces for enrichment instead of being dropped as "stale".** prep confirms a soft spot's claim still exists by matching it against the article, but it normalized only whitespace, not markdown: the `validator` emits the claim as plain prose (markup stripped) while the article keeps its `` `code` ``/`**bold**` markup, so a live claim carrying any markup failed the match and was counted stale — the operator saw "Nothing to enrich" while the gap sat unground (#99, hit on the hardware stack's first audit soft spot).
+- **The stale-check now strips code-span backticks and bold/italic `*` from both the article and the claim before matching** (symmetric, so a literal `` ` ``/`*` can't break the match either; `_` is left alone since identifiers like `amd_pstate` use it). Self-check grows a `prep-keeps-markdown-claim` case that goes red when the normalization is removed. (`scripts/pipeline/enrich.sh` prep + self-check)
+
 ## 0.53.0 — 2026-07-08
 
 **Enriched sources now file under their real publisher directory instead of piling up in `sources/unknown/`, and they stop stamping an absolute tier that drifts from `STACK.md`.** The `enrich-stack` Step-7 staging header omitted the one field the filer reads and carried one field nothing reads — so every enrichment run needed hand-refiling (S48 swe: 10 sources) and every later audit had to reconcile a stale tier.

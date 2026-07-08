@@ -159,10 +159,15 @@ phase_prep() {
         [[ -z "$slug" ]] && continue
         TOTAL=$((TOTAL+1))
         local art="$STACK/articles/$slug.md"
-        # The validator collapsed the claim's whitespace to single spaces; the
-        # article body keeps its original line breaks, so flatten the article the
-        # same way before matching or a wrapped claim never grep -Fq matches.
-        if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | grep -Fq "$claim"; then
+        # The validator collapsed the claim's whitespace to single spaces AND
+        # emits it as plain prose (inline-markdown delimiters stripped), while the
+        # article keeps its original line breaks and its `code`/**bold** markup.
+        # So normalize BOTH sides the same way before the literal match — flatten
+        # whitespace and strip code-span backticks + bold/italic `*` — or a live
+        # claim carrying markup never grep -Fq matches and is dropped as stale
+        # (stacks#99). The strip is symmetric, so a literal ` or * can't break the
+        # match; `_` is left alone (identifiers like amd_pstate use it).
+        if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | tr -d '`*' | grep -Fq "$(printf '%s' "$claim" | tr -d '`*')"; then
           STALE=$((STALE+1)); continue
         fi
         printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
@@ -352,10 +357,14 @@ self_check() {
   printf '# ASHRAE notes\n\nNo source url in this file.\n' > "$d/mep/sources/ashrae/notes.md"
   printf '# VAV\n\nMinimum VAV box airflow is typically 20%% of design maximum.\n' > "$d/mep/articles/vav.md"
   printf '# Chiller\n\nChilled water is commonly distributed at 44 F supply.\n'    > "$d/mep/articles/chiller.md"
+  # Article keeps its code-span markup; the soft-spot row below has it stripped
+  # (as the validator emits it) — exercises the stacks#99 markdown-normalize path.
+  printf '# Boost\n\nThe `cpufreq/boost` knob is present in `active` mode.\n'      > "$d/mep/articles/boost.md"
   {
     printf 'vav\tMinimum VAV box airflow is typically 20%% of design maximum.\tno cited source\n'
     printf 'chiller\tChilled water is commonly distributed at 44 F supply.\tno cited source\n'
     printf 'vav\tThis claim was deleted from the article since the audit.\tstale test\n'
+    printf 'boost\tThe cpufreq/boost knob is present in active mode.\tno cited source\n'
   } > "$d/mep/dev/audit/soft-spots.tsv"
 
   export STACKS_CONFIG="$d/config.json"
@@ -365,25 +374,30 @@ self_check() {
   bash "$0" prep mep >/dev/null 2>&1 || { bad "prep-runs" "prep exited nonzero"; }
   local DISP="$d/mep/dev/enrich/dispatch.tsv" ENV="$d/mep/dev/enrich/run.env"
   [[ -f "$DISP" && -f "$ENV" ]] && ok "prep-writes-run-state" || bad "prep-writes-run-state" "missing dispatch.tsv/run.env"
-  # Two live gaps (the stale row dropped); gap-0 + gap-1, both batch 0.
-  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "2" ]] && grep -q $'^0\tgap-0\tvav\t' "$DISP" && grep -q $'^0\tgap-1\tchiller\t' "$DISP"; then
+  # Three live gaps (the stale row dropped): gap-0 vav, gap-1 chiller, gap-2 boost
+  # (the markdown-claim row, stacks#99 — dropped-as-stale before the fix), batch 0.
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "3" ]] && grep -q $'^0\tgap-0\tvav\t' "$DISP" && grep -q $'^0\tgap-1\tchiller\t' "$DISP"; then
     ok "prep-drops-stale-gap"
   else
-    bad "prep-drops-stale-gap" "expected gap-0(vav)+gap-1(chiller), got: $(cat "$DISP")"
+    bad "prep-drops-stale-gap" "expected gap-0(vav)+gap-1(chiller)+gap-2(boost), got: $(cat "$DISP")"
   fi
+  # stacks#99: a live claim carrying inline markdown (the article keeps `code`
+  # backticks, the soft-spot row has them stripped) must survive, not drop as stale.
+  grep -q $'^0\tgap-2\tboost\t' "$DISP" && ok "prep-keeps-markdown-claim" || bad "prep-keeps-markdown-claim" "markdown-bearing claim dropped as stale; got: $(cat "$DISP")"
   grep -q '^RUN_ID=[0-9]' "$ENV" && ok "run-env-has-runid" || bad "run-env-has-runid" "no RUN_ID"
 
   local F0="$d/mep/dev/enrich/_enrich-0.md"
   mk_clean() {
-    printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\nNOSOURCE\tgap-1\tchiller\t\t\t\t\tno source found for 44 F supply\n' > "$F0"
+    printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\nNOSOURCE\tgap-1\tchiller\t\t\t\t\tno source found for 44 F supply\nCANDIDATE\tgap-2\tboost\t\thttps://example.org/boost\t2\tKernel boost\tcpufreq boost knob present in active mode\n' > "$F0"
   }
   mk_clean
   if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-clean-passes"; else bad "gate-clean-passes" "clean gate failed"; fi
 
-  # Present-but-incomplete file: drop the gap-1 row → gate-batch passes (file
-  # present + well-formed), check-coverage FAILS naming the missing gap-1.
+  # Present-but-incomplete file: drop the gap-1 row (gap-0 + gap-2 receipted) →
+  # gate-batch passes (file present + well-formed), check-coverage FAILS naming
+  # the missing gap-1.
   local out rc
-  printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\n' > "$F0"
+  printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\nCANDIDATE\tgap-2\tboost\t\thttps://example.org/boost\t2\tKernel boost\tcpufreq boost knob present in active mode\n' > "$F0"
   out=$(bash "$0" gate mep 2>&1) && rc=0 || rc=$?
   if [[ "$rc" -ne 0 ]] && grep -qw 'gap-1' <<<"$out"; then
     ok "gate-fails-naming-dropped-row"
