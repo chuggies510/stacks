@@ -1,8 +1,8 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
 Distilled 2026-07-07 from:
-  tech-context.md @ 16cc60cff0a612acbd95cf2e1cd119da13d18fbf
-  system-patterns.md @ b27153e7f555b7b030e94c19957270099d7ba7f4
+  tech-context.md @ 31e37efbf099d4ffea1b08cffbce1f84bec9d352
+  system-patterns.md @ c0e1faec6604c775f06e304b914ade69df84e256
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
