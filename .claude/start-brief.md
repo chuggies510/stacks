@@ -81,12 +81,12 @@ Three-layer plugin; holds no knowledge, manipulates user-owned library repos.
 
 ### Pipeline orchestration migration (epic #87, in progress)
 
-Deterministic pipeline control flow is moving out of SKILL.md Bash blocks into one checked-in script per pipeline (`scripts/pipeline/{catalog,audit,enrich}.sh`) with `prep|gate|finish` phases; state crosses phases via `dev/<phase>/{run.env,dispatch.tsv}` files, never shell env (#72). A shared `scripts/check-coverage.sh` reconciles the dispatch manifest against per-item receipt rows, failing by name on omission/duplicate/unknown/missing (#71). `references/article-contract.md` is the one SSOT for the article schema (five stages point at it instead of restating). **Shipped: enrich (0.46.0) + the SSOT + the gate (0.45.x).** Audit (T7) + catalog (T8) pending; substrate decision in ADR-001 / `dev/specs/pipeline-orchestration-ssot.md`.
+Deterministic pipeline control flow lives in one checked-in script per pipeline (`scripts/pipeline/{catalog,audit,enrich}.sh`) with `prep|gate|finish` phases (catalog adds `queue|dedup|gate-w1|gate-w2`); state crosses phases via `dev/<phase>/{run.env,dispatch.tsv}` files, never shell env (#72). A shared `scripts/check-coverage.sh` reconciles the dispatch manifest against per-item receipt rows, failing by name on omission/duplicate/unknown/missing (#71). `references/article-contract.md` is the one SSOT for the article schema (five stages point at it instead of restating). **Epic #87 complete: all three pipelines shipped (enrich 0.46.0, audit 0.47.0, catalog 0.48.0) + the SSOT + the gate (0.45.x).** The Workflow-tool fan-out substrate was measured against Agent-calls (T6) and deferred — record in `dev/t6-measurement/decision.md`.
 
 ### Known weak spots
 
 - `regenerate-moc.sh` / `normalize-tags.sh` use `awk`, not tested against mawk-only environments (both now parse inline + block tag forms).
-- Output gates prove a file was written, not per-item coverage — `check-coverage.sh` fixes this but is wired into **enrich only**; audit still keys on `last_verified == today`, catalog gates on files only (#71 / #87 T7-T8). Global-not-per-batch reconciliation gap: #92.
+- Per-item coverage now enforced across all three pipelines (enrich gap_ids, audit `VALIDATED` receipts, catalog 1:1 per-file presence); the `last_verified == today` date-gate is retired (#71 / #87 done). Remaining: global-not-per-batch reconciliation gap: #92.
 - Lookup-miss enrichment runs off global telemetry that can't tell libraries apart or mark a miss resolved — batch path only (#73).
 
 ---
