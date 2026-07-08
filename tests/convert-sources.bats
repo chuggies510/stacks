@@ -64,16 +64,59 @@ PY
   [[ "$output" == *"CONVERTED:   doc.pdf"* ]]
 }
 
-@test "xlsx converts to a csv-text sidecar via libreoffice; original archived" {
-  command -v libreoffice >/dev/null 2>&1 || skip "libreoffice not installed"
-  printf 'tag,unit_cost,years\nAHU-1,12000,20\n' > "$TEST_TMP/sched.csv"
-  libreoffice --headless -env:UserInstallation="file:///tmp/lo_bats_$$" \
-    --convert-to xlsx --outdir "$IN" "$TEST_TMP/sched.csv" >/dev/null 2>&1 || skip "xlsx build failed"
+# Build a multi-sheet .xlsx fixture with openpyxl. Each arg is "SheetName:r,r;r,r".
+build_xlsx() {
+  local dest=$1; shift
+  uv run --no-project --with openpyxl python3 - "$dest" "$@" 2>/dev/null <<'PY'
+import sys
+from openpyxl import Workbook
+wb = Workbook(); wb.remove(wb.active)
+for spec in sys.argv[2:]:
+    name, rows = spec.split(":", 1)
+    ws = wb.create_sheet(title=name)
+    for row in rows.split(";"):
+        ws.append(row.split(","))
+wb.save(sys.argv[1])
+PY
+}
+
+@test "single-sheet xlsx converts to one csv sidecar; original archived" {
+  command -v uv >/dev/null 2>&1 || skip "uv not installed"
+  build_xlsx "$IN/sched.xlsx" "Costs:tag,unit_cost,years;AHU-1,12000,20" || skip "openpyxl unavailable"
   run_convert
-  [ -f "$IN/sched.txt" ]
+  [ "$status" -eq 0 ]
+  [ -f "$IN/sched-Costs.csv" ]
   [ -f "$RAW/sched.xlsx" ]
   [ ! -f "$IN/sched.xlsx" ]
-  grep -q "AHU-1" "$IN/sched.txt"
+  grep -q "AHU-1" "$IN/sched-Costs.csv"
+}
+
+@test "multi-sheet xlsx yields one csv sidecar per sheet (#17)" {
+  command -v uv >/dev/null 2>&1 || skip "uv not installed"
+  build_xlsx "$IN/book.xlsx" "Equipment:tag,cost;AHU-1,12000" "Schedule:room,cfm;101,400" || skip "openpyxl unavailable"
+  run_convert
+  [ "$status" -eq 0 ]
+  [ -f "$IN/book-Equipment.csv" ]
+  [ -f "$IN/book-Schedule.csv" ]
+  grep -q "AHU-1" "$IN/book-Equipment.csv"
+  grep -q "400"   "$IN/book-Schedule.csv"
+  [ -f "$RAW/book.xlsx" ]
+  [ ! -f "$IN/book.xlsx" ]
+}
+
+@test "each skipped failure is named in the summary line (#16)" {
+  printf 'fake'   > "$IN/scan.png"
+  printf 'random' > "$IN/blob.xyz"
+  run_convert
+  [[ "$output" == *"archived unconverted, need attention:"* ]]
+  [[ "$output" == *"scan.png"* ]]
+  [[ "$output" == *"blob.xyz"* ]]
+}
+
+@test "no summary failure line when nothing was skipped (#16)" {
+  printf '# ok\n' > "$IN/notes.md"
+  run_convert
+  [[ "$output" != *"need attention"* ]]
 }
 
 @test "invalid args exit 2" {

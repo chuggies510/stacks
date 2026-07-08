@@ -51,6 +51,7 @@ if [[ ! -d "$INCOMING" ]]; then
 fi
 
 n_pass=0 n_conv=0 n_skip=0
+skipped_names=()   # #16: name each archived failure in the summary so it stays visible
 
 archive_original() {
   mkdir -p "$ARCHIVE"
@@ -87,6 +88,37 @@ sys.stdout.write(text)
 PY
 }
 
+extract_xlsx_sheets() {  # $1 xlsx, $2 outdir -> writes one <sheet>.csv per non-empty
+                         # sheet; returns 1 if none produced (caller falls back).
+  # #17: `libreoffice --convert-to csv` exports only the active sheet, silently
+  # dropping the rest of a multi-sheet workbook. openpyxl (via uv, ephemeral) reads
+  # every sheet. Handles .xlsx/.xlsm only — .xls/.ods still go through libreoffice.
+  command -v uv >/dev/null 2>&1 || return 1
+  uv run --no-project --with openpyxl python3 - "$1" "$2" 2>/dev/null <<'PY'
+import sys, csv, os, re
+from openpyxl import load_workbook
+src, outdir = sys.argv[1], sys.argv[2]
+try:
+    wb = load_workbook(src, read_only=True, data_only=True)
+except Exception:
+    sys.exit(1)
+n = 0
+for ws in wb.worksheets:
+    rows = [["" if c is None else c for c in row] for row in ws.iter_rows(values_only=True)]
+    while rows and all(str(c) == "" for c in rows[-1]):
+        rows.pop()
+    if not rows:
+        continue                       # skip an empty sheet — no CSV for nothing
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", ws.title).strip("-") or f"sheet{n+1}"
+    with open(os.path.join(outdir, f"{safe}.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        for r in rows:
+            w.writerow(r)
+    n += 1
+sys.exit(0 if n else 1)
+PY
+}
+
 lo_convert() {  # $1 file, $2 target ext (txt|csv) -> echoes produced file or fails
   command -v libreoffice >/dev/null 2>&1 || return 1
   local out; out=$(mktemp -d)
@@ -101,7 +133,7 @@ lo_convert() {  # $1 file, $2 target ext (txt|csv) -> echoes produced file or fa
 }
 
 report_converted() { n_conv=$((n_conv+1)); echo "CONVERTED:   $(basename "$1")  ->  $(basename "$2")"; }
-report_skipped()   { n_skip=$((n_skip+1)); echo "SKIPPED:     $(basename "$1")  ($2)"; }
+report_skipped()   { n_skip=$((n_skip+1)); skipped_names+=("$(basename "$1")"); echo "SKIPPED:     $(basename "$1")  ($2)"; }
 report_pass()      { n_pass=$((n_pass+1)); echo "PASSTHROUGH: $(basename "$1")"; }
 
 while IFS= read -r -d '' f; do
@@ -136,7 +168,28 @@ while IFS= read -r -d '' f; do
         archive_original "$f"; report_skipped "$f" "no pandoc/libreoffice — cannot convert .docx"
       fi ;;
 
-    xlsx|xls|ods)
+    xlsx|xlsm)
+      # #17: one CSV sidecar per non-empty sheet (openpyxl); libreoffice single-
+      # sheet export is the fallback when uv/openpyxl is unavailable.
+      sheetdir=$(mktemp -d)
+      if extract_xlsx_sheets "$f" "$sheetdir"; then
+        stem=$(basename "$f"); stem=${stem%.*}
+        while IFS= read -r produced; do
+          sheet=$(basename "$produced" .csv)
+          side=$(bash "$SCRIPT_DIR/collision-dest.sh" "$INCOMING" "$stem-$sheet.csv")
+          mv "$produced" "$side"; report_converted "$f" "$side"
+        done < <(find "$sheetdir" -maxdepth 1 -type f -name '*.csv' | sort)
+        rm -rf "$sheetdir"; archive_original "$f"
+      elif produced=$(lo_convert "$f" csv); then
+        rm -rf "$sheetdir"
+        side=$(sidecar_path "$f"); mv "$produced" "$side"
+        archive_original "$f"; report_converted "$f" "$side"
+      else
+        rm -rf "$sheetdir"
+        archive_original "$f"; report_skipped "$f" "no openpyxl/libreoffice — cannot convert spreadsheet"
+      fi ;;
+
+    xls|ods)
       if produced=$(lo_convert "$f" csv); then
         side=$(sidecar_path "$f"); mv "$produced" "$side"
         archive_original "$f"; report_converted "$f" "$side"
@@ -161,4 +214,11 @@ while IFS= read -r -d '' f; do
 done < <(find "$INCOMING" -maxdepth 1 -type f ! -name ".gitkeep" -print0 2>/dev/null)
 
 echo "convert-sources: $n_pass passthrough, $n_conv converted, $n_skip skipped (archived to $ARCHIVE)"
+# #16: the per-file SKIPPED lines scroll away; a failed input archived to the
+# gitignored archive dir is then easy to forget. Name each one in a summary line
+# so the operator sees exactly what needs attention (OCR, a missing tool, a
+# binary that should be dropped).
+if [[ $n_skip -gt 0 ]]; then
+  echo "convert-sources: archived unconverted, need attention: ${skipped_names[*]}"
+fi
 exit 0

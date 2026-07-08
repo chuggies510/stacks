@@ -143,11 +143,16 @@ Substitute the placeholders below (comma-separated). The query comes from `$ARGU
 
 ```bash
 STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+# Re-derive the library here — shell vars from Step 1 do not survive between
+# blocks. Recording it scopes the miss log per library (stacks#73), so
+# lookup-misses.sh only mines misses against the library being enriched.
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh" 2>/dev/null)
 TELEMETRY_EXTRA="$(jq -cn \
   --arg query "$ARGUMENTS" \
   --arg stacks '<stack(s) searched after Hop-1, comma-separated; empty only if no stack matched>' \
   --arg articles '<contributing article AND reference-chapter title(s), comma-separated; empty only on a true miss (no article and no chapter)>' \
-  '{query: $query, stacks: $stacks, articles: $articles}')" \
+  --arg library "$LIBRARY" \
+  '{query: $query, stacks: $stacks, articles: $articles, library: $library}')" \
 SKILL_NAME="stacks:lookup" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 

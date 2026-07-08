@@ -97,3 +97,55 @@ teardown() { rm -rf "$TEST_TMP"; }
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+# ── per-library scoping + recency window (#73) ──────────────────────────────
+# recl <library> <ts> <query>  — a fresh-enough lookup miss in stack "llm".
+recl() {
+  jq -cn --arg lib "$1" --arg ts "$2" --arg q "$3" \
+    '{ts:$ts,session:"0",tool:"Skill",skill:"stacks:lookup",project:"p",query:$q,stacks:"llm",articles:"",library:$lib}' \
+    >> "$LOG"
+}
+NOW() { jq -rn 'now | gmtime | strftime("%Y-%m-%dT%H:%M:%SZ")'; }
+
+@test "a miss for library A is NOT surfaced when filtering by library B" {
+  recl "/libs/A" "$(NOW)" "cross library query"
+  run bash "$SCRIPT" llm "$LOG" "/libs/B"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a miss for the target library IS surfaced when filtering by that library" {
+  recl "/libs/A" "$(NOW)" "same library query"
+  run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ "$output" = $'lookup-miss\tsame library query\tlookup miss' ]
+}
+
+@test "a miss with no .library field is NOT surfaced under a library filter" {
+  rec "stacks:lookup" "llm" "" "legacy no-library query"   # ts:"t", no library key
+  run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a miss older than the recency window is dropped" {
+  recl "/libs/A" "2000-01-01T00:00:00Z" "ancient stale query"
+  run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a recent miss inside the window is kept" {
+  recl "/libs/A" "$(NOW)" "fresh query"
+  run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ "$output" = $'lookup-miss\tfresh query\tlookup miss' ]
+}
+
+@test "a narrowed window drops a miss just outside it" {
+  # 40 days ago is outside a 30-day window but inside a 60-day one.
+  local old; old=$(jq -rn 'now - (40*86400) | gmtime | strftime("%Y-%m-%dT%H:%M:%SZ")')
+  recl "/libs/A" "$old" "forty days old"
+  LOOKUP_MISS_WINDOW_DAYS=30 run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ -z "$output" ]
+  LOOKUP_MISS_WINDOW_DAYS=60 run bash "$SCRIPT" llm "$LOG" "/libs/A"
+  [ "$output" = $'lookup-miss\tforty days old\tlookup miss' ]
+}

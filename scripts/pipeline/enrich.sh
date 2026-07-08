@@ -176,7 +176,7 @@ phase_prep() {
       [[ -z "$claim" ]] && continue
       printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
       i=$((i+1)); MISS=$((MISS+1))
-    done < <(bash "$HELPERS/lookup-misses.sh" "$STACK")
+    done < <(bash "$HELPERS/lookup-misses.sh" "$STACK" "" "$LIB")
     N_GAPS=$i
   fi
 
