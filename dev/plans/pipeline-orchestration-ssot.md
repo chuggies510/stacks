@@ -63,6 +63,8 @@ Human eyeballs T2's contract doc + T4's manifest shapes before any pipeline cons
 
 ## Task 6 — Workflow prototype for enrich fan-out + head-to-head measurement
 
+**DONE.** Measured on `electrical` (15 gaps, 3 CAP=5 batches), Agent-calls vs Workflow, same gap set. Record: `dev/t6-measurement/decision.md`. Substrate neutral on tokens/wall-clock/yield/false-positive; Workflow's schema-robustness + context wins are already gate-backstopped and only bind at large fan-out. **Winner: Agent-calls.** enrich-stack SKILL.md already dispatches via the winner (no change); the harness was relocated to `dev/t6-measurement/` since Workflow is deferred.
+
 **Maps to:** #76's Done-When (Workflow-based enrich measured; substrate decision recorded). Depends on T5.
 **Files:** a checked-in workflow script (location per Workflow tool convention — e.g. `scripts/pipeline/enrich-workflow.js`, final path settled at implementation); `dev/` decision record with the four metrics (tokens, wall-clock, candidate yield, false-positive rate) on the same gap set, Agent-calls vs Workflow. The two spec open items are resolved (Workflow needs explicit opt-in, so the `--auto` path stays a plain Agent call; the fs/Bash bans are confirmed) — this task is now purely the measurement on the explicit multi-gap batch path, no contract-verification prelude.
 **Acceptance:** decision record exists with real numbers and a named winner; enrich-stack SKILL.md dispatches via the winner; single-gap `--query` runs stay on a plain Agent call either way.
@@ -86,6 +88,8 @@ The T6 record decides T9. Human confirms before catalog/audit fan-out moves.
 **Verification:** end-to-end catalog on the test library with 3 sources incl. one `--from` staged and one PDF (exercises convert); then the full catalog→audit→enrich cycle green (epic acceptance 6).
 
 ## Task 9 — Catalog/audit fan-out substrate per T6 decision
+
+**RESOLVED — no code.** T6 picked Agent-calls, so catalog/audit keep their current Agent-call dispatch. Rationale recorded in `dev/t6-measurement/decision.md` (the "Revisit when" clause covers all three pipelines: migrate only if a single run's fan-out grows to ~100 items and main-session context becomes the binding constraint). Nothing to migrate.
 
 **Maps to:** #76's "decide whether catalog/audit migrate to Workflow, with rationale". Depends on T6 + T7 + T8.
 **Files:** if Workflow won: workflow scripts for W1/W2 and A1 mirroring T6's shape, SKILL.md dispatch prose swapped; if Agent calls won: no code — write the recorded rationale into the T6 decision record and close.
