@@ -27,7 +27,7 @@ Carried Epic #87 (move pipeline orchestration out of SKILL.md Bash blocks into c
 
 ### Chat
 
-(filled in Phase 8)
+S18-pipeline-orchestration-epic-close
 
 ### Changes made
 
