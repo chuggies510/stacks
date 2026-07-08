@@ -63,10 +63,26 @@ enter_library() {
   bash "$HELPERS/resolve-library.sh"
 }
 
+# Extract the stack name from a phase's args, ignoring any flags (--full etc.).
+# gate/finish take only the stack; without this, `audit-stack {stack} --full`
+# invoked as `--full {stack}` would make them treat "--full" as the stack name.
+stack_arg() {
+  local s="" a
+  for a in "$@"; do case "$a" in --*) ;; *) [[ -z "$s" ]] && s="$a" ;; esac; done
+  echo "$s"
+}
+
 # --- prep -------------------------------------------------------------------
 phase_prep() {
-  local STACK="${1:-}"
-  [[ -n "$STACK" ]] || die "Specify a stack name. Usage: audit.sh prep <stack>"
+  local STACK="" FULL=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --full) FULL=1 ;;
+      -*)     die "unknown flag: $arg (usage: audit.sh prep <stack> [--full])" ;;
+      *)      [[ -z "$STACK" ]] && STACK="$arg" || die "unexpected extra argument: $arg" ;;
+    esac
+  done
+  [[ -n "$STACK" ]] || die "Specify a stack name. Usage: audit.sh prep <stack> [--full]"
 
   local LIB; LIB=$(enter_library) || die "could not resolve the library (no config, and cwd is not a library)."
   cd "$LIB" || die "could not cd into library: $LIB"
@@ -76,20 +92,46 @@ phase_prep() {
   local ADEV="$LIB/$DEV"
   mkdir -p "$DEV"
 
-  # Enumerate articles (sorted, stable order → deterministic batch assignment).
+  # Enumerate all articles (sorted, stable order → deterministic batch assignment).
   local ARTICLES=() a
   while IFS= read -r a; do ARTICLES+=("$a"); done \
     < <(find "$STACK/articles" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
-  local N=${#ARTICLES[@]}
-  [[ "$N" -ge 1 ]] || die "No articles found in $STACK/articles/. Run /stacks:catalog-sources $STACK first."
+  local N_TOTAL=${#ARTICLES[@]}
+  [[ "$N_TOTAL" -ge 1 ]] || die "No articles found in $STACK/articles/. Run /stacks:catalog-sources $STACK first."
 
-  # Dispatch manifest: batch_tag<TAB>slug<TAB>article_path, CAP articles per batch.
+  # Incremental skip. An article whose current content hash matches its row in
+  # verified.tsv (written by the last finish) is byte-for-byte unchanged since it
+  # was validated, so re-checking it would reproduce the same result at full token
+  # cost — skip it. `--full` ignores verified.tsv and re-audits everything (use it
+  # after the validator's own logic improves, when every article must be re-checked).
+  # A first run (no verified.tsv) audits all; the corpus self-migrates on that pass.
+  # Content hash = `git hash-object` (git's own blob SHA — no sha256sum portability
+  # trap; works outside a repo). A hash miss always falls through to auditing, so
+  # the failure direction is "audit an unchanged article" (waste), never "skip a
+  # changed one" (serve stale content).
+  local VERIFIED="$DEV/verified.tsv"
+  local ARTICLES_TA=() slug hash N_SKIP=0
+  for a in "${ARTICLES[@]}"; do
+    if [[ "$FULL" -eq 0 && -f "$VERIFIED" ]]; then
+      slug=$(basename "$a" .md)
+      # `|| true`: a hash failure must fall through to auditing (safe direction),
+      # not abort prep under set -e. Empty hash never matches, so it re-audits.
+      hash=$(git hash-object "$a" 2>/dev/null || true)
+      if [[ -n "$hash" ]] && grep -qxF "$slug"$'\t'"$hash" "$VERIFIED"; then
+        N_SKIP=$((N_SKIP + 1)); continue
+      fi
+    fi
+    ARTICLES_TA+=("$a")
+  done
+  local N=${#ARTICLES_TA[@]}
+
+  # Dispatch manifest over the to-audit set only: batch_tag<TAB>slug<TAB>path, CAP per batch.
   local DISPATCH="$DEV/dispatch.tsv"
   : > "$DISPATCH"
-  local i slug
-  for i in "${!ARTICLES[@]}"; do
-    slug=$(basename "${ARTICLES[$i]}" .md)
-    printf '%d\t%s\t%s\n' "$((i / CAP))" "$slug" "$LIB/${ARTICLES[$i]}" >> "$DISPATCH"
+  local i
+  for i in "${!ARTICLES_TA[@]}"; do
+    slug=$(basename "${ARTICLES_TA[$i]}" .md)
+    printf '%d\t%s\t%s\n' "$((i / CAP))" "$slug" "$LIB/${ARTICLES_TA[$i]}" >> "$DISPATCH"
   done
 
   # Clear stale per-batch findings (freshness gate depends on every kept file
@@ -102,11 +144,20 @@ phase_prep() {
     echo "RUN_ID=$RUN_ID"
     echo "STACK=$STACK"
     echo "N_ARTICLES=$N"
+    echo "N_TOTAL=$N_TOTAL"
+    echo "N_SKIPPED=$N_SKIP"
     echo "CAP=$CAP"
     echo "DISPATCH=$ADEV/dispatch.tsv"
   } > "$DEV/run.env"
 
-  echo "Articles: $N.  Dispatch: $N_BATCH batch(es), CAP=$CAP, RUN_ID=$RUN_ID"
+  # Nothing changed → no dispatch, no gate. finish still runs (refresh the report,
+  # carry skipped soft spots forward, re-hash verified.tsv).
+  if [[ "$N" -eq 0 ]]; then
+    echo "NOTHING_TO_AUDIT: all $N_TOTAL article(s) unchanged since last audit (dev/audit/verified.tsv). Skip the validator dispatch and gate; run 'audit.sh finish $STACK' to refresh the report."
+    return 0
+  fi
+
+  echo "Articles: $N_TOTAL total; $N_SKIP unchanged (skipped); $N to audit.  Dispatch: $N_BATCH batch(es), CAP=$CAP, RUN_ID=$RUN_ID"
   echo "Manifest:   $ADEV/dispatch.tsv   (batch_tag<TAB>slug<TAB>article_path)"
   echo "Sources:    $LIB/$STACK/sources/   (validators read cited sources; exclude incoming/ + trash/)"
   echo "Stack root: $LIB/$STACK"
@@ -115,7 +166,7 @@ phase_prep() {
 
 # --- gate -------------------------------------------------------------------
 phase_gate() {
-  local STACK="${1:-}"; [[ -n "$STACK" ]] || die "Usage: audit.sh gate <stack>"
+  local STACK; STACK=$(stack_arg "$@"); [[ -n "$STACK" ]] || die "Usage: audit.sh gate <stack>"
   local LIB; LIB=$(enter_library) || die "could not resolve the library."
   cd "$LIB" || die "could not cd into library: $LIB"
   local DEV="$STACK/dev/audit"
@@ -124,6 +175,20 @@ phase_gate() {
 
   local RUN_ID; RUN_ID=$(grep -m1 '^RUN_ID=' "$DEV/run.env" | cut -d= -f2)
   [[ "$RUN_ID" =~ ^[0-9]+$ ]] || die "RUN_ID missing/garbled in $DEV/run.env"
+
+  # Run-state consistency: the dispatch row count MUST equal prep's recorded
+  # N_ARTICLES. An empty dispatch is legitimate ONLY when prep skipped everything
+  # (N_ARTICLES=0); any other empty/short dispatch is a truncated/corrupted run
+  # (e.g. a crash between prep and gate) that must NOT pass the gate and let finish
+  # stamp never-validated articles as verified. Die instead.
+  local N_ARTICLES DISP_ROWS
+  N_ARTICLES=$(grep -m1 '^N_ARTICLES=' "$DEV/run.env" | cut -d= -f2)
+  DISP_ROWS=$(grep -c '' "$DEV/dispatch.tsv" 2>/dev/null || true)
+  [[ "$DISP_ROWS" == "$N_ARTICLES" ]] || die "run-state corrupted: dispatch.tsv has $DISP_ROWS row(s) but run.env N_ARTICLES=$N_ARTICLES — re-run 'audit.sh prep $STACK'."
+  if [[ "$N_ARTICLES" -eq 0 ]]; then
+    echo "gate: nothing dispatched (all articles unchanged) — nothing to reconcile."
+    return 0
+  fi
 
   # Expected per-batch files, one per distinct batch_tag in the manifest. PAIRS
   # carries the same tag->file association for check-coverage's --batched mode.
@@ -159,7 +224,7 @@ phase_gate() {
 
 # --- finish -----------------------------------------------------------------
 phase_finish() {
-  local STACK="${1:-}"; [[ -n "$STACK" ]] || die "Usage: audit.sh finish <stack>"
+  local STACK; STACK=$(stack_arg "$@"); [[ -n "$STACK" ]] || die "Usage: audit.sh finish <stack>"
   local LIB; LIB=$(enter_library) || die "could not resolve the library."
   cd "$LIB" || die "could not cd into library: $LIB"
   local DEV="$STACK/dev/audit"
@@ -167,6 +232,13 @@ phase_finish() {
   [[ -f "$DEV/dispatch.tsv" ]] || die "no dispatch.tsv at $DEV — run 'audit.sh prep' first."
 
   local N_ARTICLES; N_ARTICLES=$(grep -m1 '^N_ARTICLES=' "$DEV/run.env" | cut -d= -f2)
+  local N_SKIPPED; N_SKIPPED=$(grep -m1 '^N_SKIPPED=' "$DEV/run.env" | cut -d= -f2); N_SKIPPED=${N_SKIPPED:-0}
+
+  # Same run-state consistency guard as gate (finish can be run standalone): the
+  # dispatch row count must equal prep's N_ARTICLES, so a truncated dispatch can't
+  # make finish re-stamp verified.tsv for articles that were never validated.
+  local DISP_ROWS; DISP_ROWS=$(grep -c '' "$DEV/dispatch.tsv" 2>/dev/null || true)
+  [[ "$DISP_ROWS" == "$N_ARTICLES" ]] || die "run-state corrupted: dispatch.tsv has $DISP_ROWS row(s) but run.env N_ARTICLES=$N_ARTICLES — re-run 'audit.sh prep $STACK'."
 
   # Aggregate from the dispatched batch files (enumerated, not globbed — a stray
   # extra _audit-*.md can't leak in, and a dispatched-but-vanished file FAILS here
@@ -184,16 +256,39 @@ phase_finish() {
   local TODAY; TODAY=$(date +%Y-%m-%d)
   local AUDIT_LINES=""
   [[ ${#BATCHFILES[@]} -gt 0 ]] && AUDIT_LINES=$(cat "${BATCHFILES[@]}")
-  local N_CORR N_SOFT
+  local N_CORR N_SOFT_NEW
   N_CORR=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^CORRECTION'$'\t' || true)
-  N_SOFT=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
+  N_SOFT_NEW=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
+
+  # Merge soft spots. An incremental run only re-checks changed articles, so the
+  # durable /stacks:enrich-stack input (soft-spots.tsv) must CARRY FORWARD the soft
+  # spots of the skipped (unchanged) articles — replacing only the re-audited ones'
+  # rows — or a one-article re-audit would silently shrink the enrich queue to that
+  # one article. Carry a prior row when its slug was not re-audited this run AND its
+  # article still exists (a deleted article's soft spots are dropped).
+  local AUDITED; AUDITED=$(cut -f2 "$DEV/dispatch.tsv" 2>/dev/null | sort -u)
+  local SS="$DEV/soft-spots.tsv" SS_NEW; SS_NEW=$(mktemp)
+  # this run's fresh soft spots (empty on a nothing-to-audit run)
+  printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{print $2"\t"$3"\t"$4}' > "$SS_NEW"
+  if [[ -f "$SS" ]]; then
+    while IFS=$'\t' read -r s c r; do
+      [[ -n "$s" ]] || continue
+      grep -qxF "$s" <<<"$AUDITED" && continue          # re-audited → fresh row already in SS_NEW
+      [[ -f "$STACK/articles/$s.md" ]] || continue       # article gone → drop its stale soft spots
+      printf '%s\t%s\t%s\n' "$s" "$c" "$r"
+    done < "$SS" >> "$SS_NEW"
+  fi
+  sort -u "$SS_NEW" -o "$SS"; rm -f "$SS_NEW"
+  local N_SOFT_TOTAL; N_SOFT_TOTAL=$(grep -c $'\t' "$SS" 2>/dev/null || true); N_SOFT_TOTAL=${N_SOFT_TOTAL:-0}
+
+  local SKIPNOTE=""; [[ "$N_SKIPPED" -gt 0 ]] && SKIPNOTE=" ($N_SKIPPED unchanged, skipped)"
 
   {
     echo "# $STACK — audit report ($TODAY)"
     echo
-    echo "Regenerated fresh each audit. Not a persistent ledger."
+    echo "Per-run activity report; soft-spots.tsv is the cumulative enrich queue (skipped articles' soft spots carry forward)."
     echo
-    echo "Articles validated: $N_ARTICLES.  Corrections applied: $N_CORR.  Soft spots: $N_SOFT."
+    echo "Articles validated: $N_ARTICLES$SKIPNOTE.  Corrections applied: $N_CORR.  Soft spots: $N_SOFT_NEW new, $N_SOFT_TOTAL tracked."
     echo
     echo "## Corrections applied"
     echo "_Claims the validator rewrote in place to match their cited source._"
@@ -202,27 +297,37 @@ phase_finish() {
       printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="CORRECTION"{printf "- `%s` — %s\n", $2, $3}'
     else echo "_None. No cited claim contradicted its source._"; fi
     echo
-    echo "## Soft spots"
-    echo "_Claims not tied to a cited source. Left in place — add a source or confirm._"
+    echo "## Soft spots found this run"
+    echo "_Claims not tied to a cited source. Left in place — add a source or confirm. The cumulative queue (incl. skipped articles) is soft-spots.tsv._"
     echo
-    if [[ "$N_SOFT" -gt 0 ]]; then
+    if [[ "$N_SOFT_NEW" -gt 0 ]]; then
       printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{printf "- `%s` — \"%s\" — %s\n", $2, $3, $4}'
-    else echo "_None. Every claim ties to a cited source._"; fi
+    else echo "_None this run. Every re-audited claim ties to a cited source._"; fi
   } > "$REPORT"
 
-  # Durable machine-readable soft-spot list — the /stacks:enrich-stack input.
-  # slug<TAB>claim<TAB>reason. Written even when empty so enrich distinguishes
-  # "audited, none soft" from "never audited".
-  printf '%s\n' "$AUDIT_LINES" \
-    | awk -F'\t' '$1=="SOFTSPOT"{print $2"\t"$3"\t"$4}' \
-    > "$DEV/soft-spots.tsv"
+  # soft-spots.tsv (the /stacks:enrich-stack input) was already written by the merge
+  # block above — it carries skipped articles' soft spots forward, which a per-run
+  # overwrite would lose.
 
-  # Cleanup: transient per-batch inputs + run-state. report.md + soft-spots.tsv are
-  # the durable artifacts the skill commits.
+  # Refresh verified.tsv: hash every current article so the next prep can skip the
+  # unchanged ones. Re-audited articles get their post-validation hash (validator
+  # bumped last_verified → new content), skipped articles keep their hash, deleted
+  # articles fall out. Runs after the validator's edits (finish is post-gate).
+  local VOUT="$DEV/verified.tsv" af h
+  : > "$VOUT"
+  while IFS= read -r af; do
+    h=$(git hash-object "$af" 2>/dev/null || true)
+    # Skip a row we couldn't hash rather than write `slug<TAB>` (empty hash) as bad
+    # metadata — a missing row just re-audits that article next run (safe direction).
+    if [[ -n "$h" ]]; then printf '%s\t%s\n' "$(basename "$af" .md)" "$h" >> "$VOUT"; fi
+  done < <(find "$STACK/articles" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
+
+  # Cleanup: transient per-batch inputs + run-state. report.md, soft-spots.tsv, and
+  # verified.tsv are the durable artifacts the skill commits.
   rm -f "$DEV"/_audit-*.md "$DEV/dispatch.tsv" "$DEV/run.env"
 
-  echo "AUDIT_SUMMARY: articles=$N_ARTICLES corrections=$N_CORR softspots=$N_SOFT"
-  echo "Wrote $REPORT and $DEV/soft-spots.tsv ($N_SOFT soft spots)"
+  echo "AUDIT_SUMMARY: articles=$N_ARTICLES skipped=$N_SKIPPED corrections=$N_CORR softspots=$N_SOFT_TOTAL"
+  echo "Wrote $REPORT, $DEV/soft-spots.tsv ($N_SOFT_TOTAL tracked), $VOUT ($N_SKIPPED skipped next run if unchanged)"
 }
 
 # --- self-check -------------------------------------------------------------
@@ -277,6 +382,12 @@ self_check() {
   mk_clean
   if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-clean-passes"; else bad "gate-clean-passes" "clean gate failed"; fi
 
+  # flag-first arg ordering: the skill hands gate/finish the same $ARGUMENTS as prep,
+  # so `audit-stack {stack} --full` reaches gate as `--full {stack}` — it must still
+  # resolve the stack past the leading flag, not treat "--full" as the stack name.
+  mk_clean
+  if bash "$0" gate --full mep >/dev/null 2>&1; then ok "gate-resolves-stack-past-flag"; else bad "gate-resolves-stack-past-flag" "gate --full mep failed to resolve stack"; fi
+
   # (a) drop the vav receipt row → present-but-incomplete: gate-batch passes (file
   #     present, has a VALIDATED row for... nothing now), check-coverage FAILS naming vav.
   local out rc
@@ -323,7 +434,7 @@ self_check() {
   mk_clean
   out=$(bash "$0" finish mep 2>&1) || bad "finish-runs" "finish exited nonzero"
   local REPORT="$d/mep/dev/audit/report.md" SS="$d/mep/dev/audit/soft-spots.tsv"
-  if grep -q 'articles=4 corrections=1 softspots=1' <<<"$out" \
+  if grep -q 'articles=4 skipped=0 corrections=1 softspots=1' <<<"$out" \
      && [[ -f "$REPORT" && -f "$SS" ]] \
      && grep -q $'^pump\tPumps rarely exceed' "$SS"; then
     ok "finish-writes-report-and-softspots"
@@ -332,6 +443,58 @@ self_check() {
   fi
   # finish cleaned up the transient run-state.
   [[ ! -f "$DISP" && ! -f "$ENV" ]] && ok "finish-cleans-run-state" || bad "finish-cleans-run-state" "run-state survived"
+
+  # --- incremental skip (verified.tsv now exists from the finish above) ---
+  local VER="$d/mep/dev/audit/verified.tsv"
+  [[ -f "$VER" && "$(wc -l < "$VER" | tr -d ' ')" == "4" ]] && ok "finish-writes-verified" || bad "finish-writes-verified" "verified.tsv missing/wrong-size: $(cat "$VER" 2>/dev/null)"
+
+  # (i) nothing changed → prep skips all 4, dispatch empty, NOTHING_TO_AUDIT.
+  out=$(bash "$0" prep mep 2>&1)
+  if grep -q 'NOTHING_TO_AUDIT' <<<"$out" && [[ ! -s "$DISP" ]]; then
+    ok "prep-skips-all-unchanged"
+  else
+    bad "prep-skips-all-unchanged" "expected NOTHING_TO_AUDIT + empty dispatch, out=$out disp=$(cat "$DISP" 2>/dev/null)"
+  fi
+
+  # (i2) gate no-ops cleanly on the empty dispatch (nothing to reconcile).
+  if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-noop-on-empty"; else bad "gate-noop-on-empty" "gate failed on empty dispatch"; fi
+
+  # (i3) finish on the empty run CARRIES the prior soft spot (pump) forward — the
+  #      skip must not shrink the enrich queue to only re-audited articles.
+  out=$(bash "$0" finish mep 2>&1) || bad "finish-empty-runs" "finish exited nonzero: $out"
+  if grep -q $'^pump\tPumps rarely exceed' "$SS"; then
+    ok "finish-carries-skipped-softspots"
+  else
+    bad "finish-carries-skipped-softspots" "pump soft spot lost, ss=$(cat "$SS" 2>/dev/null)"
+  fi
+
+  # (ii) change ONE article → its hash moves → prep dispatches only it.
+  printf '# vav\n\nEdited body — a real change.\n' > "$d/mep/articles/vav.md"
+  out=$(bash "$0" prep mep 2>&1)
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "1" ]] && grep -q $'\tvav\t' "$DISP"; then
+    ok "prep-dispatches-only-changed"
+  else
+    bad "prep-dispatches-only-changed" "expected 1 row (vav), got: $(cat "$DISP")"
+  fi
+
+  # (iii) --full re-audits everything despite verified.tsv.
+  bash "$0" prep mep --full >/dev/null 2>&1
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "4" ]]; then
+    ok "prep-full-ignores-verified"
+  else
+    bad "prep-full-ignores-verified" "expected 4 rows, got: $(cat "$DISP")"
+  fi
+
+  # (iv) truncated dispatch (N_ARTICLES>0 in run.env but zero rows) is a CORRUPTED
+  #      run, not a legit skip-all — gate must DIE, never pass the empty no-op (which
+  #      would let finish stamp never-validated articles as verified). Guards codex #1.
+  : > "$DISP"
+  out=$(bash "$0" gate mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'corrupted' <<<"$out"; then
+    ok "gate-dies-on-truncated-dispatch"
+  else
+    bad "gate-dies-on-truncated-dispatch" "expected nonzero + 'corrupted', rc=$rc out=$out"
+  fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"
   [[ "$fail" -eq 0 ]]

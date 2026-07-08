@@ -4,8 +4,8 @@ description: |
   Use when the user wants to check a knowledge stack's articles against their
   cited sources. Dispatches the validator agent to fix source-contradictions in
   place and list soft spots (claims not tied to a source), then writes a fresh
-  audit report. Stateless: each run regenerates the report from scratch, no
-  carry-forward ledger. Runs from any repo; targets the library configured in
+  audit report. Incremental by default: re-validates only articles changed since
+  their last audit (pass --full to re-check all). Runs from any repo; targets the library configured in
   ~/.config/stacks/config.json, or the current directory when it is itself a library.
 ---
 
@@ -24,13 +24,17 @@ SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/
 
 ## Step 1: Prep — resolve, enum, shard (`audit.sh prep`)
 
-`audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, shard them into `CAP=3` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
+`audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, **skip the ones unchanged since their last audit** (incremental — see below), shard the rest into `CAP=3` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints how many were skipped vs. dispatched, the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
 
 ```bash
 bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
 ```
 
-A non-zero exit (no stack name, stack not found, or no articles) prints the reason and stops the run. Otherwise note the printed `RUN_ID`, manifest, sources, and stack-root paths — they feed the dispatch.
+**Incremental skip.** prep compares each article's current content hash (`git hash-object`) against `dev/audit/verified.tsv` (the hash finish recorded at its last successful audit). An unchanged article re-validates to the same result, so it is skipped to save the validator's per-article token cost. A first run (no verified.tsv) audits everything; the stack self-migrates on that pass. Pass **`--full`** (`/stacks:audit-stack {stack} --full`) to ignore verified.tsv and re-check every article — do this after the validator's own logic changes, or after editing a cited **source** in place (the hash keys on the article, not its sources, so a source edited without re-cataloging the article is the one change the skip cannot see; the "sources are immutable" convention normally rules this out, and re-cataloging a source rewrites the article anyway → its hash moves → re-audited). Against article changes the skip is safe by construction: any hash miss falls through to auditing, so it never serves a changed article as still-valid.
+
+**If prep prints `NOTHING_TO_AUDIT`** (every article unchanged): skip Steps 2–4 entirely and jump to Step 5 (`audit.sh finish`) — finish refreshes the report, carries the skipped articles' soft spots forward, and re-stamps verified.tsv. There is nothing to dispatch or gate.
+
+A non-zero exit (no stack name, stack not found, no articles, or an unknown flag) prints the reason and stops the run. Otherwise note the printed `RUN_ID`, manifest, sources, and stack-root paths — they feed the dispatch.
 
 ## Step 2: Read STACK.md
 
@@ -63,7 +67,7 @@ A non-zero exit means a validator did not process an article it was assigned (no
 
 ## Step 5: Audit report (`audit.sh finish`)
 
-`audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (corrections applied + soft spots) and the machine-readable `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input), prints an `AUDIT_SUMMARY: articles=… corrections=… softspots=…` line, then removes the transient run files. The report is regenerated every run; it is not a ledger.
+`audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections + soft spots), merges `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input — carrying the skipped articles' prior soft spots forward, since an incremental run only re-checks changed articles), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=… softspots=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (carries all soft spots, re-stamps hashes, writes a 0-audited report).
 
 ```bash
 bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" finish $ARGUMENTS
@@ -84,7 +88,7 @@ Then commit the corrected articles and the report. Substitute `{stack}` and the 
 
 ```bash
 LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
-git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/soft-spots.tsv" "{stack}/log.md"
+git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/soft-spots.tsv" "{stack}/dev/audit/verified.tsv" "{stack}/log.md"
 git commit -m "audit({stack}): corrections={corrections} soft-spots={softspots}"
 ```
 
