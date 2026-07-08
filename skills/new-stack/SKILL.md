@@ -3,7 +3,8 @@ name: new-stack
 description: |
   Use when the user wants to create a new knowledge stack in their library.
   Scaffolds the directory structure, STACK.md schema, index, and log from
-  templates. Must be run from within a library repo (one with catalog.md at root).
+  templates. Runs from any repo; targets the library configured in
+  ~/.config/stacks/config.json, or the current directory when it is itself a library.
 ---
 
 # New Stack
@@ -17,19 +18,15 @@ STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
 SKILL_NAME="stacks:new-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
-## Step 1: Gate check
+## Step 1: Resolve the library
 
-Verify this is a library repo:
+Resolve the target library from config (or cwd if it is itself a library) and cd into it, so this skill works from any repo — most stack work happens in the field, not inside the library:
 
 ```bash
-if [[ ! -f "catalog.md" ]]; then
-  echo "ERROR: catalog.md not found. This doesn't appear to be a library repo."
-  echo "Run /stacks:init-library to create a library first."
-  exit 1
-fi
+LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
 ```
 
-If gate fails, stop and tell the user.
+`resolve-library.sh` prints a fix hint and exits non-zero when no library is configured or reachable; if it fails, stop and relay that message.
 
 ## Step 2: Parse arguments
 

@@ -5,7 +5,8 @@ description: |
   cited sources. Dispatches the validator agent to fix source-contradictions in
   place and list soft spots (claims not tied to a source), then writes a fresh
   audit report. Stateless: each run regenerates the report from scratch, no
-  carry-forward ledger. Must be run from within a library repo.
+  carry-forward ledger. Runs from any repo; targets the library configured in
+  ~/.config/stacks/config.json, or the current directory when it is itself a library.
 ---
 
 # Audit Stack

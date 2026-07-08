@@ -5,8 +5,9 @@ description: |
   entries for a knowledge stack. Enumerates new sources, identifies concepts per
   source (W1), deduplicates shared concept slugs (W1b), synthesizes one article
   per unique concept (W2), files sources to their publisher directory (W3), and
-  regenerates the stack Map of Contents (W4). Must be run from within a library
-  repo (one with catalog.md at root). Accepts an optional --from {path} argument
+  regenerates the stack Map of Contents (W4). Runs from any repo; targets the
+  library configured in ~/.config/stacks/config.json, or the current directory
+  when it is itself a library. Accepts an optional --from {path} argument
   to stage source files from an existing directory before cataloging.
 ---
 

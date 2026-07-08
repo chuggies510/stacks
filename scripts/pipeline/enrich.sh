@@ -23,6 +23,11 @@ set -euo pipefail
 #           run-state files below plus clear stale per-batch findings. Prints the
 #           paths + a per-batch summary the dispatch prose reads. Exits 0 with a
 #           "nothing to enrich" line when no live gaps.
+#           COLD-START (#86): when a batch run finds zero live gaps AND the stack
+#           has zero real article files, the empty stack is one giant soft spot —
+#           seed the gap list from STACK.md's "## Scope" bullets (one gap per
+#           topic area), tagged reason "cold-start seed" under the lookup-miss
+#           sentinel slug (no home article; the agent searches the topic direct).
 #   gate    Re-read run-state from disk, gate every expected _enrich-<tag>.md
 #           (gate-batch.sh: write-or-fail + enrichment-findings shape) then
 #           check-coverage.sh --field 2 (reconciles dispatched gap_ids vs the
@@ -73,6 +78,27 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # phase in the wrong directory.
 enter_library() {
   bash "$HELPERS/resolve-library.sh"
+}
+
+# Cold-start seed source (#86): emit one topic line per bullet under "## Scope"
+# in a STACK.md, stopping at the first "### " subsection (e.g. "What does not
+# belong") or the next "## " heading. An empty stack's scope bullets ARE its gap
+# list. Each bullet's leading marker + surrounding whitespace is stripped and
+# internal whitespace collapsed, so it drops straight into a 4-field gap row.
+scope_topics() {
+  local md="$1"
+  [[ -f "$md" ]] || return 0
+  awk '
+    /^## /  { inscope = ($0 ~ /^##[[:space:]]+Scope[[:space:]]*$/); next }
+    /^### / { if (inscope) inscope = 0; next }
+    inscope && /^[[:space:]]*[-*][[:space:]]+/ {
+      line = $0
+      sub(/^[[:space:]]*[-*][[:space:]]+/, "", line)
+      gsub(/[[:space:]]+/, " ", line)
+      sub(/^ +/, "", line); sub(/ +$/, "", line)
+      if (line != "") print line
+    }
+  ' "$md"
 }
 
 # --- prep -------------------------------------------------------------------
@@ -152,9 +178,33 @@ phase_prep() {
     N_GAPS=$i
   fi
 
+  # Cold-start (#86): no live gaps from soft-spots/misses AND the stack is empty
+  # (zero real article files) → seed the gap list from STACK.md scope bullets.
+  # Guarded to batch mode (a --query run always has its one gap). Count real
+  # files, not the articles/ dir, so a scaffolded-but-empty stack qualifies.
+  local COLDSTART=0
+  if [[ "$N_GAPS" -eq 0 && -z "$QUERY" ]]; then
+    local N_ART
+    N_ART=$(find "$STACK/articles" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$N_ART" -eq 0 ]]; then
+      COLDSTART=1
+      local i=0
+      while IFS= read -r topic; do
+        [[ -z "$topic" ]] && continue
+        printf 'gap-%s\tlookup-miss\t%s\tcold-start seed\n' "$i" "$topic" >> "$GAPS"
+        i=$((i+1))
+      done < <(scope_topics "$STACK/STACK.md")
+      N_GAPS=$i
+    fi
+  fi
+
   if [[ "$N_GAPS" -eq 0 ]]; then
     rm -f "$GAPS"
-    echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
+    if [[ "$COLDSTART" -eq 1 ]]; then
+      echo "Stack '$STACK' has 0 articles but STACK.md declares no scope-area bullets under '## Scope' to seed from. Add one topic-area bullet per capability to the Scope section, or drop sources into $STACK/sources/incoming/ directly. Nothing to enrich."
+    else
+      echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
+    fi
     return 0
   fi
 
@@ -173,6 +223,7 @@ phase_prep() {
     echo "RUN_ID=$RUN_ID"
     echo "STACK=$STACK"
     echo "AUTO=$AUTO"
+    echo "COLDSTART=$COLDSTART"
     echo "QUERY=$QUERY"
     echo "N_GAPS=$N_GAPS"
     echo "N_SOFT=$N_SOFT"
@@ -185,6 +236,8 @@ phase_prep() {
 
   if [[ -n "$QUERY" ]]; then
     echo "Targeted enrich: 1 gap (the lookup miss \"$QUERY\"). AUTO=$AUTO"
+  elif [[ "$COLDSTART" -eq 1 ]]; then
+    echo "Cold-start (#86): 0 articles, seeding $N_GAPS topic area(s) from STACK.md scope. AUTO=$AUTO"
   else
     echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich. AUTO=$AUTO"
   fi
@@ -343,6 +396,59 @@ self_check() {
     ok "gate-fails-on-deleted-file"
   else
     bad "gate-fails-on-deleted-file" "expected nonzero + path, rc=$rc out=$out"
+  fi
+
+  # Cold-start (#86): a zero-article stack seeds gaps from STACK.md scope bullets,
+  # stopping at "### What does not belong" (exclusions never become seeds).
+  mkdir -p "$d/ts/articles"
+  cat > "$d/ts/STACK.md" <<'EOF'
+# TypeScript
+
+## Scope
+
+*What does this stack cover?*
+
+- Generics and conditional types
+- Structural typing and type narrowing
+
+### What does not belong
+
+- tsc CLI flag listings
+EOF
+  bash "$0" prep ts >/dev/null 2>&1 || bad "coldstart-prep-runs" "prep exited nonzero"
+  local CDISP="$d/ts/dev/enrich/dispatch.tsv" CENV="$d/ts/dev/enrich/run.env"
+  if [[ -f "$CDISP" ]] \
+     && [[ "$(wc -l < "$CDISP" | tr -d ' ')" == "2" ]] \
+     && grep -q $'\tlookup-miss\tGenerics and conditional types\tcold-start seed$' "$CDISP" \
+     && grep -q $'\tlookup-miss\tStructural typing and type narrowing\tcold-start seed$' "$CDISP" \
+     && ! grep -qi 'CLI flag' "$CDISP"; then
+    ok "coldstart-seeds-scope-bullets"
+  else
+    bad "coldstart-seeds-scope-bullets" "expected 2 scope seeds, no exclusions; got: $(cat "$CDISP" 2>/dev/null)"
+  fi
+  grep -q '^COLDSTART=1' "$CENV" && ok "coldstart-marks-runenv" || bad "coldstart-marks-runenv" "no COLDSTART=1 in run.env"
+
+  # Cold-start does NOT fire when the stack already has an article: a real gap
+  # path owns that stack, empty scope or not.
+  mkdir -p "$d/warm/articles"
+  printf '# Warm\n\n## Scope\n\n- Some area\n' > "$d/warm/STACK.md"
+  printf '# Existing\n\nBody.\n' > "$d/warm/articles/existing.md"
+  out=$(bash "$0" prep warm 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -eq 0 ]] && grep -qi 'nothing to enrich' <<<"$out" && ! grep -qi 'cold-start' <<<"$out" && [[ ! -f "$d/warm/dev/enrich/dispatch.tsv" ]]; then
+    ok "coldstart-skips-nonempty-stack"
+  else
+    bad "coldstart-skips-nonempty-stack" "expected normal no-gaps exit, rc=$rc out=$out"
+  fi
+
+  # Zero-article stack with no scope bullets: cold-start finds nothing, prints the
+  # seed hint, writes no dispatch.
+  mkdir -p "$d/bare/articles"
+  printf '# Bare\n\n## Scope\n\nProse only, no bullets.\n' > "$d/bare/STACK.md"
+  out=$(bash "$0" prep bare 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -eq 0 ]] && grep -qi 'no scope-area bullets' <<<"$out" && [[ ! -f "$d/bare/dev/enrich/dispatch.tsv" ]]; then
+    ok "coldstart-empty-scope-hints"
+  else
+    bad "coldstart-empty-scope-hints" "expected seed hint + no dispatch, rc=$rc out=$out"
   fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"

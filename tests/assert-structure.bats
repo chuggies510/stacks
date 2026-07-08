@@ -31,6 +31,47 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
+# ── concept-batch: receipted-empty sentinel for a pure-reference source (#93) ──
+
+@test "concept-batch: no-concepts sentinel with a reason passes" {
+  local f="$TEST_TMP/batch.md"
+  printf '# no-concepts: pure CLI flag reference, no behavior knowledge\n' > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 0 ]
+}
+
+@test "concept-batch: reason-less no-concepts sentinel fails" {
+  local f="$TEST_TMP/batch.md"
+  printf '# no-concepts:\n' > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "concept-batch: whitespace-only reason fails" {
+  local f="$TEST_TMP/batch.md"
+  printf '# no-concepts:    \n' > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "concept-batch: empty file fails" {
+  local f="$TEST_TMP/batch.md"
+  : > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "dedup-md: no-concepts sentinel does NOT pass (dedup never emits one)" {
+  local f="$TEST_TMP/dedup.md"
+  printf '# no-concepts: whatever\n' > "$f"
+  run_script "$f" dedup-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
 # ── dedup-md ───────────────────────────────────────────────────────────────────
 
 @test "dedup-md: valid file passes" {

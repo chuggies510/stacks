@@ -24,7 +24,7 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 
 1. Read `STACK.md` to understand source tiers and stack scope — including the **What does not belong** discard test in the Scope section.
 2. Read each assigned source file in full. For large sources (>15k words), read the table of contents or headings first, then read only the sections relevant to this stack's scope.
-3. **Apply the discard test before extracting (stacks#80).** For each source, decide whether it is pure reference material per STACK.md's "What does not belong": material whose only content is *what the flags, endpoints, or settings are* (CLI flag listings, API reference pages, config-key catalogs, setup walkthroughs) produces NO concept blocks — skip it. This is behavior-vs-reference, not tool-name presence: a source about how a named tool *behaves* (documented bugs, workarounds, version quirks, failure modes) IS in scope even though it names the tool. When in doubt, extract the behavior knowledge and drop the reference scaffolding around it. This is the only post-read scope gate in the pipeline; a pure-reference source that slips through ships as a flag-listing article.
+3. **Apply the discard test before extracting (stacks#80).** For each source, decide whether it is pure reference material per STACK.md's "What does not belong": material whose only content is *what the flags, endpoints, or settings are* (CLI flag listings, API reference pages, config-key catalogs, setup walkthroughs) produces NO concept blocks — skip it. This is behavior-vs-reference, not tool-name presence: a source about how a named tool *behaves* (documented bugs, workarounds, version quirks, failure modes) IS in scope even though it names the tool. When in doubt, extract the behavior knowledge and drop the reference scaffolding around it. This is the only post-read scope gate in the pipeline; a pure-reference source that slips through ships as a flag-listing article. A source you discard here still needs its receipt: if EVERY source in your batch is pure-reference (so the batch has zero concept blocks), write the receipted-empty sentinel instead of an empty file (Output Format below, stacks#93).
 4. For each source, identify discrete concepts: name each concept, assign a candidate slug, extract the relevant claims (direct quotes or precise paraphrases with line-level attribution).
 5. For each candidate concept, check the existing `articles/` listing. Slug immutability is a hard constraint here.
    - If a concept matches an existing article (by claim overlap with the article body or frontmatter topic): use the existing article's slug as both `slug` and `target_article`. Do not propose a renamed slug. If you believe an existing slug is wrong, note it in a comment field; do not change the slug.
@@ -37,10 +37,20 @@ Write to: `dev/extractions/{batch_id}-concepts.md` (one file per batch, not per 
 
 **Coverage obligation:** the catalog W1 gate (`catalog.sh gate-w1`) checks that your
 `{batch_id}-concepts.md` exists, is non-empty, and carries at least one `## Concept:`
-block for every dispatched source — that file IS your per-source receipt. Always write
-it. (A source you judge pure-reference under the Process step 3 discard test is the one
-exception the gate cannot yet express — surface that source to the operator in your
-returned text rather than writing an empty file; tracked upstream.)
+block — that file IS your per-source receipt. Always write it.
+
+If your whole batch is pure-reference under the Process step 3 discard test (zero concept
+blocks to write), do NOT write an empty file and do NOT only mention it in returned text.
+Write the file with a single **receipted-empty sentinel** line naming why (stacks#93):
+
+```
+# no-concepts: <one-line reason, e.g. pure CLI flag reference, no behavior knowledge>
+```
+
+The gate accepts a file whose sole content is that sentinel (the reason must be non-empty);
+it still fails an empty or reason-less file. This keeps every dispatched source receipted —
+the operator sees the deliberate skip and its reason, not a silent drop. Also note it in
+your returned text so it surfaces in the run log.
 
 The concept-block format (one or more blocks per file) is the article contract —
 `references/article-contract.md` (plugin root), Section 4 — not restated here. Assign

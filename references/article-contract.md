@@ -109,6 +109,23 @@ target_article: {existing-slug-if-updating | ""}
 - {claim text} [source: {source-slug}]
 ```
 
+**Receipted-empty sentinel** (`source-extractor`, pure-reference source, #93): a source
+the extractor judges pure reference under STACK.md's discard test (CLI flag listings, API
+reference pages, config-key catalogs) yields no concept blocks. Its `{batch_id}-concepts.md`
+then contains ONLY a single line naming why:
+
+```
+# no-concepts: pure CLI flag reference, no behavior knowledge
+```
+
+`assert-structure.sh concept-batch` accepts this in place of a `## Concept:` block (the
+reason after the colon must be non-empty). An empty or reason-less file still fails — a
+missing batch file is far more often a real extractor failure than a genuine pure-reference
+source. `dedup-extractions.py` ignores a sentinel-only file (no `## Concept:` header to
+split on), so the source contributes zero slugs to W2 while still passing the W1 per-source
+presence gate. Only the `concept-batch` kind accepts the sentinel; `dedup-md` (the merged
+`_dedup.md`) does not — dedup never emits it.
+
 A block starts at `## Concept:` and ends at the next `## Concept:` or end-of-file.
 `source_paths:` is a YAML list (lines starting with `  - `). Multiple blocks with the
 same `slug` across batches are merged by `dedup-extractions.py`: `source_paths` union
@@ -120,7 +137,8 @@ contributing blocks.
 
 | `assert-structure.sh` kind | Checks |
 |---|---|
-| `concept-batch` / `dedup-md` | `^## Concept:` header present |
+| `concept-batch` | `^## Concept:` header present, OR a lone `# no-concepts: <reason>` sentinel (non-empty reason) for a pure-reference source (#93) |
+| `dedup-md` | `^## Concept:` header present (no sentinel — dedup never emits one) |
 | `dedup-meta` | `ALL_SLUGS=` key present with a non-empty value |
 | `article-md` | `^title:` and `^last_verified:` keys present |
 | `audit-findings` | a `VALIDATED<TAB>` receipt row present (the validator wrote per-article receipts; `check-coverage.sh --verdict VALIDATED` does the per-slug reconciliation) |

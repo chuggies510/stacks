@@ -8,7 +8,11 @@ description: |
   stages only approved sources into sources/incoming/ — never auto-ingests,
   except under --auto (lookup's hands-free path, #69) which auto-stages the
   agent's CANDIDATE sources. Also consumes lookup misses as gaps, not just audit
-  soft spots. Slots between audit-stack and catalog-sources. Run from a library repo.
+  soft spots. Slots between audit-stack and catalog-sources. Cold-starts an empty
+  but scaffolded stack (zero articles, no soft spots, no lookup misses) by seeding
+  gaps from STACK.md's scope areas (#86). Runs from any repo; targets the library
+  configured in ~/.config/stacks/config.json, or the current directory when it is
+  itself a library.
 ---
 
 # Enrich Stack
@@ -41,6 +45,15 @@ in the same session and reports which gaps cleared. A batch run derives its work
 from the latest audit artifact plus mined lookup misses; a `--query` run derives
 exactly one gap. There is no persistent enrichment ledger.
 
+**Cold-start (#86):** an empty but scaffolded stack (STACK.md present, zero
+articles, no soft spots, no lookup misses) is one giant soft spot — there is
+nothing to audit and nothing has been queried, so the normal gap sources are
+empty. When `prep` sees zero live gaps AND zero real article files, it seeds the
+gap list from STACK.md's `## Scope` bullets (one gap per topic area) so a
+freshly-created stack can bootstrap its first sources. This path is automatic on
+a plain batch run (no new flag); the operator-approval gate below is unchanged,
+so nothing stages without a decision.
+
 ## Step 0: Telemetry
 
 ```bash
@@ -65,9 +78,14 @@ and gets the full batch.
 bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" prep $ARGUMENTS
 ```
 
-If it prints **"Nothing to enrich"** (no live gaps — soft spots all stale/absent
-and no lookup misses), stop here. Otherwise note the printed `AUTO=` value (it
-drives Step 6) and the manifest/listing/stack-root paths (they feed the dispatch).
+On an empty stack (zero articles) with no soft spots and no lookup misses, prep
+cold-starts: it prints `Cold-start (#86): 0 articles, seeding N topic area(s)…`
+and the gaps are STACK.md scope areas (dispatch and the rest of the steps are
+identical from here — the enrichment agent finds one foundational Tier-1/2 source
+per area). If it prints **"Nothing to enrich"** (no live gaps, and either the
+stack already has articles or its scope has no bullets to seed from), stop here.
+Otherwise note the printed `AUTO=` value (it drives Step 6) and the
+manifest/listing/stack-root paths (they feed the dispatch).
 
 ## Step 2: Read STACK.md
 

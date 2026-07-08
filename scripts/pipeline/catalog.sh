@@ -494,6 +494,27 @@ EOF
   if [[ "$rc" -ne 0 ]] && grep -q 'batch-2-concepts.md' <<<"$out"; then ok "gate-w1-fails-on-missing-file"; else bad "gate-w1-fails-on-missing-file" "rc=$rc out=$out"; fi
   mk_w1
 
+  # A pure-reference source (#93) writes a receipted-empty sentinel instead of a
+  # concept block. gate-w1 PASSES it (the file is present + well-formed = covered),
+  # and dedup legitimately drops that source's slug from W2 — covered-with-reason,
+  # not a silent drop. A reason-less sentinel must still FAIL the gate.
+  mk_w1
+  printf '# no-concepts: pure CLI flag reference, no behavior knowledge\n' > "$DEV/batch-2-concepts.md"
+  if bash "$0" gate-w1 mep >/dev/null 2>&1; then ok "gate-w1-passes-no-concepts-sentinel"; else bad "gate-w1-passes-no-concepts-sentinel" "sentinel batch failed gate-w1"; fi
+  # reason-less sentinel is rejected (conservative default — empty is usually a real failure).
+  mk_w1; printf '# no-concepts:\n' > "$DEV/batch-2-concepts.md"
+  out=$(bash "$0" gate-w1 mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'batch-2-concepts.md' <<<"$out"; then ok "gate-w1-fails-reasonless-sentinel"; else bad "gate-w1-fails-reasonless-sentinel" "rc=$rc out=$out"; fi
+  # dedup after a valid sentinel: the pure-ref source contributes no slug, the other still does.
+  mk_w1; printf '# no-concepts: pure CLI flag reference, no behavior knowledge\n' > "$DEV/batch-2-concepts.md"
+  bash "$0" dedup mep >/dev/null 2>&1 || bad "dedup-after-sentinel-runs" "dedup nonzero after sentinel"
+  if grep -qE '^0\tvav-airflow$' "$DEV/dispatch-w2.tsv" && ! grep -q 'airside-economizer' "$DEV/dispatch-w2.tsv"; then
+    ok "dedup-drops-sentinel-source-slug"
+  else
+    bad "dedup-drops-sentinel-source-slug" "w2: $(cat "$DEV/dispatch-w2.tsv" 2>/dev/null)"
+  fi
+  mk_w1
+
   # dedup rejects a batch file NOT in the W1 manifest — gate-w1 ignores it, so it
   # would otherwise leak its slugs into W2 via dedup-extractions.py's glob.
   printf '## Concept: Rogue\n\nslug: rogue-slug\ntitle: Rogue\nsource_paths:\n  - sources/incoming/x.md\ntarget_article: ""\ntier: 4\n\n### Claims\n- rogue.\n' > "$DEV/batch-999-concepts.md"

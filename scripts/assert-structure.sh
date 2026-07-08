@@ -16,7 +16,20 @@ fail() {
 }
 
 case "$type" in
-  concept-batch|dedup-md)
+  concept-batch)
+    # A source the extractor judges pure-reference (STACK.md discard test, #93)
+    # yields no concepts. Instead of an empty file (indistinguishable from a real
+    # extractor failure) it writes a receipted-empty sentinel: a lone
+    # `# no-concepts: <reason>` line, so the operator sees WHY the source produced
+    # nothing. A real concept block still passes; a file that is empty OR carries
+    # neither a concept block nor a NON-empty-reason sentinel still fails — a
+    # missing/empty batch file is far more often a real failure than a genuine
+    # pure-reference source, so the default stays conservative.
+    grep -qE '^## Concept:' "$path" \
+      || grep -qE '^# no-concepts:[[:space:]]*[^[:space:]]' "$path" \
+      || fail "missing '## Concept:' header (or a '# no-concepts: <reason>' sentinel line)"
+    ;;
+  dedup-md)
     grep -qE '^## Concept:' "$path" || fail "missing '## Concept:' header"
     ;;
   dedup-meta)
