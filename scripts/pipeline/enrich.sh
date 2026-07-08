@@ -208,14 +208,20 @@ phase_gate() {
   local RUN_ID; RUN_ID=$(grep -m1 '^RUN_ID=' "$DEV/run.env" | cut -d= -f2)
   [[ "$RUN_ID" =~ ^[0-9]+$ ]] || die "RUN_ID missing/garbled in $DEV/run.env"
 
-  # Expected per-batch files, one per distinct batch_tag in the manifest.
-  local BATCHFILES=() t
-  while IFS= read -r t; do BATCHFILES+=("$DEV/_enrich-$t.md"); done < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
+  # Expected per-batch files, one per distinct batch_tag in the manifest. PAIRS
+  # carries the same tag->file association for check-coverage's --batched mode.
+  local BATCHFILES=() PAIRS=() t
+  while IFS= read -r t; do
+    BATCHFILES+=("$DEV/_enrich-$t.md")
+    PAIRS+=("$t=$DEV/_enrich-$t.md")
+  done < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
 
-  # 1) write-or-fail + structure. 2) per-gap coverage (gap_id is col 2 of both
-  # the manifest and every findings row).
+  # 1) write-or-fail + structure. 2) per-gap coverage PER BATCH (gap_id is col 2 of
+  # both the manifest and every findings row) — --batched reconciles each batch_tag
+  # against only its _enrich-<tag>.md, catching a cross-batch misattribution the
+  # global union would miss (#92).
   bash "$HELPERS/gate-batch.sh" "$RUN_ID" enrichment enrichment-findings "${BATCHFILES[@]}"
-  bash "$HELPERS/check-coverage.sh" --field 2 "$DEV/dispatch.tsv" "${BATCHFILES[@]}"
+  bash "$HELPERS/check-coverage.sh" --field 2 --batched "$DEV/dispatch.tsv" "${PAIRS[@]}"
 }
 
 # --- finish -----------------------------------------------------------------

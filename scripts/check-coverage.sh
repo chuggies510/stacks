@@ -9,7 +9,22 @@ set -euo pipefail
 #
 # Usage:
 #   bash check-coverage.sh [--field N] [--verdict TAG] <dispatch.tsv> <output-file>...
+#   bash check-coverage.sh [--field N] [--verdict TAG] --batched <dispatch.tsv> <tag>=<file>...
 #   bash check-coverage.sh --self-check
+#
+# Two modes:
+#   default (positional)  Reconcile the dispatched id set against the UNION of
+#                         receipts across ALL output files. Catches drop, dup,
+#                         unknown, missing file — but is blind to cross-batch
+#                         MISATTRIBUTION (agent A emits an id dispatched to B while
+#                         B omits it: the union still sees the id and passes).
+#   --batched             Reconcile PER BATCH: each <tag>=<file> pair is checked
+#                         against only the manifest rows whose col-1 batch_tag == tag,
+#                         against only the receipts in THAT file. So B's file no
+#                         longer sees A's stray id — B's omission surfaces AND A's
+#                         stray id is an unknown-for-A. Offenders are named tag/id.
+#                         Manifest-wide defects (malformed row, double-dispatch),
+#                         missing files, and receipt-dups are still global. (#92)
 #
 # Arguments:
 #   --field N        1-based column holding the item_id in a RECEIPT row
@@ -71,6 +86,7 @@ set -euo pipefail
 
 usage() {
   echo "usage: check-coverage.sh [--field N] [--verdict TAG] <dispatch.tsv> <output-file>..." >&2
+  echo "       check-coverage.sh [--field N] [--verdict TAG] --batched <dispatch.tsv> <tag>=<file>..." >&2
   echo "       check-coverage.sh --self-check" >&2
   exit 1
 }
@@ -158,6 +174,113 @@ run_reconcile() {
 
   if [[ $rc -eq 0 ]]; then
     echo "COVERAGE_OK: $(wc -l < "$tmp/dispatched" | tr -d ' ') items dispatched, all receipted exactly once"
+  fi
+  return $rc
+}
+
+# Per-batch reconciliation (#92). Each <tag>=<file> pair is reconciled against
+# ONLY the manifest rows whose batch_tag (col 1) == tag and ONLY the receipts in
+# that file — so a cross-batch misattribution (agent A emits an id dispatched to
+# B, B omits it) fails as a batch-B omission + a batch-A unknown, where the global
+# union would have passed. Manifest-wide defects, missing files, and receipt-dups
+# stay global (same semantics as run_reconcile).
+run_reconcile_batched() {
+  local field=$1; shift
+  local verdict=$1; shift
+  local dispatch=$1; shift   # remaining args are <tag>=<file> pairs
+
+  [[ -n "$dispatch" && $# -ge 1 ]] || usage
+  [[ "$field" =~ ^[0-9]+$ && "$field" -ge 1 ]] || {
+    echo "check-coverage.sh: --field must be a positive integer, got '$field'" >&2; exit 1; }
+  [[ -f "$dispatch" ]] || {
+    echo "check-coverage.sh: dispatch manifest not found: $dispatch" >&2; exit 1; }
+
+  local tmp; tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' RETURN
+
+  # Manifest-wide defects (identical to global mode): malformed row (empty col-2)
+  # and double-dispatch (same id in two rows).
+  awk -F'\t' '!/^[[:space:]]*$/ && $2=="" {print NR}' "$dispatch" > "$tmp/malformed"
+  awk -F'\t' '$2!="" {print $2}' "$dispatch" > "$tmp/dispatched_all"
+  sort "$tmp/dispatched_all" | uniq -d > "$tmp/dispatch_dups"
+
+  : > "$tmp/emitted_all"   # every receipt id (dups preserved) for global dup check
+  : > "$tmp/missing"
+  : > "$tmp/omissions"     # "tag<TAB>id": expected for this batch, absent from its file
+  : > "$tmp/unknowns"      # "tag<TAB>id": in this file, not expected for this batch
+  : > "$tmp/pair_tags"     # tags actually supplied as <tag>=<file> pairs
+
+  local pair tag file
+  for pair in "$@"; do
+    tag=${pair%%=*}
+    file=${pair#*=}
+    echo "$tag" >> "$tmp/pair_tags"
+    if [[ ! -e "$file" ]]; then
+      echo "$file" >> "$tmp/missing"
+      continue
+    fi
+    # Expected ids for THIS batch: manifest col-2 where col-1 == tag.
+    awk -F'\t' -v t="$tag" '$1==t && $2!="" {print $2}' "$dispatch" | sort -u > "$tmp/exp"
+    # Emitted ids in THIS file only (col --field, filtered by --verdict).
+    awk -F'\t' -v c="$field" -v v="$verdict" \
+      'NF>=c && $c!="" && (v=="" || $1==v) {print $c}' "$file" > "$tmp/emit_raw"
+    cat "$tmp/emit_raw" >> "$tmp/emitted_all"
+    sort -u "$tmp/emit_raw" > "$tmp/emit_u"
+    comm -23 "$tmp/exp" "$tmp/emit_u" | awk -v t="$tag" '{print t"\t"$0}' >> "$tmp/omissions"
+    comm -13 "$tmp/exp" "$tmp/emit_u" | awk -v t="$tag" '{print t"\t"$0}' >> "$tmp/unknowns"
+  done
+
+  # Every batch_tag in the manifest MUST have a supplied <tag>=<file> pair, else that
+  # batch is silently skipped while its ids still count as dispatched — the exact
+  # "silently skip a batch" gap this mode exists to close. A manifest tag with no pair
+  # is fatal, named like a missing file.
+  awk -F'\t' '$2!="" {print $1}' "$dispatch" | sort -u > "$tmp/manifest_tags"
+  sort -u "$tmp/pair_tags" > "$tmp/pair_tags_u"
+  comm -23 "$tmp/manifest_tags" "$tmp/pair_tags_u" > "$tmp/unpaired_tags"
+
+  sort "$tmp/emitted_all" | uniq -d > "$tmp/dups"
+
+  local rc=0
+  if [[ -s "$tmp/unpaired_tags" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d manifest batch tag(s) with no receipt-file pair: %s\n' \
+      "$(wc -l < "$tmp/unpaired_tags" | tr -d ' ')" "$(paste -sd' ' "$tmp/unpaired_tags")" >&2
+  fi
+  if [[ -s "$tmp/malformed" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d malformed manifest row(s), empty item_id at line(s): %s\n' \
+      "$(wc -l < "$tmp/malformed" | tr -d ' ')" "$(paste -sd' ' "$tmp/malformed")" >&2
+  fi
+  if [[ -s "$tmp/dispatch_dups" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d id(s) dispatched more than once: %s\n' \
+      "$(wc -l < "$tmp/dispatch_dups" | tr -d ' ')" "$(paste -sd' ' "$tmp/dispatch_dups")" >&2
+  fi
+  if [[ -s "$tmp/missing" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d output file(s) missing: %s\n' \
+      "$(wc -l < "$tmp/missing" | tr -d ' ')" "$(paste -sd' ' "$tmp/missing")" >&2
+  fi
+  if [[ -s "$tmp/omissions" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d omitted (dispatched to a batch, no receipt in its file) [batch/id]: %s\n' \
+      "$(wc -l < "$tmp/omissions" | tr -d ' ')" \
+      "$(awk -F'\t' '{print $1"/"$2}' "$tmp/omissions" | paste -sd' ' -)" >&2
+  fi
+  if [[ -s "$tmp/dups" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d duplicated (receipt seen >1x): %s\n' \
+      "$(wc -l < "$tmp/dups" | tr -d ' ')" "$(paste -sd' ' "$tmp/dups")" >&2
+  fi
+  if [[ -s "$tmp/unknowns" ]]; then
+    rc=1
+    printf 'COVERAGE_FAILURE: %d unknown (receipt not dispatched to that batch) [batch/id]: %s\n' \
+      "$(wc -l < "$tmp/unknowns" | tr -d ' ')" \
+      "$(awk -F'\t' '{print $1"/"$2}' "$tmp/unknowns" | paste -sd' ' -)" >&2
+  fi
+
+  if [[ $rc -eq 0 ]]; then
+    echo "COVERAGE_OK: $(sort -u "$tmp/dispatched_all" | wc -l | tr -d ' ') items dispatched across ${#} batch(es), each receipted in its own batch file"
   fi
   return $rc
 }
@@ -283,6 +406,48 @@ self_check() {
   printf 'VALIDATED\ta\tRUN1\nCORRECTION\tc\t"x"->"y"\nVALIDATED\tb\tRUN1\n' > "$d/outMix.txt"
   check_v "verdict-filter drops non-receipt (c omitted)" 1 "c" "VALIDATED" "$d/dispatch_mix.tsv" "$d/outMix.txt"
 
+  # --batched mode (#92). check_b passes every arg after want_id straight through,
+  # so flags (--field/--verdict/--batched) and <tag>=<file> pairs are caller-supplied.
+  check_b() {
+    local name=$1 want_rc=$2 want_id=$3; shift 3
+    local out rc
+    out=$( bash "$0" "$@" 2>&1 ) && rc=0 || rc=$?
+    if [[ "$rc" -ne "$want_rc" ]]; then
+      echo "SELF-CHECK FAIL [$name]: expected exit $want_rc, got $rc" >&2
+      echo "$out" | sed 's/^/    /' >&2; fail=$((fail+1)); return
+    fi
+    if [[ -n "$want_id" ]] && ! grep -qw "$want_id" <<<"$out"; then
+      echo "SELF-CHECK FAIL [$name]: output did not name id '$want_id'" >&2
+      echo "$out" | sed 's/^/    /' >&2; fail=$((fail+1)); return
+    fi
+    echo "SELF-CHECK PASS [$name]: exit $rc$([[ -n "$want_id" ]] && echo ", named '$want_id'")"
+    [[ -n "$out" ]] && echo "$out" | sed 's/^/    /'
+    pass=$((pass+1))
+  }
+
+  # (m) batched clean set → PASS. batchA={a,b,c} in outA, batchB={d,e} in outB.
+  mk_clean
+  check_b "batched-clean" 0 "" --field 2 --batched "$d/dispatch.tsv" "batchA=$d/outA.txt" "batchB=$d/outB.txt"
+
+  # (n) CROSS-BATCH MISATTRIBUTION (the #92 case): 'd' is dispatched to batchB, but
+  #     batchA's file emits it and batchB's file omits it. The GLOBAL union sees d
+  #     somewhere (in outA) with dispatched==emitted, so the old logic PASSED.
+  #     --batched fails: batchB/d omitted AND batchA/d unknown — must name 'd'.
+  printf 'VALIDATED\ta\tRUN1\nVALIDATED\tb\tRUN1\nVALIDATED\tc\tRUN1\nVALIDATED\td\tRUN1\n' > "$d/outA.txt"
+  printf 'NOSOURCE\te\tRUN1\n' > "$d/outB.txt"
+  check_b "batched-cross-batch (d misattributed A->B)" 1 "d" --field 2 --batched "$d/dispatch.tsv" "batchA=$d/outA.txt" "batchB=$d/outB.txt"
+  # prove the OLD global logic passes on this same set (documents the leak #92 closes)
+  check "cross-batch leaks past global union (old behavior)" 0 "" "$d/dispatch.tsv" "$d/outA.txt" "$d/outB.txt"
+
+  # (o) batched + --verdict: mixed receipt/detail file reconciled per batch → PASS.
+  printf 'VALIDATED\ta\tRUN1\nCORRECTION\ta\t"x"->"y"\nVALIDATED\tb\tRUN1\nVALIDATED\tc\tRUN1\n' > "$d/outMix.txt"
+  check_b "batched-verdict clean (mixed rows)" 0 "" --verdict VALIDATED --field 2 --batched "$d/dispatch_mix.tsv" "batchA=$d/outMix.txt"
+
+  # (p) unpaired batch tag: manifest has batchA + batchB but only batchA gets a pair.
+  #     batchB is silently skipped without this guard → must FAIL naming batchB (codex).
+  mk_clean
+  check_b "batched-unpaired-tag (batchB no pair)" 1 "batchB" --field 2 --batched "$d/dispatch.tsv" "batchA=$d/outA.txt"
+
   echo "---"
   echo "self-check: $pass passed, $fail failed"
   [[ "$fail" -eq 0 ]]
@@ -292,11 +457,13 @@ self_check() {
 # (bash defines functions top-to-bottom as it executes).
 FIELD=2
 VERDICT=""   # empty = every tab row is a receipt (enrich); set = only col-1==VERDICT rows count (audit)
+BATCHED=0    # 1 = positional args are <tag>=<file> pairs, reconciled per batch (#92)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --self-check) self_check; exit $? ;;
     --field) FIELD=${2:-}; shift 2 || usage ;;
     --verdict) VERDICT=${2:-}; shift 2 || usage ;;
+    --batched) BATCHED=1; shift ;;
     --) shift; break ;;
     -*) echo "check-coverage.sh: unknown option '$1'" >&2; usage ;;
     *) break ;;
@@ -304,4 +471,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Anything reaching here is a real reconciliation run.
-run_reconcile "$FIELD" "$VERDICT" "$@"
+if [[ $BATCHED -eq 1 ]]; then
+  run_reconcile_batched "$FIELD" "$VERDICT" "$@"
+else
+  run_reconcile "$FIELD" "$VERDICT" "$@"
+fi

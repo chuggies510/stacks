@@ -125,9 +125,13 @@ phase_gate() {
   local RUN_ID; RUN_ID=$(grep -m1 '^RUN_ID=' "$DEV/run.env" | cut -d= -f2)
   [[ "$RUN_ID" =~ ^[0-9]+$ ]] || die "RUN_ID missing/garbled in $DEV/run.env"
 
-  # Expected per-batch files, one per distinct batch_tag in the manifest.
-  local BATCHFILES=() t
-  while IFS= read -r t; do BATCHFILES+=("$DEV/_audit-$t.md"); done < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
+  # Expected per-batch files, one per distinct batch_tag in the manifest. PAIRS
+  # carries the same tag->file association for check-coverage's --batched mode.
+  local BATCHFILES=() PAIRS=() t
+  while IFS= read -r t; do
+    BATCHFILES+=("$DEV/_audit-$t.md")
+    PAIRS+=("$t=$DEV/_audit-$t.md")
+  done < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
 
   # 1) write-or-fail + a VALIDATED receipt row exists.
   bash "$HELPERS/gate-batch.sh" "$RUN_ID" validator audit-findings "${BATCHFILES[@]}"
@@ -145,12 +149,12 @@ phase_gate() {
   fi
 
   # 3) per-article coverage: every dispatched slug (manifest col 2) has exactly one
-  # VALIDATED receipt (col 2 of the VALIDATED-only rows; --verdict skips CORRECTION/
-  # SOFTSPOT which reuse the slug column). NOTE: reconciliation is over the UNION of
-  # all batch files, not per-batch — a slug dropped by its own batch but emitted by
-  # another still passes (tracked as #92, shared with enrich; a misbehaving cross-
-  # batch receipt is the only gap, the common drop-and-emit-nothing case is caught).
-  bash "$HELPERS/check-coverage.sh" --verdict VALIDATED --field 2 "$DEV/dispatch.tsv" "${BATCHFILES[@]}"
+  # VALIDATED receipt IN ITS OWN BATCH FILE (col 2 of the VALIDATED-only rows;
+  # --verdict skips CORRECTION/SOFTSPOT which reuse the slug column). --batched
+  # reconciles each batch_tag against only its _audit-<tag>.md, so a slug dropped by
+  # its own batch but cross-emitted by another now fails (batchB omission + batchA
+  # unknown) instead of leaking past the global union (#92).
+  bash "$HELPERS/check-coverage.sh" --verdict VALIDATED --field 2 --batched "$DEV/dispatch.tsv" "${PAIRS[@]}"
 }
 
 # --- finish -----------------------------------------------------------------

@@ -29,13 +29,37 @@ teardown() { rm -rf "$TEST_TMP"; }
 @test "strips a leading <stack>/ prefix from source_paths" {
   run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
   [ "$status" -eq 0 ]
-  grep -q '^  - sources/incoming/cpsc-legacy.md$' "$EXTR/_dedup.md"
+  grep -q '^  - sources/incoming/cpsc-legacy.md (tier 1)$' "$EXTR/_dedup.md"
   ! grep -q 'electrical/sources/' "$EXTR/_dedup.md"
 }
 
 @test "leaves an already-bare source_path unchanged" {
   python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
-  grep -q '^  - sources/incoming/neta-field.md$' "$EXTR/_dedup.md"
+  grep -q '^  - sources/incoming/neta-field.md (tier 1)$' "$EXTR/_dedup.md"
+}
+
+@test "preserves per-source tier when one slug merges blocks of different tiers (stacks#89)" {
+  # Same slug across two batches, Tier 1 source then Tier 4 source. The merged block
+  # must carry each source's own tier inline, not collapse both to the first-seen tier.
+  cat > "$EXTR/batch-2-concepts.md" <<'EOF'
+## Concept: Legacy wiring hazards
+slug: legacy-wiring-hazards
+title: Legacy wiring hazards
+source_paths:
+  - sources/incoming/some-blog.md
+target_article: ""
+tier: 4
+
+### Claims
+- A blog notes knob-and-tube runs are common in pre-1950 homes.
+EOF
+  run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
+  [ "$status" -eq 0 ]
+  # Tier-1 sources from batch-1 keep tier 1; the Tier-4 blog from batch-2 keeps tier 4.
+  grep -q '^  - sources/incoming/cpsc-legacy.md (tier 1)$' "$EXTR/_dedup.md"
+  grep -q '^  - sources/incoming/some-blog.md (tier 4)$' "$EXTR/_dedup.md"
+  # No collapsed block-level scalar tier line survives.
+  ! grep -qE '^tier:' "$EXTR/_dedup.md"
 }
 
 @test "warns and records a slug shared by two different-titled concepts" {

@@ -13,7 +13,7 @@ batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
 slug_sources = {}              # slug -> list of source paths in first-seen order
 slug_target_article = {}       # slug -> existing target slug ("" if none)
 slug_title = {}                # slug -> human title
-slug_tier = {}                 # slug -> tier
+slug_source_tier = {}          # slug -> {source_path -> tier}, first-seen per source (stacks#89)
 slug_claims = {}               # slug -> list of claim lines (concatenated across batches)
 input_blocks_total = 0
 title_mismatch_slugs = set()   # slugs where a later block's title disagreed with the first-seen title
@@ -64,13 +64,13 @@ for bf in batch_files:
         input_blocks_total += 1
         # Same slug, different concept: extractors run in parallel per-source and can
         # collide on a slug for genuinely different titles. Warn instead of silently
-        # merging under the first-seen title/tier. Detecting the inverse (same concept,
+        # merging under the first-seen title. Detecting the inverse (same concept,
         # different slug) needs a similarity pass and is deferred, out of scope here.
         if slug in slug_title and _norm_title(fields["title"]) != _norm_title(slug_title[slug]):
             print(
                 f"WARNING: slug '{slug}' has conflicting titles: "
                 f"first-seen '{slug_title[slug]}' vs '{fields['title']}' in {bf} "
-                "(different concepts sharing a slug are being merged under the first-seen title/tier)",
+                "(different concepts sharing a slug are being merged under the first-seen title)",
                 file=sys.stderr,
             )
             title_mismatch_slugs.add(slug)
@@ -78,8 +78,14 @@ for bf in batch_files:
             slug_sources[slug] = []
             slug_target_article[slug] = fields["target_article"]
             slug_title[slug] = fields["title"]
-            slug_tier[slug] = fields["tier"]
+            slug_source_tier[slug] = {}
             slug_claims[slug] = []
+        # Tier attaches per source_path, not per concept (contract §3, stacks#89): a
+        # block's tier applies to every source it lists; record it first-seen per source
+        # so a slug merging a Tier-1 standard and a Tier-4 blog keeps both distinctions
+        # instead of collapsing to the first-seen block's scalar tier.
+        for sp in fields["source_paths"]:
+            slug_source_tier[slug].setdefault(sp, fields["tier"])
         slug_sources[slug] = list(dict.fromkeys(slug_sources[slug] + fields["source_paths"]))
         if fields["target_article"] and not slug_target_article[slug]:
             slug_target_article[slug] = fields["target_article"]
@@ -90,10 +96,14 @@ def write_block(fh, slug):
     fh.write(f"slug: {slug}\n")
     fh.write(f"title: {slug_title[slug]}\n")
     fh.write("source_paths:\n")
+    # Tier is carried inline per source `- {path} (tier {N})`, not as one collapsed
+    # block-level `tier:` scalar (stacks#89). article-synthesizer reads the tier for
+    # STACK.md-hierarchy weighting and writes the bare path (suffix stripped) into the
+    # article's `sources:` frontmatter.
     for sp in slug_sources[slug]:
-        fh.write(f"  - {sp}\n")
-    fh.write(f'target_article: {slug_target_article[slug] or ""}\n')
-    fh.write(f"tier: {slug_tier[slug]}\n\n")
+        tier = slug_source_tier[slug].get(sp, "")
+        fh.write(f"  - {sp} (tier {tier})\n" if tier else f"  - {sp}\n")
+    fh.write(f'target_article: {slug_target_article[slug] or ""}\n\n')
     fh.write("### Claims\n")
     for cl in slug_claims[slug]:
         fh.write(cl + "\n")

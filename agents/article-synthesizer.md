@@ -15,7 +15,7 @@ Length follows the grounded claims: write what they support and stop — do NOT 
 
 ## Input
 
-- One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
+- One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches, each line carrying its own tier inline as `- {path} (tier {N})` — the block can mix tiers (e.g. a Tier-1 standard and a Tier-4 blog on the same concept). Use each source's tier as the STACK.md-hierarchy weight: when two sources' claims conflict, the higher-tier source's version wins. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
 - `articles/{slug}.md` — read this if `target_article` is set (existing article to update)
 - `STACK.md` — for source hierarchy (relative trust of conflicting claims) AND its Topic Template section: use the template's section list as the article's skeleton so section shape is consistent across the stack. Omit any section the grounded claims don't support — the no-padding rule wins; never add an empty or invented section to match the template.
 
@@ -23,10 +23,10 @@ Length follows the grounded claims: write what they support and stop — do NOT 
 
 Write `articles/{slug}.md`. Frontmatter fields, writer/reader stages, and the machine
 enforcement each field gets are the article contract — `references/article-contract.md`
-(plugin root) — not restated here. Set `last_verified: ""` and `updated:` to today
-(`YYYY-MM-DD`); write `sources:` exactly as each entry appears in the concept block's
-`source_paths:` — bare `sources/{...}` form (the block is already normalized). Never
-prepend the stack name: write `sources/cpsc/legacy-wiring.md`, not
+(plugin root) — not restated here. Set `last_verified: ""`; write `sources:` as the bare
+path from each concept-block `source_paths:` entry with the ` (tier {N})` suffix
+**stripped** — `sources:` carries paths only, never tiers, and the block is already
+normalized. Never prepend the stack name: write `sources/cpsc/legacy-wiring.md`, not
 `electrical/sources/cpsc/legacy-wiring.md` (the contract's canonical form).
 
 **`routing`** is the article's entry in the stack's routing map (`index.md`), which is how `/stacks:lookup` recognizes the right article without reading every body. Write ONE line, no line breaks, in the terms an asker would actually use — what the article covers and the questions it answers — not a restatement of the title. Lead with the concrete subject, then the questions. Plain text only (no `[[wikilinks]]`, no markdown, no leading `-`). Example for `vav-box-minimum-airflow`: `Minimum airflow/damper settings for VAV boxes — how low can the minimum go, what sets the floor, why low-load ventilation matters`.
@@ -47,9 +47,9 @@ When an existing article is present on input (`target_article` is set): strip an
 
 ## Example 1: First write — new article
 
-Concept block slug: `vav-box-minimum-airflow`. No existing article. Source paths: `sources/ashrae-62-1.md`, `sources/pnnl-vav-guide.md`.
+Concept block slug: `vav-box-minimum-airflow`. No existing article. Source paths: `sources/ashrae-62-1.md (tier 1)`, `sources/pnnl-vav-guide.md (tier 2)`.
 
-Write `articles/vav-box-minimum-airflow.md` with frontmatter including `last_verified: ""`, `updated: 2026-04-18`, both source paths listed.
+Write `articles/vav-box-minimum-airflow.md` with frontmatter including `last_verified: ""` and both source paths listed **bare** (`sources/ashrae-62-1.md`, `sources/pnnl-vav-guide.md` — tier suffix stripped).
 
 Body (excerpt):
 > VAV box minimum airflow settings control ventilation delivery during low-load periods. ASHRAE 62.1 sets the outdoor air rate floor; the minimum damper position must deliver at least the required ventilation rate for the zone's expected occupancy [ashrae-62-1]. Modern sequences allow minimum positions at 20% or below of design maximum [pnnl-vav-guide]...
