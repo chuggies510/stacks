@@ -183,17 +183,37 @@ transient run files, so cancelling leaves the library untouched.
 ## Step 7: Stage approved sources into incoming/
 
 For each approved `CANDIDATE`/`WEAK` (deduped by URL), `WebFetch` the URL and
-write it into `$STACK/sources/incoming/` using the **same bold-field header that
-filed sources already use** — NOT YAML frontmatter — so `source-extractor` reads
-`**Source:**` and `**Tier:**` straight from the header and the staged file is
-indistinguishable from a hand-dropped source:
+write it into `$STACK/sources/incoming/` using the header below — NOT YAML
+frontmatter. Two fields are load-bearing for the deterministic pipeline steps
+that later consume a staged source; the rest are informational:
+
+- `publisher:` — a **PLAIN** line, not `**bold**`: `catalog-sources` W3 files the
+  source under `sources/<publisher>/` by grepping `^publisher:` at line start, so a
+  bold or missing line files it under `sources/unknown/` (stacks#96). Write a slug
+  that MATCHES this stack's existing `sources/<dir>` naming: `ls
+  {stack-root}/sources` first and **reuse** an existing publisher dir's slug when
+  one fits — the source URL's path carries a distinction a bare domain cannot (e.g.
+  `martinfowler.com/bliki/...` → `fowler-bliki` vs `martinfowler.com/articles/...`
+  → `fowler-articles`; `git-scm.com` → `git-docs`). Mint a new slug only when no
+  filed dir matches (`normalize-publisher.sh` reuses a matching dir, so an exact
+  slug files as-is).
+- `**Source:**` — the URL, kept in this `**bold**` form: `enrich-stack` prep's
+  filed-sources dedup and `/stacks:lookup`'s citation collection both read the URL
+  off this exact line.
+
+Do NOT write an absolute `Tier:` line. Source tier is a per-stack judgment held in
+`STACK.md` and derived at synthesis/audit time; baking an absolute tier into the
+**immutable** source file mints a second source of truth that drifts from
+`STACK.md` (stacks#94). `source-extractor` rates each source against `STACK.md`'s
+hierarchy at catalog time, and `validator` re-derives it at audit time — neither
+reads a tier from the source header.
 
 ```markdown
 # {title}
 
+publisher: {slug matching an existing sources/<dir>, or a new one}
 **Source:** {url}
 **Published:** {date if known, else omit}
-**Tier:** {N} ({tier label from STACK.md})
 **Fetched:** {today}
 **Supports gap:** {slug(s) this source grounds, or the query for a `lookup-miss` gap}
 **Excerpt:** {yes — only if you truncated; omit the line when the body is the full fetched text}
