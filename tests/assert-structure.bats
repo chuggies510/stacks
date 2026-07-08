@@ -48,6 +48,21 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
+@test "concept-batch: junk line above the sentinel fails (sentinel must be sole non-blank line)" {
+  local f="$TEST_TMP/batch.md"
+  printf 'stray prose the extractor left behind\n# no-concepts: pure CLI flag reference\n' > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "concept-batch: sentinel with surrounding blank lines still passes" {
+  local f="$TEST_TMP/batch.md"
+  printf '\n# no-concepts: pure reference\n\n' > "$f"
+  run_script "$f" concept-batch
+  [ "$status" -eq 0 ]
+}
+
 @test "concept-batch: whitespace-only reason fails" {
   local f="$TEST_TMP/batch.md"
   printf '# no-concepts:    \n' > "$f"

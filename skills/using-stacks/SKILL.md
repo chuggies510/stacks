@@ -22,9 +22,11 @@ maintain it. This meta-skill is the front door: it picks the right one and
 carries the discipline they all share.
 
 **Two repos, one rule.** The `stacks` plugin is the tool (loaded everywhere); a
-separate library repo (e.g. `library-stack`) is the content. Query skills run
-**from any repo**; skills that build or edit the library run **from within the
-library repo** (the one with `catalog.md` at its root).
+separate library repo (e.g. `library-stack`) is the content. Every skill runs
+**from any repo** — most stack work happens in the field (a consuming repo, an
+audit or PCA), not inside the library. The build and maintain skills resolve the
+target library from `~/.config/stacks/config.json` (or the current directory when
+it is itself a library) and operate there; you do not `cd` into the library first.
 
 ## The one rule
 
@@ -80,12 +82,15 @@ the terms someone would actually ask about, not just its title, so the match is
 by meaning, not literal keyword. A true article no one can route to is dead
 weight.
 
-### 4. Query anywhere; build inside the library
+### 4. Every skill runs anywhere; the library is resolved, not your cwd
 
-`lookup` and `process-inbox` run from any repo. `new-stack`, `catalog-sources`,
-`audit-stack`, `enrich-stack`, and `init-library` mutate the library and must run
-from within the library repo. If a build skill can't find `catalog.md`, you're in
-the wrong directory.
+All seven skills run from any repo. `lookup` and `process-inbox` read the
+configured library; `new-stack`, `catalog-sources`, `audit-stack`, and
+`enrich-stack` resolve that same library (from `~/.config/stacks/config.json`, or
+the current directory when it is itself a library) and operate on it in place —
+you never `cd` into the library first, because fieldwork happens in the consuming
+repo. If resolution fails (no config and the cwd has no `catalog.md`), the skill
+prints a fix hint pointing at `/stacks:init-library`.
 
 ### 5. A lookup miss is a gap to close, not a dead end
 

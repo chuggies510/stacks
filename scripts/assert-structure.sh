@@ -25,9 +25,17 @@ case "$type" in
     # neither a concept block nor a NON-empty-reason sentinel still fails — a
     # missing/empty batch file is far more often a real failure than a genuine
     # pure-reference source, so the default stays conservative.
-    grep -qE '^## Concept:' "$path" \
-      || grep -qE '^# no-concepts:[[:space:]]*[^[:space:]]' "$path" \
-      || fail "missing '## Concept:' header (or a '# no-concepts: <reason>' sentinel line)"
+    # The sentinel is only accepted as the file's SOLE non-blank line: a
+    # `grep` that matched it anywhere let `<prose>\n# no-concepts: x` (real
+    # extracted content the model then wrongly waved off) pass W1, so dedup
+    # skipped it and the source was filed out of incoming/ = silent data loss.
+    if grep -qE '^## Concept:' "$path"; then
+      :
+    elif awk 'NF{n++; last=$0} END{exit !(n==1 && last ~ /^# no-concepts:[[:space:]]*[^[:space:]]/)}' "$path"; then
+      :
+    else
+      fail "missing '## Concept:' header (or a lone '# no-concepts: <reason>' sentinel line)"
+    fi
     ;;
   dedup-md)
     grep -qE '^## Concept:' "$path" || fail "missing '## Concept:' header"

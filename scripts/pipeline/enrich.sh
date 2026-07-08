@@ -81,16 +81,18 @@ enter_library() {
 }
 
 # Cold-start seed source (#86): emit one topic line per bullet under "## Scope"
-# in a STACK.md, stopping at the first "### " subsection (e.g. "What does not
-# belong") or the next "## " heading. An empty stack's scope bullets ARE its gap
-# list. Each bullet's leading marker + surrounding whitespace is stripped and
+# in a STACK.md. The seedable region ends only at the next "## " heading OR at a
+# sub-heading (any depth, "###"+) whose text says "does not belong"/"excluded" —
+# an "### Included"-style sub-header keeps its bullets in scope, and a "#### does
+# not belong" at depth 4 still excludes. An empty stack's scope bullets ARE its
+# gap list. Each bullet's leading marker + surrounding whitespace is stripped and
 # internal whitespace collapsed, so it drops straight into a 4-field gap row.
 scope_topics() {
   local md="$1"
   [[ -f "$md" ]] || return 0
   awk '
-    /^## /  { inscope = ($0 ~ /^##[[:space:]]+Scope[[:space:]]*$/); next }
-    /^### / { if (inscope) inscope = 0; next }
+    /^## /            { inscope = ($0 ~ /^##[[:space:]]+Scope[[:space:]]*$/); next }
+    /^#{3,}[[:space:]]/ { if (inscope && tolower($0) ~ /does not belong|excluded/) inscope = 0; next }
     inscope && /^[[:space:]]*[-*][[:space:]]+/ {
       line = $0
       sub(/^[[:space:]]*[-*][[:space:]]+/, "", line)
@@ -449,6 +451,47 @@ EOF
     ok "coldstart-empty-scope-hints"
   else
     bad "coldstart-empty-scope-hints" "expected seed hint + no dispatch, rc=$rc out=$out"
+  fi
+
+  # Scope parser (#86 hardening / codex F3): a non-exclusion sub-header keeps its
+  # bullets in scope — "### Included" must NOT end the seed region.
+  mkdir -p "$d/inc/articles"
+  cat > "$d/inc/STACK.md" <<'EOF'
+# Included
+
+## Scope
+
+### Included
+
+- Generics
+EOF
+  bash "$0" prep inc >/dev/null 2>&1 || bad "scope-included-prep-runs" "prep exited nonzero"
+  if grep -q $'\tlookup-miss\tGenerics\tcold-start seed$' "$d/inc/dev/enrich/dispatch.tsv" 2>/dev/null; then
+    ok "scope-included-subheader-still-seeds"
+  else
+    bad "scope-included-subheader-still-seeds" "expected Generics seed under '### Included'; got: $(cat "$d/inc/dev/enrich/dispatch.tsv" 2>/dev/null)"
+  fi
+
+  # Scope parser: a depth-4 exclusion heading still ends the region — a "#### does
+  # not belong" bullet must not leak as a seed.
+  mkdir -p "$d/deep/articles"
+  cat > "$d/deep/STACK.md" <<'EOF'
+# Deep
+
+## Scope
+
+- Kept area
+
+#### What does not belong
+
+- Leaked exclusion
+EOF
+  bash "$0" prep deep >/dev/null 2>&1 || bad "scope-deep-prep-runs" "prep exited nonzero"
+  if grep -q $'\tlookup-miss\tKept area\tcold-start seed$' "$d/deep/dev/enrich/dispatch.tsv" 2>/dev/null \
+     && ! grep -qi 'Leaked exclusion' "$d/deep/dev/enrich/dispatch.tsv" 2>/dev/null; then
+    ok "scope-deep-exclusion-excluded"
+  else
+    bad "scope-deep-exclusion-excluded" "expected only 'Kept area', no depth-4 exclusion; got: $(cat "$d/deep/dev/enrich/dispatch.tsv" 2>/dev/null)"
   fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"
