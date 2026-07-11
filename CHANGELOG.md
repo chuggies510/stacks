@@ -1,3 +1,8 @@
+## 0.55.2 — 2026-07-10
+
+**`/stacks:enrich-stack`'s gate no longer false-fails a batch just because the enrichment agent found no source for several gaps.** The `enrichment-findings` structure check required every row to be a full 8 tab-fields, but a `NOSOURCE` row's last four columns (source_ref/url/tier/quote) are empty by definition and agents emit it without padding the trailing tabs — so any NOSOURCE-heavy batch tripped `AGENT_WRITE_FAILURE` at gate time while `finish` read and consolidated the same file without complaint (the two disagreeing is what made the pipeline feel broken). Hit on the llm and swe enrich runs.
+- **The field-count rule is now verdict-specific: `CANDIDATE`/`WEAK`/`DUP` still require all 8 fields (their url/quote columns are load-bearing and a stray tab must still be caught), while `NOSOURCE` needs only its 3 leading fields (verdict, gap_ids, slugs).** A stray non-verdict prose line and a short CANDIDATE still fail. (`scripts/assert-structure.sh`)
+
 ## 0.55.1 — 2026-07-10
 
 **The enrich source-fetch helper's quote re-verify no longer rejects a valid source just because the enrichment agent's recorded quote isn't a byte-for-byte copy of the page.** The agent's `quote` field is often not verbatim — it swaps the page's em-dash for a comma, or stitches two non-adjacent passages into one string — so the 0.55.0 exact-substring check false-negatived real sources and skipped them (hit live on the typescript `parse-dont-validate` gap: a correctly-grounded practitioner article was dropped over an em-dash-vs-comma difference).

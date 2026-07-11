@@ -59,14 +59,26 @@ case "$type" in
       || fail "no VALIDATED receipt rows — validator wrote no per-article receipts"
     ;;
   enrichment-findings)
-    # Every non-blank line is an 8-field tab record led by a verdict. Split on a
-    # real tab (-F'\t') rather than matching '\t' in an ERE (not portable across
-    # awks); then enforce the field count so an un-stripped tab inside a field
-    # (which would shift columns downstream) is caught here, not at parse time.
+    # Every non-blank line is a tab record led by a verdict. Split on a real tab
+    # (-F'\t') rather than matching '\t' in an ERE (not portable across awks).
+    # Field-count rule is verdict-specific: CANDIDATE/WEAK/DUP carry the
+    # downstream-load-bearing url/tier/title/quote columns, so they must be a
+    # full 8 fields (an un-stripped tab inside a field shifts columns and is
+    # caught here, not at parse time). A NOSOURCE row's trailing four fields are
+    # empty by definition (no source, no url, no quote) and stage nothing, and
+    # agents routinely emit it without padding the empties — so it only needs
+    # the 3 leading fields (verdict, gap_ids, slugs). Requiring 8 there made
+    # NOSOURCE-heavy batches false-fail the gate while finish consolidated them
+    # fine.
     grep -qE '^(CANDIDATE|WEAK|DUP|NOSOURCE)'$'\t' "$path" \
       || fail "no enrichment findings rows (CANDIDATE/WEAK/DUP/NOSOURCE)"
-    if awk -F'\t' '$0!="" { if (NF!=8 || $1!~/^(CANDIDATE|WEAK|DUP|NOSOURCE)$/) bad=1 } END{exit bad?1:0}' "$path"; then :; else
-      fail "malformed enrichment findings line (need 8 tab fields led by a verdict)"
+    if awk -F'\t' '
+      $0!="" {
+        if ($1!~/^(CANDIDATE|WEAK|DUP|NOSOURCE)$/) bad=1
+        else if ($1=="NOSOURCE") { if (NF<3) bad=1 }
+        else if (NF!=8) bad=1
+      } END{exit bad?1:0}' "$path"; then :; else
+      fail "malformed enrichment findings line (CANDIDATE/WEAK/DUP need 8 tab fields; NOSOURCE needs >=3; all led by a verdict)"
     fi
     ;;
   *)
