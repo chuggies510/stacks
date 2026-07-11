@@ -503,13 +503,38 @@ axes already maxed and regressed on the third:
 
 UD-Q4 dropped 4 real in-scope articles Q3 caught (`llm-as-judge`, `context-window-management`,
 `self-correction-loops`, `token-budget-management`) and added only 2 (`llm-judge-gate-wiring`,
-`production-eval-systems`) — no hallucinated slugs either side, a pure recall comparison. Likely
-mechanism (inferred): the higher-precision quant carves concepts more conservatively, splitting
-broad reuses into narrower slugs and letting the broad ones lapse — a sparser partition that
-misses more existing-article surface. The extra bits reduced recall and cost speed while
-determinism/mint were already saturated at Q3. **Verdict: Q3_K_M is the straddle keeper.** The
-"more bits widens the margin" hypothesis is falsified on this task; UD-Q4 is a strictly
-worse-or-equal operating point.
+`production-eval-systems`) — no hallucinated slugs either side, a pure recall comparison. The
+extra bits reduced recall while determinism/mint were already saturated at Q3.
+
+**Controlled follow-up — `UD-Q3_K_XL` (Unsloth Dynamic at the SAME Q3 bit budget, 57GB, N=34)
+isolates the dynamic-allocation variable UD-Q4 confounded.** Full 3-way across all three sources:
+
+| item | Q3_K_M (56GB) | UD-Q4_K_XL (77GB) | UD-Q3_K_XL (57GB) |
+|---|---|---|---|
+| arxiv-judge | 3 concepts, 0 mints | 3 concepts, **3 over-mints** | 3 concepts, 0 mints |
+| tianpan-token | 2 concepts, 0 mints | 1 concept, 0 mints | 1 concept, 1 mint |
+| zenml **cliff** | **18**, 0 mints | 15, 0 mints | **18**, 0 mints |
+| determinism | byte-DET | byte-DET | byte-DET |
+
+On the discriminating cliff, **UD-Q3_K_XL == Q3_K_M exactly** (identical 18 slugs, same order),
+recovering all 5 concepts UD-Q4 dropped; on item1 it reuses correctly like Q3 where UD-Q4
+over-minted 3. **This pins the cause: the dynamic per-layer scheme is a wash at fixed bits (it
+reproduces standard imatrix Q3 almost exactly, one stray item2 mint aside) — the UD-Q4
+regression was the PRECISION LEVEL, not the dynamic allocation.** Mechanism (now supported, not
+just inferred): this is a consolidation task (reward = lumping sub-concepts into existing
+articles). Higher-precision Q4 discriminates finer, so it fragments — mints `mt-bench`/
+`chatbot-arena` as NEW and splits the cliff set — where coarser Q3 correctly lumps them into
+`llm-evaluation-frameworks`/`llm-as-judge`. **For this workload more bits is worse; the sweet
+spot is the cheapest coherent quant, Q3_K_M.** UD-Q3_K_XL is an equal alternative (no upside),
+UD-Q4 is dominated.
+
+**Speed note (correcting the N-tuning expectation):** wall-clock is prefill-dominated on this
+task (long source in, ~300 tokens out), so tuning `--n-cpu-moe` down — which speeds *decode* —
+barely moves end-to-end time. UD-Q3_K_XL at N=34 ran ~43-46s/cliff-source, essentially identical
+to Q3_K_M at N=36 (~44s). The ~22 tok/s "fast N" figure is pure-decode (llama-bench); this
+extraction workload doesn't exercise decode enough to show it. Real cost stays ~44s/source
+regardless of N. **Verdict: Q3_K_M is the straddle keeper**; the "more bits widens the margin"
+hypothesis is falsified — on a consolidation task, lower precision carves more correctly.
 
 Config for reproduction: `llama-server -m Qwen3.5-122B-A10B-Q3_K_M-00001-of-00003.gguf
 -ngl 99 --n-cpu-moe 36 -fa 1 -c 32768 --parallel 4 --jinja
