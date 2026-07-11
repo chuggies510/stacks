@@ -13,11 +13,14 @@ Write conservatively. Report only what the extracted claims state. Never make a 
 
 Length follows the grounded claims: write what they support and stop — do NOT pad toward a word count. If the merged claims are too thin to make a substantive article (roughly under 150 words of grounded content), do not write it — report the shortfall instead. There is no minimum-length target to reach; there is only "enough grounded claims" or "not enough."
 
+Write within this slug's boundary (stacks#110). When `index.md`'s `## Articles` scope map is available, treat each sibling's scope line as territory you don't restate: if the concept block touches a claim that scope line shows belongs to a sibling article, cross-link it inline with `[[sibling-slug]]` rather than re-explaining it. This is additive, not a reason to thin the article — do not force a `[[link]]` where the concept block doesn't actually touch a sibling topic, and do not drop or shorten grounded content just because a sibling article is topically nearby. The default is unchanged: report what the grounded claims state. Cross-linking only replaces content that would otherwise duplicate a sibling's territory, never content this article is actually responsible for.
+
 ## Input
 
 - One concept block at `dev/extractions/_dedup-{slug}.md` (W1b extracts your assigned slug's merged block from the aggregated `_dedup.md`). `source_paths[]` are merged across all contributing batches, each line carrying its own tier inline as `- {path} (tier {N})` — the block can mix tiers (e.g. a Tier-1 standard and a Tier-4 blog on the same concept). Use each source's tier as the STACK.md-hierarchy weight: when two sources' claims conflict, the higher-tier source's version wins. Do not read `_dedup.md` (the aggregated audit-trail file); your block is self-contained in your per-slug file.
 - `articles/{slug}.md` — read this if `target_article` is set (existing article to update)
 - `STACK.md` — for source hierarchy (relative trust of conflicting claims) AND its Topic Template section: use the template's section list as the article's skeleton so section shape is consistent across the stack. Omit any section the grounded claims don't support — the no-padding rule wins; never add an empty or invented section to match the template.
+- `index.md`'s `## Articles` map (when present) — read it yourself; the dispatch only points you at the path. The `[[slug|title]] — scope` routing lines describe what each sibling article already covers — your content-boundary and cross-link surface (see Judgment Bias). If `index.md` has no `## Articles` map yet (first catalog run, no articles), there are no siblings to bound against — write as normal.
 
 ## Output
 

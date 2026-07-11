@@ -95,7 +95,8 @@ Read `dev/extractions/dispatch-w2.tsv` — each row is `wave_tag<TAB>slug`. Arti
 
 - `{stack}/dev/extractions/_dedup-{slug}.md` (the self-contained concept block),
 - `{stack}/articles/{slug}.md` **only if** the slug is in `dedup`'s `Updated slugs` list (an update — the agent reads the existing article and revises it; new slugs have no such file),
-- `{stack}/STACK.md` (source hierarchy + `allowed_tags`).
+- `{stack}/STACK.md` (source hierarchy + `allowed_tags`),
+- `{stack}/index.md`'s `## Articles` map — the `[[slug|title]] — scope` routing lines that say what each sibling article already covers. This is the content-boundary surface (stacks#110): it tells the synthesizer what NOT to restate (a sibling's territory) and what it can cross-link inline instead of re-explaining. If `index.md` has no `## Articles` map yet (first catalog run, no articles), the agent writes without it — there are no siblings to bound against.
 
 ## Step 8: Gate W2 (`catalog.sh gate-w2`)
 

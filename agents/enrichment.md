@@ -11,7 +11,7 @@ Why: the pipeline is otherwise pull-only — `source-extractor`, `article-synthe
 
 ## Judgment Bias
 
-Verify the source grounds **the specific claim**, not merely the topic. A page about VAV boxes that never states the minimum-airflow figure in the claim is NOT a match — it is `NOSOURCE`. Default to `NOSOURCE` or `WEAK` when you are unsure a source supports the claim: a wrong citation served by `/stacks:lookup` is worse than an honest soft spot left open (this mirrors the validator, which leaves an unsourced claim in place rather than invent a fix). Prefer one higher-tier source over three weak ones. Never fabricate a URL, a title, or a supporting quote — every `CANDIDATE`/`WEAK`/`DUP` row points at a real page you actually fetched and a real passage you actually read.
+Verify the source grounds **the specific claim**, not merely the topic. A page about VAV boxes that never states the minimum-airflow figure in the claim is NOT a match — it is `NOSOURCE`. Default to `NOSOURCE` or `WEAK` when you are unsure a source supports the claim: a wrong citation served by `/stacks:lookup` is worse than an honest soft spot left open (this mirrors the validator, which leaves an unsourced claim in place rather than invent a fix). Prefer one higher-tier source over three weak ones. Never fabricate a URL, a title, or a supporting quote — every `CANDIDATE`/`WEAK`/`DUP` row points at a real page you actually fetched and a real passage you actually read. The same bar applies to the scope-map check in Process step 2: an existing article covering the claim's *topic* is not grounding — only a specific already-filed source that states the claim earns `DUP`.
 
 ## Input
 
@@ -24,6 +24,7 @@ Passed as the per-batch task content:
   - `reason` — why this is a gap: the validator's note for a soft spot, or `lookup miss` for a query the stack could not answer.
 - **STACK.md** (source-hierarchy + scope sections): the tier table (1 = vendor/official … 4 = forum/general) and what the stack covers (to disambiguate an ambiguous query).
 - **Filed-sources listing**: the sources already filed in this stack, as `slug<TAB>url` rows, for dedup. A candidate whose URL is already in this list is a `DUP`.
+- **`index.md`'s `## Articles` scope map** (when present): the `[[slug|title]] — scope` routing lines describing what each existing article already covers — your coverage-check surface before spending a web search (Process step 2). If `index.md` has no `## Articles` map yet (no articles cataloged), skip that check and go straight to search.
 - **`$STACK`** (stack root) and **`$BATCH_TAG`** (your batch id): where and under what name to write your findings file.
 
 ## Process
@@ -31,10 +32,11 @@ Passed as the per-batch task content:
 For each assigned gap:
 
 1. Read the `claim` and `reason`. Turn the claim into a targeted search query — the precise figure, mechanism, or assertion to ground, narrowed by the stack scope. (For "Minimum VAV box airflow is typically 20% of design maximum", search the airflow-minimum guidance, not "VAV box".)
-2. `WebSearch` the query. Take the 1-3 most promising results.
-3. `WebFetch` each promising result and read the relevant section. Ask: **does this source state or directly support this exact claim?** Topically related is not enough — the source must back the claim's actual assertion. Stop at the first source that clearly grounds it.
-4. Rate that grounding source's tier against the STACK.md hierarchy (1 vendor doc / official … 4 forum / general) — the same tier vocabulary the article contract (`references/article-contract.md`, plugin root) uses for source tiers once this candidate is cataloged.
-5. Check the **filed-sources listing**: if the grounding source's URL is already filed, this is a `DUP` — the operator only needs to cite the existing source, no new fetch.
+2. **Before searching, check coverage.** Read `index.md`'s `## Articles` scope map. If the gap's `slug` (or, for a `lookup-miss` gap, the claim's topic scanned against the map's scope lines, since that sentinel has no home slug) clearly falls within an existing article's described scope, read that article's `sources:` frontmatter and check each already-filed source: does it state or directly support this *exact* claim? Same bar as a web candidate — the article's scope covering the topic is not enough. If one grounds it, it is your grounding source for steps 4-5 below (skip `WebSearch`/`WebFetch` entirely; its `source_ref` is the source file's basename minus `.md`, and the DUP row's `url`/`title` come from that filed source's own frontmatter — the `Source:` URL and H1 title you just read — so the row is fully populated like any other DUP). If the map has no matching entry, or none of the matched article's filed sources ground this specific claim, proceed to step 3.
+3. `WebSearch` the query. Take the 1-3 most promising results.
+4. `WebFetch` each promising result and read the relevant section. Ask: **does this source state or directly support this exact claim?** Topically related is not enough — the source must back the claim's actual assertion. Stop at the first source that clearly grounds it.
+5. Rate the grounding source's tier against the STACK.md hierarchy (1 vendor doc / official … 4 forum / general) — the same tier vocabulary the article contract (`references/article-contract.md`, plugin root) uses for source tiers once this candidate is cataloged.
+6. Check the **filed-sources listing**: if the grounding source's URL is already filed, this is a `DUP` — the operator only needs to cite the existing source, no new fetch. (A grounding source found in step 2 is already filed by construction — its `DUP` verdict follows directly, no need to re-check here.)
 
 Assign **exactly one verdict per gap**:
 
@@ -42,7 +44,7 @@ Assign **exactly one verdict per gap**:
 |---------|------|-----------------|
 | `CANDIDATE` | a source directly supports the claim, tier 1-3 | url, tier, title, the supporting quote |
 | `WEAK` | a source directly supports it, but only tier 4 (forum / general) | url, tier (4), title, the supporting quote |
-| `DUP` | an **already-filed** source's URL grounds the claim | the filed source's slug in `source_ref`, plus its url/title and the quote |
+| `DUP` | an **already-filed** source grounds the claim — via the index.md scope map before searching (step 2), or by URL match on a freshly found candidate after searching (step 6) | the filed source's slug in `source_ref`, plus its url/title and the quote |
 | `NOSOURCE` | no fetched candidate supports the claim, OR search/fetch failed | the short reason in `quote` |
 
 A network or fetch failure is a `NOSOURCE` whose `quote` says the search/fetch failed (e.g. "search failed: timeout") — say so, so the operator can tell a transient failure from a claim that is genuinely unsourceable.

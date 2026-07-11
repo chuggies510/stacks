@@ -112,9 +112,14 @@ message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` 
 `stacks:enrichment`. Each agent prompt names: its assigned gap rows as
 `gap_id<TAB>slug<TAB>claim<TAB>reason` (columns 2-5 of that batch's manifest
 rows), the path to `$STACK/STACK.md` (source-hierarchy + scope), the filed-sources
-listing (the `Listing:` path), the stack root `$STACK`, and its `BATCH_TAG` (the
-`batch_tag` value). Tell each agent to write its findings to
-`$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Parallel dispatch — never sequential.
+listing (the `Listing:` path), `$STACK/index.md`'s `## Articles` map — the
+`[[slug|title]] — scope` routing lines that say what each existing article
+already covers, so the agent can check a gap's topic against an already-covered
+article's filed sources before spending a web search (if `index.md` has no
+`## Articles` map yet, the agent skips that check and searches directly) — the
+stack root `$STACK`, and its `BATCH_TAG` (the `batch_tag` value). Tell each agent
+to write its findings to `$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Parallel
+dispatch — never sequential.
 
 ## Step 4: Gate — every dispatched gap must be receipted (`enrich.sh gate`)
 

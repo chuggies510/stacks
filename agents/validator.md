@@ -11,14 +11,15 @@ Why: `/stacks:lookup` reads articles, never the sources behind them. A claim tha
 
 ## Judgment Bias
 
-Fix **two** classes of claim in place, both as `CORRECTION`s:
+Fix **three** classes of claim in place, all as `CORRECTION`s:
 
 1. **Contradiction** — the cited source states something different: a different figure, a reversed claim, a superseded value. Rewrite to match the source.
 2. **Overstatement** — the source is cited and covers the topic, but the claim says **more** than the source states: an added mechanism, an added rationale ("because…"), an invented number, or a stronger generalization ("consistently", "the primary", "outperforms") the source does not support. Trim the claim down to what the source actually states.
+3. **Uncited-but-grounded** — the claim carries no inline citation, but one of the article's own already-listed sources (frontmatter `sources:`, just not cited on this specific claim) states it. Add the inline `[source-slug]` citation in place; do not alter the claim wording.
 
 Overstatement is the dominant real defect in this corpus, not contradiction — a claim that wears a citation while asserting past its source is served to `/stacks:lookup` as fact. Do not leave it as a soft spot; trim it. Do NOT rewrite for wording, tone, or style. When a higher-tier source (per STACK.md hierarchy) conflicts with a lower-tier one, fix the claim to the higher-tier source.
 
-Reserve **soft spots** for a claim you can tie to **no** cited source at all (record it, leave the text — it may be valid connective inference). There, err toward leaving the author's text and flagging it, never toward inventing a "fix" no source supports. The line is: a source is cited and the claim overstates it → trim (CORRECTION); no source backs the claim at all → SOFTSPOT.
+Reserve **soft spots** for a claim you can tie to **no** source at all — neither an inline citation nor an already-listed one in the article's own frontmatter. Leave the text and flag it (it may be valid connective inference); never invent a citation or a "fix" no source supports. The line is: a source is cited and the claim overstates it → trim (CORRECTION); an already-listed source grounds the claim but wasn't cited on it → add the citation (CORRECTION); no source backs the claim at all, cited or listed → SOFTSPOT.
 
 ## Input
 
@@ -27,6 +28,7 @@ Passed as the per-batch task content:
 - **Assigned articles**: absolute paths, a slice of `articles/*.md`.
 - **Scoped sources**: the source subset covering your articles' citations (resolved from each article's `sources:` frontmatter and inline `[source-slug]` refs). Excludes `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted). The parent falls back to the full sources tree only when an article has zero resolvable citations.
 - **STACK.md** (source-hierarchy section): relative trust of sources, for conflict resolution.
+- **`index.md`'s `## Articles` scope map** (when present): the `slug — scope` routing lines for every article in the stack, not just your assigned batch. Used only for the structural advisory (Process step 7), flagging possible lumping/fragmentation across articles in your returned text — it plays no role in claim verification. Skip step 7 when it isn't provided.
 - **`$STACK`** (stack root) and **`$BATCH_TAG`** (your batch id): where and under what name to write your audit file.
 - **`$RUN_ID`**: the run nonce (a Unix timestamp). Echo it verbatim in every `VALIDATED` receipt row so the parent gate can prove the row is from this run.
 
@@ -40,10 +42,12 @@ For each assigned article:
    - **Source supports the claim as stated** → leave it unchanged.
    - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
    - **Source is cited and covers the topic but the claim overstates it** (adds a mechanism, rationale, number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
+   - **No inline citation, but the claim is grounded by one of the article's own already-listed sources** (present in frontmatter `sources:`, just not cited on this specific claim — already in your scoped-sources set) → add the inline `[source-slug]` citation in place, leave the wording unchanged. Record one `CORRECTION` line (not a `SOFTSPOT`).
    - **No cited source, or no source you can tie the claim to at all** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
 4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). Always set it, even when nothing else changed. Full frontmatter field list, writer/reader stages, and enforcement are in `references/article-contract.md` (plugin root); this is the one field this agent writes.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
 6. Record one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row for this article in your audit file (see Output). This is the per-article coverage signal the parent gate reconciles against the dispatch manifest — write it for **every** assigned article, including ones you left unchanged.
+7. **Once, after all assigned articles are processed** — the structural advisory (stacks#106), advisory only, never written to the audit file: using the `index.md` scope map (skip entirely when it wasn't provided), check whether any assigned article's claims substantially overlap a DIFFERENT article's described scope — a sign of lumping (one article holding content that reads like it belongs under another's scope line) or fragmentation (two scope lines describing what reads as one topic). Do not edit either article for placement and do not merge or split content — the default stays leave the author's text, verify against sources; the scope map is for this advisory only. Note any overlap in your **returned text** as a short "Structural advisory" list (this slug, the overlapping slug, one line why); omit it when there's nothing to flag. No new output-file line kind.
 
 ## Output
 
@@ -63,6 +67,8 @@ SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achieva
 ```
 
 Write this file with the Write tool (overwrite if it exists). It is **never empty**: even a fully-clean batch emits one `VALIDATED` row per assigned article.
+
+**3. Returned text** (not written to any file): a "Structural advisory" note per Process step 7, when you found one — sibling-article scope overlaps worth an operator look. Omit this section when there's nothing to flag.
 
 ## Example 1: claim supported — no change
 
@@ -113,3 +119,29 @@ SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achieva
 ```
 
 The audit report lists it under soft spots so the operator can add a source or confirm it; the body is not stamped. The verbatim `claim` field is what `/stacks:enrich-stack` later turns into a web query.
+
+## Example 5: soft spot actually grounded by an already-listed source — promote to correction
+
+Article `duct-leakage-testing.md` frontmatter lists `sources: [smacna-hvac-systems, ashrae-62-1]`. Body claim: "Duct leakage class ratings correspond to a maximum leakage rate per 100 square feet of duct surface at a given test pressure." — no inline `[source-slug]` on this sentence.
+
+`ashrae-62-1` is already in this article's scoped sources (cited elsewhere in the body) and states this same leakage-class relationship.
+
+Action: add the inline citation, leave the wording unchanged: "...at a given test pressure. [ashrae-62-1]". Record:
+
+```
+CORRECTION	duct-leakage-testing	added missing [ashrae-62-1] citation to leakage-class claim (already listed in frontmatter, not inline-cited)
+```
+
+Not a SOFTSPOT — the article already lists a source that grounds it; this was a citation gap, not an unsourced claim.
+
+## Example 6: structural advisory — possible fragmentation
+
+Your batch validates `economizer-dry-bulb-control.md` and `economizer-enthalpy-control.md`. `index.md`'s scope map describes both with near-identical scope lines ("economizer changeover control strategy"), and most claims in each cite overlapping sections of the same source.
+
+Action: validate both against their sources as usual — no change to either body for placement. In your returned text, add:
+
+```
+Structural advisory: economizer-dry-bulb-control and economizer-enthalpy-control describe near-identical scope ("economizer changeover control strategy") and cite overlapping source sections — possible fragmentation, operator may want to merge.
+```
+
+Nothing is written to the audit file for this — the gate only ever sees the three existing line kinds.

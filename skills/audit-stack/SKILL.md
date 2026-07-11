@@ -50,6 +50,7 @@ Read the manifest `dev/audit/dispatch.tsv` (the `Manifest:` path from prep) — 
 - its assigned **article paths** (column 3 of that batch's manifest rows),
 - the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`),
 - the source-hierarchy context from STACK.md,
+- `$STACK/index.md`'s `## Articles` scope map (when present) — the `slug — scope` routing lines for every article in the stack, not just this batch; feeds the validator's structural lumping/fragmentation advisory (stacks#106), returned in text only,
 - the stack root `$STACK`,
 - its **`BATCH_TAG`** (the `batch_tag` value: `0`, `1`, …),
 - the **`RUN_ID`** from prep's output (echoed verbatim in each `VALIDATED` receipt row).
@@ -96,4 +97,4 @@ git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/sof
 git commit -m "audit({stack}): corrections={corrections} soft-spots={softspots}"
 ```
 
-Present a summary to the user: articles validated, corrections applied, soft-spot count, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff). If soft spots are high, point at the report.
+Present a summary to the user: articles validated, corrections applied, soft-spot count, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff). If soft spots are high, point at the report. Also surface any **Structural advisory** notes the validators returned in their text (possible lumping/fragmentation across articles, stacks#106): these are advisory-only and are NOT written to `report.md`, so relay them to the operator here or they are lost.
