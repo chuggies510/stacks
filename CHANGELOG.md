@@ -1,3 +1,9 @@
+## 0.56.2 — 2026-07-11
+
+**Cold-start scope seeding no longer leaks an out-of-scope area back in as a gap when the "does not belong" heading sits one level deeper than expected.** `enrich.sh`'s `scope_topics()` (the awk that seeds an empty stack's enrichment gaps from `## Scope` bullets) stopped collecting bullets at a `### does not belong`-style sub-heading, but the exclusion-detection regex used mawk's `{3,}` interval syntax (`#{3,}`), which mawk 1.3.4 silently mis-parses as matching only exactly-3 repeats when followed by another pattern piece — so a `#### What does not belong` heading (4 hashes) never matched, and its bullets leaked into the scope instead of being excluded (stacks#101, stacks#105).
+- **`/^#{3,}[[:space:]]/` is now `/^###+[[:space:]]/`** (a plus-quantifier, which mawk handles correctly at any depth ≥3), so a depth-3 or depth-4 (or deeper) exclusion heading reliably drops out-of-scope bullets. `--self-check` now goes 13/13 (was 12/13, failing `scope-deep-exclusion-excluded`). (`scripts/pipeline/enrich.sh`)
+- **Also brought `marketplace.json`'s version back in sync with `plugin.json`** — it had drifted to 0.53.1 while `plugin.json` moved on to 0.56.1 across several unrelated releases. (`.claude-plugin/marketplace.json`)
+
 ## 0.56.1 — 2026-07-11
 
 **A freshly-scaffolded stack can now cold-start enrich — before, `/stacks:enrich-stack` on a brand-new empty stack died silently with no output.** The `new-stack` template shipped no `articles/` directory, and enrich's cold-start branch counts articles with `find "$STACK/articles" … | wc -l` under `set -o pipefail`: with the directory absent, `find` exits nonzero, pipefail propagates it, and `set -e` killed `prep` before it printed anything (exit 1, zero output). Hit live scaffolding the ASTM E2018 pca-stack.

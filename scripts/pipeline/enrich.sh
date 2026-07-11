@@ -92,7 +92,7 @@ scope_topics() {
   [[ -f "$md" ]] || return 0
   awk '
     /^## /            { inscope = ($0 ~ /^##[[:space:]]+Scope[[:space:]]*$/); next }
-    /^#{3,}[[:space:]]/ { if (inscope && tolower($0) ~ /does not belong|excluded/) inscope = 0; next }
+    /^###+[[:space:]]/ { if (inscope && tolower($0) ~ /does not belong|excluded/) inscope = 0; next }
     inscope && /^[[:space:]]*[-*][[:space:]]+/ {
       line = $0
       sub(/^[[:space:]]*[-*][[:space:]]+/, "", line)
