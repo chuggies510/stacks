@@ -449,3 +449,48 @@ creeps back to over-minting (+2) on 2 of 3 passes, nondet. Perfect on the easy i
 active budget isn't enough to hold the 42-article scope map AND recall thoroughly on a rich
 source. Note: the winner (qwen3-30b-a3b-instruct) is ALSO a low-active MoE (3B active) — so
 it's not active-param count that decides it, it's the specific model (qwen's 30B total + training).
+
+## Addendum: Qwen3.5-122B-A10B MoE straddle, run locally on one 3090 (24GB) + 64GB RAM
+
+The "other idea" from the S59 relay, measured. A 122B-total / 10B-active MoE (48 layers,
+256 experts, top-8 routing → 3.1% active) doesn't fit in 24GB VRAM, so it straddles: attention
++ KV cache on the GPU, expert FFN weights in system RAM, via llama.cpp `--n-cpu-moe`. Native
+CUDA build (sm_86, gcc-12 host compiler), `unsloth/Qwen3.5-122B-A10B-GGUF` **Q3_K_M** (56GB,
+imatrix-calibrated), thinking **off** (`enable_thinking=false` — apples-to-apples with the
+qwen3-30b winner, also measured thinking-off), `-ngl 99 --n-cpu-moe 36 -fa -c 32768`.
+
+Same described-slug harness (the shipped 0.57.0 fix), same 3 sources, cliff = the zenml
+1200-deployments source.
+
+| Metric | Result |
+|--------|--------|
+| Mint discipline (cliff) | **0 over-mints** — all 18 in-scope concepts reuse existing slugs |
+| Tier accuracy | consistent (all cliff concepts tier 3) |
+| Determinism, 3 serial passes | **byte-identical** (1 unique of 3, every item) |
+| Determinism, 4 concurrent (batched) | **byte-identical** (1 unique of 5, serial + 4 concurrent share one md5) |
+| Throughput, cliff serial | 44–46s / source (~7.5 tok/s decode at N=36 offload) |
+| Throughput, 4 concurrent | 171s wall vs 185s pure-serial — **~7% amortization, effectively none** |
+
+**Two things the other candidates couldn't both do, this does at once.** Cloud haiku's failure
+was over-minting on rich sources; qwen3-30b-a3b's was nondeterminism on the cliff (recall
+flips 0.90↔1.0 pass to pass). The 122B straddle has **0 over-mints AND byte-determinism** — and
+the determinism holds under 4-way continuous batching, which was expected to break it (GPU
+float non-associativity + changed GEMM batch shape → moved near-ties). It didn't move.
+
+**The catch is throughput, not correctness.** Concurrency buys ~7% (171s for 4 requests vs
+185s serialized), because the straddle is RAM-bandwidth-bound on the expert reads and a sparse
+MoE routes 4 concurrent requests to a near-disjoint union of experts — batching multiplies the
+RAM working set instead of sharing it, so the GPU idles on the memory bus. **Practical
+concurrency = 1.** The real shape of this path: one deterministic request at a time, ~46s/source,
+$0 marginal, on hardware already owned. A determinism monster, not a throughput monster.
+
+**Where it fits.** This only matters under a local pal-chat harness (the determinism is the
+whole reason to reach for it); it does nothing for a no-harness cloud path. But if the extraction
+stage commits to local, this clears every floor the 30B does *plus* byte-determinism the 30B
+can't — at 46s/source instead of 170 tok/s. Quality headroom check in flight:
+**UD-Q4_K_XL** (Unsloth Dynamic 4-bit, selective per-layer upcasting, 77GB combined) re-run,
+to see if more bits push cliff recall to a perfect margin while determinism stays maxed.
+
+Config for reproduction: `llama-server -m Qwen3.5-122B-A10B-Q3_K_M-00001-of-00003.gguf
+-ngl 99 --n-cpu-moe 36 -fa 1 -c 32768 --parallel 4 --jinja
+--chat-template-kwargs '{"enable_thinking":false}'`.
