@@ -192,7 +192,11 @@ phase_prep() {
   local COLDSTART=0
   if [[ "$N_GAPS" -eq 0 && -z "$QUERY" ]]; then
     local N_ART
-    N_ART=$(find "$STACK/articles" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    # `|| true` inside the substitution: on a scaffolded stack whose articles/ dir
+    # does not exist yet (the cold-start case this branch handles), find exits
+    # nonzero and pipefail would otherwise propagate that through set -e and kill
+    # prep silently. A missing dir means zero articles — the answer, not an error.
+    N_ART=$( { find "$STACK/articles" -maxdepth 1 -type f -name '*.md' 2>/dev/null || true; } | wc -l | tr -d ' ')
     if [[ "$N_ART" -eq 0 ]]; then
       COLDSTART=1
       local i=0

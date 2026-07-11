@@ -1,3 +1,8 @@
+## 0.56.1 — 2026-07-11
+
+**A freshly-scaffolded stack can now cold-start enrich — before, `/stacks:enrich-stack` on a brand-new empty stack died silently with no output.** The `new-stack` template shipped no `articles/` directory, and enrich's cold-start branch counts articles with `find "$STACK/articles" … | wc -l` under `set -o pipefail`: with the directory absent, `find` exits nonzero, pipefail propagates it, and `set -e` killed `prep` before it printed anything (exit 1, zero output). Hit live scaffolding the ASTM E2018 pca-stack.
+- **The template now includes `articles/.gitkeep`, and the cold-start article count wraps the `find` in `{ …; || true; }` so a missing `articles/` reads as zero articles (the answer for an empty stack), never a hard crash.** (`templates/stack/articles/.gitkeep`, `scripts/pipeline/enrich.sh`)
+
 ## 0.56.0 — 2026-07-11
 
 **The library's root `catalog.md` now refreshes its per-stack article/source counts automatically — before, every count froze at scaffold time, so a fully-cataloged stack still advertised "0 articles, 0 sources" in the top-level index.** `new-stack` appends a row with a zero count and nothing ever updated it again, so `catalog.md` (the first thing a reader sees, and the library-detection marker) drifted from reality across every stack (go-charm-tui showed 0 despite 36 articles; hvac read 259 when it held 610). The per-stack `index.md` regenerated fine — only the root catalog was orphaned.
