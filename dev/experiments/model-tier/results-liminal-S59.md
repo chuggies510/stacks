@@ -487,9 +487,29 @@ $0 marginal, on hardware already owned. A determinism monster, not a throughput 
 **Where it fits.** This only matters under a local pal-chat harness (the determinism is the
 whole reason to reach for it); it does nothing for a no-harness cloud path. But if the extraction
 stage commits to local, this clears every floor the 30B does *plus* byte-determinism the 30B
-can't — at 46s/source instead of 170 tok/s. Quality headroom check in flight:
-**UD-Q4_K_XL** (Unsloth Dynamic 4-bit, selective per-layer upcasting, 77GB combined) re-run,
-to see if more bits push cliff recall to a perfect margin while determinism stays maxed.
+can't — at 46s/source instead of 170 tok/s.
+
+**Quality-headroom check RESOLVED — UD-Q4_K_XL is dominated, Q3_K_M stays the pick.** Re-ran
+the identical 3-source / 3-pass harness on `UD-Q4_K_XL` (Unsloth Dynamic 4-bit, selective
+per-layer upcasting, 77GB combined, N=44). More bits + dynamic quant bought nothing on the two
+axes already maxed and regressed on the third:
+
+| | Q3_K_M (56GB, N=36) | UD-Q4_K_XL (77GB, N=44) |
+|---|---|---|
+| Determinism, 3 passes | byte-DET | byte-DET (no gain, already maxed) |
+| Mint discipline, cliff | 0 over-mints | 0 over-mints (no gain, already clean) |
+| Cliff concepts recalled | **18** | **15** (net −2 real articles) |
+| Speed, cliff item | 7.5 tps / 44s | 3.9 tps / 73s (~1.7× slower) |
+
+UD-Q4 dropped 4 real in-scope articles Q3 caught (`llm-as-judge`, `context-window-management`,
+`self-correction-loops`, `token-budget-management`) and added only 2 (`llm-judge-gate-wiring`,
+`production-eval-systems`) — no hallucinated slugs either side, a pure recall comparison. Likely
+mechanism (inferred): the higher-precision quant carves concepts more conservatively, splitting
+broad reuses into narrower slugs and letting the broad ones lapse — a sparser partition that
+misses more existing-article surface. The extra bits reduced recall and cost speed while
+determinism/mint were already saturated at Q3. **Verdict: Q3_K_M is the straddle keeper.** The
+"more bits widens the margin" hypothesis is falsified on this task; UD-Q4 is a strictly
+worse-or-equal operating point.
 
 Config for reproduction: `llama-server -m Qwen3.5-122B-A10B-Q3_K_M-00001-of-00003.gguf
 -ngl 99 --n-cpu-moe 36 -fa 1 -c 32768 --parallel 4 --jinja
