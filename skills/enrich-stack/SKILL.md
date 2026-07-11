@@ -57,7 +57,7 @@ so nothing stages without a decision.
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:enrich-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
@@ -75,7 +75,8 @@ prints a per-batch summary and the paths the dispatch below reads. `--auto`/
 and gets the full batch.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" prep $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/enrich.sh" prep $ARGUMENTS
 ```
 
 On an empty stack (zero articles) with no soft spots and no lookup misses, prep
@@ -125,7 +126,8 @@ column of the findings rows). A dropped, duplicated, unknown, or missing finding
 row fails **by name**.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" gate $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/enrich.sh" gate $ARGUMENTS
 ```
 
 A non-zero exit means an agent did not write a well-formed findings file, or a
@@ -141,7 +143,8 @@ nothing on disk is needed for the approval/staging below, so an operator cancel
 at Step 6 already leaves a clean end state).
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/enrich.sh" finish $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/enrich.sh" finish $ARGUMENTS
 ```
 
 Each printed row is `KIND<TAB>gap_ids<TAB>slugs<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote`.
@@ -240,8 +243,9 @@ Fetch the body and pick a non-colliding filename in one block. Substitute
 
 ```bash
 mkdir -p "{stack-root}/sources/incoming"
-DEST=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/collision-dest.sh" "{stack-root}/sources/incoming" "{slug-or-title}.md")
-BODY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/fetch-source-text.sh" "{url}" --quote "{supporting quote}" 2>/tmp/fst.err)
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+DEST=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "{stack-root}/sources/incoming" "{slug-or-title}.md")
+BODY=$(bash "$STACKS_ROOT/scripts/fetch-source-text.sh" "{url}" --quote "{supporting quote}" 2>/tmp/fst.err)
 RC=$?; cat /tmp/fst.err   # WORDS=… EXCERPTED=0|1 QUOTE_FOUND=0|1
 ```
 

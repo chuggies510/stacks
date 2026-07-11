@@ -43,7 +43,7 @@ batch; drop to serial for a handful of chapters.
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:ingest-book" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
@@ -233,7 +233,7 @@ the gate failed.
 ## Step 4: Stash the raw PDF + regenerate the book index
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 STACK="..."; BOOK_SLUG="..."; PDF="..."   # re-set
 mkdir -p "$STACK/reference/$BOOK_SLUG"
 # Keep the source PDF next to its chapters for local re-pull, but never commit it.

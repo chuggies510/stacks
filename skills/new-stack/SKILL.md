@@ -20,7 +20,8 @@ state that survives is the `cd` into the library in Step 1.
 ## Step 0: Telemetry
 
 ```bash
-SKILL_NAME="stacks:new-stack" bash "$CLAUDE_PLUGIN_ROOT/scripts/telemetry.sh" 2>/dev/null || true
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+SKILL_NAME="stacks:new-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Resolve the library and scaffold the stack
@@ -39,8 +40,9 @@ user and ask again before running this block.
 ```bash
 set -euo pipefail
 STACK_NAME="$ARGUMENTS"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 
-LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
 # resolve-library.sh prints a fix hint and exits non-zero when no library is
 # configured or reachable; if it failed, stop and relay that message.
 
@@ -53,7 +55,7 @@ if [[ -d "$STACK_NAME" ]]; then
   exit 1
 fi
 
-TEMPLATE_DIR="$CLAUDE_PLUGIN_ROOT/templates/stack"
+TEMPLATE_DIR="$STACKS_ROOT/templates/stack"
 if [[ ! -d "$TEMPLATE_DIR" ]]; then
   echo "ERROR: Stack template not found. Is the stacks plugin installed?"
   exit 1

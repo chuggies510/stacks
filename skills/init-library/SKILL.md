@@ -13,7 +13,7 @@ Create a new knowledge library.
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:init-library" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 

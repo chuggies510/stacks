@@ -20,7 +20,7 @@ The deterministic control flow (arg parse, `--from` staging, convert, enum, shar
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:catalog-sources" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
@@ -32,7 +32,8 @@ Two modes, keyed on `$ARGUMENTS`:
 - **No argument**: catalog every stack that has queued sources in `incoming/`, largest batch first. Get the queue:
 
   ```bash
-  bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" queue
+  STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+  bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" queue
   ```
 
   Empty output means nothing is queued — tell the user and stop. Otherwise **run Steps 2–9 once per stack in the printed order** (each stack is an independent cataloging run; commit per stack at Step 9 so a failure mid-queue leaves prior stacks clean). `--from` is not available in this mode (it needs an explicit stack).
@@ -44,7 +45,8 @@ For each stack to catalog, do Steps 2–9.
 `prep` does everything deterministic before the first agent: resolve+cd the library, stage `--from` sources (collision-safe copy of the supported types), convert non-text sources (PDF/Office → text sidecars, images/scanned/unknown skipped-and-reported), enumerate `sources/incoming/` (the new-source set), fail early on `(`/`)` in a filename (breaks the index parser), and write the W1 manifest (`dev/extractions/dispatch-w1.tsv`) + `run.env` with `RUN_ID_W1`.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" prep {stack}
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" prep {stack}
 # or, staging first:  ... prep {stack} --from {path}
 ```
 
@@ -68,7 +70,8 @@ Read `{stack}/STACK.md` for the source hierarchy (tier rankings for conflict res
 After all extractors return, gate the batch. One source maps 1:1 to one `batch-<tag>-concepts.md`, so a missing/empty/stale concept file fails **by path** — that presence check is the per-source coverage.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" gate-w1 {stack}
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" gate-w1 {stack}
 ```
 
 A non-zero exit names the ungated batch file(s) — an extractor that wrote nothing or wrote a stale file. Surface it and stop.
@@ -78,7 +81,8 @@ A non-zero exit names the ungated batch file(s) — an extractor that wrote noth
 `dedup` runs the deterministic W1b merge (union `source_paths` per slug, classify each unique slug new/updated, flag near-duplicate titles), asserts the merged output's shape, and writes the W2 manifest (`dev/extractions/dispatch-w2.tsv`, one slug per row) + `run.env` with `RUN_ID_W2`.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" dedup {stack}
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" dedup {stack}
 ```
 
 Read its output: the unique-concept count (new/updated split), the wave plan, and `NEAR_DUP_PAIRS`.
@@ -98,7 +102,8 @@ Read `dev/extractions/dispatch-w2.tsv` — each row is `wave_tag<TAB>slug`. Arti
 After all waves return, gate the articles. 1 slug maps 1:1 to `articles/{slug}.md`, so a missing article (a synthesizer that skipped its slug) or an unrewritten update (mtime older than this run) fails **by path**.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" gate-w2 {stack}
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" gate-w2 {stack}
 ```
 
 A non-zero exit names the ungated article(s). Surface it and stop; the sources stay in `incoming/` (finish is not reached) and the next run retries.
@@ -108,7 +113,8 @@ A non-zero exit names the ungated article(s). Surface it and stop; the sources s
 `finish` runs the post-synthesis deterministic tail: tag-drift enforcement (halts before filing if any article carries an out-of-vocabulary tag, so its source stays in `incoming/` for the next run), W3 source filing (each `incoming/` source moved to its publisher dir with citations rewritten; a source with no `publisher:` field files under `sources/unknown/` and is reported), W4 MoC regeneration, then cleanup of the transient run files. It prints a `CATALOG_SUMMARY: sources=… new=… updated=… unfiled=…` line.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/catalog.sh" finish {stack}
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" finish {stack}
 ```
 
 A non-zero exit with `TAG_DRIFT:` lines means an article's tags left the `allowed_tags:` vocabulary — surface it, and tell the operator to fix the article tag or the vocabulary list before re-running (the source stayed in `incoming/`). Otherwise read the `CATALOG_SUMMARY` counts for the log+commit.
@@ -116,7 +122,8 @@ A non-zero exit with `TAG_DRIFT:` lines means an article's tags left the `allowe
 Prepend a log entry and commit. Shell state does not survive between these blocks, so re-resolve the library here — substitute `{stack}` and the counts from `CATALOG_SUMMARY`:
 
 ```bash
-LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
 NEW_ENTRY="## [$(date +%Y-%m-%d)] catalog | {sources} new sources, {new} articles created, {updated} updated
 Sources processed: {sources}. New articles: {new}. Updated articles: {updated}."
 { printf '%s\n\n' "$NEW_ENTRY"; cat "{stack}/log.md"; } > /tmp/stacks-log.tmp

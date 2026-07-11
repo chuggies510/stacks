@@ -15,14 +15,14 @@ Route inbox session extracts to the correct stack's incoming directory.
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:process-inbox" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
 ## Step 1: Find the library
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
 echo "Library: $LIBRARY"
 ```
@@ -90,7 +90,7 @@ Using the header block (filename, H1 title, Source line, Extracted from line, fi
 For each matched file, move it to `{stack}/sources/incoming/`:
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 TARGET_STACK="$LIBRARY/{matched-stack}"
 mkdir -p "$TARGET_STACK/sources/incoming"
 dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$TARGET_STACK/sources/incoming" "$filename")

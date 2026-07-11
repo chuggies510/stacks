@@ -18,7 +18,7 @@ The deterministic control flow (resolve, enum, shard, gate, report) lives in `sc
 ## Step 0: Telemetry
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
 ```
 
@@ -27,7 +27,8 @@ SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/
 `audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, **skip the ones unchanged since their last audit** (incremental — see below), shard the rest into `CAP=5` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints how many were skipped vs. dispatched, the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
 ```
 
 **Incremental skip.** prep compares each article's current content hash (`git hash-object`) against `dev/audit/verified.tsv` (the hash finish recorded at its last successful audit). An unchanged article re-validates to the same result, so it is skipped to save the validator's per-article token cost. A first run (no verified.tsv) audits everything; the stack self-migrates on that pass. Pass **`--full`** (`/stacks:audit-stack {stack} --full`) to ignore verified.tsv and re-check every article — do this after the validator's own logic changes, or after editing a cited **source** in place (the hash keys on the article, not its sources, so a source edited without re-cataloging the article is the one change the skip cannot see; the "sources are immutable" convention normally rules this out, and re-cataloging a source rewrites the article anyway → its hash moves → re-audited). Against article changes the skip is safe by construction: any hash miss falls through to auditing, so it never serves a changed article as still-valid.
@@ -60,7 +61,8 @@ The validator strips prior-cycle marks, fixes source-contradictions in place, se
 After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows — the `--verdict` filter skips the `CORRECTION`/`SOFTSPOT` rows that reuse the slug column). A dropped, duplicated, unknown, or missing receipt fails **by name**.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
 ```
 
 A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
@@ -70,7 +72,8 @@ A non-zero exit means a validator did not process an article it was assigned (no
 `audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections + soft spots), merges `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input — carrying the skipped articles' prior soft spots forward, since an incremental run only re-checks changed articles), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=… softspots=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (carries all soft spots, re-stamps hashes, writes a 0-audited report).
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" finish $ARGUMENTS
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/scripts/pipeline/audit.sh" finish $ARGUMENTS
 ```
 
 Read the printed `AUDIT_SUMMARY` counts — they feed the log entry and commit message below.
@@ -87,7 +90,8 @@ Validated={articles} Corrections={corrections} SoftSpots={softspots}. Report: de
 Then commit the corrected articles and the report. Substitute `{stack}` and the counts — shell state does not survive between these blocks, so re-resolve the library here rather than relying on a `$STACK`/`$LIBRARY` from an earlier step:
 
 ```bash
-LIBRARY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
 git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/soft-spots.tsv" "{stack}/dev/audit/verified.tsv" "{stack}/log.md"
 git commit -m "audit({stack}): corrections={corrections} soft-spots={softspots}"
 ```

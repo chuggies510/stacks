@@ -14,7 +14,7 @@ Query knowledge stacks from any repo. Step 8 records the lookup once the answer 
 ## Step 1: Find the library
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
 echo "Library: $LIBRARY"
 ```
@@ -142,7 +142,7 @@ Substitute the placeholders below (comma-separated). The query comes from `$ARGU
 - `articles` — the title(s) that contributed to the answer: article titles AND any reference-chapter titles recognized in Step 6.5 (a chapter answered the query, so it is not a miss). **Empty only on a true miss** — no article and no chapter matched. `articles == ""` (with `stacks` populated) is the miss signal `lookup-misses.sh` mines, so a reference-only hit must record its chapter title(s) here or it is falsely enriched later.
 
 ```bash
-STACKS_ROOT="$CLAUDE_PLUGIN_ROOT"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 # Re-derive the library here — shell vars from Step 1 do not survive between
 # blocks. Recording it scopes the miss log per library (stacks#73), so
 # lookup-misses.sh only mines misses against the library being enriched.
@@ -186,7 +186,8 @@ For each in-scope stack (usually one):
    an operator prompt, then catalog + audit:
 
    ```bash
-   cd "$(bash "$CLAUDE_PLUGIN_ROOT/scripts/resolve-library.sh")"
+   STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+   cd "$(bash "$STACKS_ROOT/scripts/resolve-library.sh")"
    ```
 
    Then invoke `/stacks:enrich-stack {stack} --auto --query "{the user's query}"`.
