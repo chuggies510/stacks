@@ -11,7 +11,7 @@ The gold set below is the **offline** layer (a golden regression dataset, per th
 
 ## The task the model must do
 
-For each item: read one article **claim** (as it appears in the body) and the **cited source excerpt**, and decide the verdict — exactly the four the `validator` agent emits:
+For each item: read one article **claim** (as it appears in the body) and the **cited source excerpt**, and decide the verdict, using the benchmark's five classification labels below. These map to what the `validator` agent does — CLEAN (leave, emit only a VALIDATED receipt), the three CORRECTION classes, and SOFTSPOT — but the agent emits a **generic** `CORRECTION` audit row, not the subtype token; the subtypes here are scoring labels that name *which* correction the model should make:
 
 - **CLEAN** — the source supports the claim as stated. Leave it. (No CORRECTION, no SOFTSPOT.)
 - **CORRECTION / contradiction** — the source states something *different* (a different figure, a reversed claim). Rewrite the claim to match the source.
@@ -84,9 +84,9 @@ Source files (for audit): `llm/sources/arxiv/arxiv-2306.05685-llm-as-judge-mt-be
 
 **Item 6 — UNCITED-BUT-GROUNDED** (add-citation, not softspot)
 - Article `sources:` frontmatter lists `[zenml-2025-12-llmops-1200-deployments, evidentlyai-llm-as-a-judge-guide]`.
-- Claim (no inline citation): `Continuous red teaming runs throughout the development lifecycle, not as a one-time pre-launch assessment.`
+- Claim (no inline citation): `Cox Automotive runs continuous red teaming throughout its development lifecycle, not as a one-time pre-launch assessment.`
 - Source (zenml, already listed): *"Cox Automotive: Continuous red teaming (not one-time assessment) integrated throughout development lifecycle."*
-- **Gold: CORRECTION/add-citation → `zenml-2025-12-llmops-1200-deployments`.** The claim is true and grounded by a listed source; the defect is the missing inline citation, not the wording. NOT a softspot (a source ties to it) and NOT an overstatement.
+- **Gold: CORRECTION/add-citation → `zenml-2025-12-llmops-1200-deployments`.** The claim is attributed and stated exactly as the listed source has it, so the ONLY defect is the missing inline citation (no generalization to defend, so not an overstatement; a source ties to it, so not a softspot). The correct action adds the citation and leaves the wording unchanged — trimming the wording here is a false correction (see metric 2).
 
 **Item 7 — SOFTSPOT** (no source ties to it — restraint on the overstatement/softspot boundary)
 - Article `sources:` frontmatter lists `[zenml-2025-12-llmops-1200-deployments, evidentlyai-llm-as-a-judge-guide]`.
@@ -108,8 +108,8 @@ Source files (for audit): `llm/sources/arxiv/arxiv-2306.05685-llm-as-judge-mt-be
 
 ## Metric + the bar we need
 
-1. **Poison recall** = of the overstatement/contradiction items {2, 3, 5}, the fraction the model both catches AND acts on (returns a CORRECTION, not CLEAN, not SOFTSPOT). **Floor ≥ 0.90** — with 3 items that means all three. A miss here is a claim served to lookup as fact; the bar is strict because nothing downstream catches it.
-2. **False-correction rate** = of the no-fix items {1, 4, 7}, the fraction the model wrongly alters (a trim/fix on 1 or 4; a trim/fix or invented citation on 7 — item 7's only correct action is flag-as-SOFTSPOT). **Floor: 0.** Over-correction corrupts truthful content, as damaging as a miss.
+1. **Poison recall** = of the overstatement/contradiction items {2, 3, 5}, the fraction the model catches AND corrects *properly* — returns a CORRECTION whose replacement text removes the unsupported assertion and matches the cited source excerpt. A CORRECTION token whose replacement is hallucinated or still overstated does NOT count as caught (it swaps one poison for another); CLEAN or SOFTSPOT on these items is a miss. **Floor ≥ 0.90** — with 3 items, all three. The bar is strict because nothing downstream catches a claim served to lookup as fact.
+2. **False-correction rate** = of the no-fix items {1, 4, 7}, the fraction the model wrongly alters (a trim/fix on 1 or 4; a trim/fix or invented citation on 7 — item 7's only correct action is flag-as-SOFTSPOT), PLUS item 6 if the model changes its wording instead of only adding the citation. **Floor: 0.** Over-correction corrupts truthful content, as damaging as a miss.
 3. **Action accuracy** (all 7) = fraction with the exact gold verdict-action from the table. Report. The two signatures that disqualify a tier are a {2,3,5} item returned CLEAN/SOFTSPOT (miss) and a {1,4,7} item trimmed/fixed (false correction) — a within-CORRECTION class swap (calling an overstatement a contradiction) still trims the poison, so it is a minor error, not a floor breach.
 4. **Determinism** (report, not gated) = identical verdict set across 3 greedy passes.
 

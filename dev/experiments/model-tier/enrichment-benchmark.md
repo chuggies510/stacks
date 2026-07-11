@@ -64,7 +64,7 @@ Passages are verbatim from real sources on this machine except where marked **[c
 - **Gold: NOSOURCE.** The passage names position bias and says mitigations exist *for some* biases — it does **not** state the claim's specific "three-model averaging fully eliminates it" mechanism. On-topic, does not ground the assertion.
 
 **Item 4 — CANDIDATE (tier assignment — practitioner case study, tier 3)**
-- Claim: `Red teaming should run continuously throughout the development lifecycle, not as a one-time pre-launch assessment.`
+- Claim: `Cox Automotive runs continuous red teaming integrated throughout its development lifecycle, not as a one-time pre-launch assessment.`
 - Candidate: *"What 1,200 Production Deployments Reveal About LLMOps in 2025"* — https://www.zenml.io/blog/what-1200-production-deployments-reveal-about-llmops-in-2025 (tier 3)
 - Passage: *"Cox Automotive: Continuous red teaming (not one-time assessment) integrated throughout development lifecycle. Testing checks what works; red teaming tries to break it."*
 - **Gold: CANDIDATE | tier:3.** Directly states it. Tier is 3 (a practitioner LLMOps case-study aggregation), not 1 or 2 — the tier-accuracy check.
@@ -79,11 +79,11 @@ Passages are verbatim from real sources on this machine except where marked **[c
 - Claim: `MT-bench and Chatbot Arena were introduced to verify LLM-judge agreement with human preferences.`
 - Filed-sources listing (already in this stack):
   ```
-  arxiv-2306-05685-llm-as-judge-mt-bench	https://arxiv.org/abs/2306.05685
+  arxiv-2306.05685-llm-as-judge-mt-bench	https://arxiv.org/abs/2306.05685
   zenml-2025-12-llmops-1200-deployments	https://www.zenml.io/blog/what-1200-production-deployments-reveal-about-llmops-in-2025
   ```
 - Candidate: same arXiv paper — https://arxiv.org/abs/2306.05685 — passage: *"we verify the agreement between LLM judges and human preferences by introducing two benchmarks: MT-bench, a multi-turn question set; and Chatbot Arena, a crowdsourced battle platform."*
-- **Gold: DUP | arxiv-2306-05685-llm-as-judge-mt-bench.** The passage grounds the claim, but its URL is already filed — the operator cites the existing source; no new candidate. Returning CANDIDATE (a duplicate source) is the dedup miss.
+- **Gold: DUP | arxiv-2306.05685-llm-as-judge-mt-bench.** The passage grounds the claim, but its URL is already filed — the operator cites the existing source; no new candidate. Returning CANDIDATE (a duplicate source) is the dedup miss.
 
 ## Gold summary
 
@@ -100,11 +100,11 @@ Passages are verbatim from real sources on this machine except where marked **[c
 
 1. **False-CANDIDATE rate** = of the trap items {2, 3}, the fraction wrongly returned CANDIDATE or WEAK. **Floor: 0.** This is the #95 axis — a topical-but-non-grounding source accepted becomes a wrong citation lookup serves as fact.
 2. **Grounding recall** = of the real-grounding items {1, 4, 6}, the fraction correctly returned CANDIDATE or DUP (not NOSOURCE). **Floor ≥ 0.90.** A tier so timid it rejects genuine grounding leaves every soft spot open — the opposite failure.
-3. **Tier accuracy** = of items returned CANDIDATE/WEAK/DUP, the fraction with the exact gold tier, including the CANDIDATE-vs-WEAK split at the tier-4 boundary (item 5). **Floor ≥ 0.90.**
-4. **DUP detection** = item 6 returned DUP, not CANDIDATE (deduped against the filed listing). Binary; report.
+3. **Tier accuracy** = over the **fixed tier-bearing set {items 1, 4, 5}**, the fraction returned with BOTH the exact gold verdict AND tier (CANDIDATE tier:2, CANDIDATE tier:3, WEAK tier:4). Scored on a fixed set, not on "items the model returned CANDIDATE/WEAK for" — otherwise a wrong NOSOURCE shrinks the denominator and inflates the score. DUP (item 6) carries no tier and is excluded here (scored by floor 4). **Floor: 3/3.**
+4. **DUP detection** = item 6 returned DUP (not CANDIDATE), deduped against the filed listing. **Floor: correct** (binary) — filing a duplicate as a new CANDIDATE is a real waste, so this gates viability, not report-only.
 5. **Determinism** (report, not gated) = identical verdict set across 3 greedy passes.
 
-A model that clears floors 1–3 is a viable enrichment tier. The likely weak-tier signature is **false-CANDIDATE on {2, 3}** — a fluent model pattern-matches "passage is about the topic" to "passage grounds the claim" and stamps CANDIDATE, exactly the discrimination the stage exists to hold. This is the enrichment analog of the validator's poison-recall and the synthesizer's over-claim: the cheap tier fails on *restraint under topical similarity*, not on transcription.
+A model that clears floors 1–4 is a viable enrichment tier. The likely weak-tier signature is **false-CANDIDATE on {2, 3}** — a fluent model pattern-matches "passage is about the topic" to "passage grounds the claim" and stamps CANDIDATE, exactly the discrimination the stage exists to hold. This is the enrichment analog of the validator's poison-recall and the synthesizer's over-claim: the cheap tier fails on *restraint under topical similarity*, not on transcription.
 
 ## What to send back
 

@@ -50,7 +50,7 @@ multi-agent, cost-economics, fine-tuning
 
 ## Test items (concept block is inline; source text is on this machine — read the path to verify faithfulness)
 
-Each item gives the **concept block** (the model's input, verbatim) and a **source path** so you (or a judge) can confirm the article claims nothing the source doesn't support. The gold answer is the already-audited published article.
+Each item gives the **concept block** — the model's input AND the scoring ground truth. Recall and over-claim are scored **against the block's claims**, not against any external article: the synthesizer writes *from the block* (it never reads the raw source), so the block alone defines both what must appear (every claim) and the ceiling (nothing beyond it). The published `articles/{slug}.md` of the same name is a **prose-shape reference only** — it was written from the fuller parent source and then audit-validated, so it legitimately contains claims the block does not and carries a non-empty `last_verified`; do NOT score against it. The source path is listed for provenance, not as a scoring input (source-fidelity is the extraction stage's concern, not synthesis).
 
 ---
 
@@ -92,7 +92,7 @@ target_article: ""
   latency, cost per correct answer). [source: arxiv-2507.13334-context-engineering-survey]
 ```
 
-**Gold** = published `llm/articles/llm-evaluation-frameworks.md`. All 6 claims recalled; `tags` a subset of `{llm, llmops, evals, llm-as-judge, rag, agents, hallucination, observability}`; single source, so no tier-conflict resolution. **Over-claims expected: 0.**
+**Gold** = an article that states all 6 block claims and nothing beyond them, `last_verified: ""`, `tags` a subset of `{llm, llmops, evals, llm-as-judge, rag, agents, hallucination, observability}`, one source (no tier-conflict). Recall target **6/6**; **over-claims expected: 0** — any sentence asserting beyond the 6 claims counts. (The published `llm-evaluation-frameworks.md` is a prose-shape reference, not the scoring key — it carries content from the full survey the block omits.)
 
 ---
 
@@ -133,7 +133,7 @@ target_article: ""
   it continuously throughout the lifecycle, not as a one-time pre-launch gate. [source: zenml-2025-12-llmops-1200-deployments]
 ```
 
-**Gold** = published `llm/articles/production-eval-systems.md`. It attributes each practice to its company (Ramp, etc.) and preserves every qualifier. **Over-claims expected: 0.** The specific amplification traps a judge must flag if they appear:
+**Gold** = an article that states all 7 block claims with their qualifiers intact — each company-attributed practice kept attributed, each hedge preserved — `last_verified: ""`, **over-claims 0.** (The published `production-eval-systems.md` is a prose-shape reference only; scoring is block-relative.) The specific amplification traps a judge must flag if they appear:
 
 | Trap | Faithful (gold) | Over-claim (fail) |
 |---|---|---|
@@ -171,9 +171,9 @@ target_article: ""
 
 Score each item, then aggregate. Faithfulness is **claim-tracing, not a 1-5 preference score** — for each article sentence, ask "does a block claim support this, at this strength?"; a No is an over-claim. Do the tracing with a judge model that **differs from the writer** (self-enhancement bias inflates a model grading its own family) and eyeball-calibrate against the gold.
 
-1. **Grounding recall** = (gold claims the article states) / (gold claims). **Floor ≥ 0.90** (items 1–2).
+1. **Grounding recall** = block claims the article states / block claims, scored **per item** (target 6/6 on item 1, 7/7 on item 2 — do not micro-average across items, which would let a 12/13 hide a fully-dropped claim). **Floor ≥ 0.90 per item.**
 2. **Over-claim count** = article sentences asserting a mechanism / number / generalization / rationale no block claim supports (item 2's trap table enumerates the ones that matter). **Floor: 0 on items 1 and 2.** This is the precision axis a cheaper tier fails — the synthesis analog of extraction's mint discipline.
-3. **Structural validity** = frontmatter parses, `title`/`routing`/`sources`/`tags` present, `sources` bare (no tier suffix, no stack prefix), tags all from the allowed list, one inline `[source-slug]` per claim, no `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks. Deterministic — run `scripts/assert-structure.sh article-md {file}` plus a citation-presence grep. **Floor: pass** (items 1–2).
+3. **Structural validity** — deterministic, three checks (not one; `assert-structure.sh` alone does NOT cover the schema): **(a)** key presence — `scripts/assert-structure.sh {file} article-md synthesis-benchmark` (arg order is `<path> <type> <label>`; this kind only verifies `title:` and `last_verified:` exist — that is all it checks); **(b)** tag vocabulary — `scripts/normalize-tags.sh` against `STACK.md allowed_tags`; **(c)** greps for the rest — `sources:` bare (no ` (tier` suffix, no `{stack}/` prefix), one inline `[source-slug]` per claim, and zero `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks. **Floor: all three pass** (items 1–2).
 4. **Restraint** = item 3 correctly refused (no article written, shortfall reported). **Floor: correct refusal** (binary).
 5. **Determinism** (report, not gated) = byte-identical body across 3 greedy passes. A deterministic writer is a real pipeline win over both Claude tiers.
 
