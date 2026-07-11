@@ -54,6 +54,17 @@ if [ "$SELFCHECK" = 1 ]; then
   short=$(printf '<p>a short page mentioning the boost knob was wired up for active mode here</p>')
   sout=$(printf '%s' "$short" | "$0" --stdin --quote "$Q" --max-words 400 2>/tmp/.fst_err2); serr=$(cat /tmp/.fst_err2); rm -f /tmp/.fst_err2
   echo "$serr" | grep -q 'EXCERPTED=0' && echo "SELF-CHECK PASS [short-body-full]" || { echo "SELF-CHECK FAIL [short-body-full]: $serr"; fail=1; }
+  # a STITCHED + reworded quote: page renders an em-dash and has intervening
+  # text the agent dropped; the quote joins two spans with a comma. Longest-run
+  # + punctuation-flatten must still verify it.
+  page3='<p>discriminated unions are the killer feature for this style &mdash; they are as close as the language gets. lots of other words here. zod is great, use it at every boundary.</p>'
+  q3="the killer feature for this style, they are as close as the language gets. zod is great"
+  s3=$(printf '%s' "$page3" | "$0" --stdin --quote "$q3" --max-words 400 2>/tmp/.fst_err3); s3e=$(cat /tmp/.fst_err3); rm -f /tmp/.fst_err3
+  echo "$s3e" | grep -q 'QUOTE_FOUND=1' && echo "SELF-CHECK PASS [stitched-reworded-quote]" || { echo "SELF-CHECK FAIL [stitched-reworded-quote]: $s3e"; fail=1; }
+  # a genuinely absent quote must NOT verify (guard against over-loose matching)
+  q4="this sentence appears nowhere on the fetched page whatsoever indeed"
+  s4e=$(printf '%s' "$page3" | "$0" --stdin --quote "$q4" --max-words 400 2>&1 >/dev/null)
+  echo "$s4e" | grep -q 'QUOTE_FOUND=0' && echo "SELF-CHECK PASS [absent-quote-rejected]" || { echo "SELF-CHECK FAIL [absent-quote-rejected]: $s4e"; fail=1; }
   exit $fail
 fi
 
@@ -85,27 +96,57 @@ n = len(words)
 excerpted = 0
 qfound = "NA" if not quote else "0"
 
-def flat(s): return re.sub(r"\s+", " ", s).strip()
+def flat(s):
+    # normalize smart punctuation to ASCII so a quote recorded with straight
+    # quotes/hyphens still matches a page that renders curly quotes / en/em
+    # dashes / nbsp — otherwise real web prose false-negatives the re-verify.
+    for a, b in (("‘","'"),("’","'"),("“",'"'),("”",'"'),
+                 ("–","-"),("—","-"),("‒","-"),("‑","-"),
+                 ("…","..."),(" "," ")):
+        s = s.replace(a, b)
+    s = re.sub(r"[^0-9A-Za-z ]", " ", s)   # drop punctuation to spaces (match-only)
+    return re.sub(r"\s+", " ", s).strip()
 
+def longest_run(qwords, pagef):
+    # longest run of consecutive qwords appearing contiguously in pagef;
+    # returns (run_len_words, char_pos_of_that_run). Tolerates the agent
+    # stitching two passages or swapping a dash for a comma.
+    best_len, best_pos = 0, -1
+    L = len(qwords); i = 0
+    while i < L:
+        sub, pos, j = "", -1, i
+        while j < L:
+            trial = (sub + " " + qwords[j]).strip()
+            p = pagef.find(trial)
+            if p == -1: break
+            sub, pos, j = trial, p, j + 1
+        if (j - i) > best_len: best_len, best_pos = j - i, pos
+        i += 1
+    return best_len, best_pos
+
+pagef = flat(raw)
+run_len, run_pos = 0, -1
 if quote:
-    qfound = "1" if flat(quote) in flat(raw) else "0"
+    qwords = flat(quote).split()
+    run_len, run_pos = longest_run(qwords, pagef)
+    # verified if a solid contiguous run of the quote is on the page (8 words,
+    # or the whole quote when shorter). An absent/hallucinated quote shares no
+    # long run; a stitched or lightly-reworded real quote does.
+    thresh = min(8, len(qwords)) if qwords else 1
+    qfound = "1" if run_len >= thresh else "0"
 
 out = raw
 if n > maxw:
     excerpted = 1
-    if quote and qfound == "1":
-        # window centered on the quote, snapped to whitespace, headings intact
-        fr = flat(raw); fq = flat(quote)
-        pos = fr.find(fq)
-        # map flattened pos back to an approximate word index
-        frac = pos / max(len(fr), 1)
+    if quote and qfound == "1" and run_pos >= 0:
+        frac = run_pos / max(len(pagef), 1)
         center = int(frac * n)
         half = maxw // 2
         lo = max(0, center - half); hi = min(n, lo + maxw); lo = max(0, hi - maxw)
         out = " ".join(words[lo:hi])
-        # widen once if the quote fell just outside the naive window
-        if fq not in flat(out):
-            out = raw  # fall back to full text rather than drop the passage
+        rl2, _ = longest_run(qwords, flat(out))
+        if rl2 < (min(8, len(qwords)) if qwords else 1):
+            out = raw   # window missed the passage; keep full text
             excerpted = 0
     else:
         out = " ".join(words[:maxw])
