@@ -108,4 +108,4 @@ A model that clears floors 1–4 is a viable enrichment tier. The likely weak-ti
 
 ## What to send back
 
-Per model: false-CANDIDATE rate (with any wrongly-accepted trap item quoted), grounding recall, tier accuracy, the DUP verdict, the per-item verdict line, and the determinism result. If a model clears floors 1–3 deterministically, note its tok/s. This completes the four-stage offline benchmark suite (extraction, synthesis, validation, enrichment); the live layers — haiku/local search-recall for enrichment, the sonnet shadow test for validation — sit above the offline floors each stage now has.
+Per model: false-CANDIDATE rate (with any wrongly-accepted trap item quoted), grounding recall, tier accuracy, the DUP verdict, the per-item verdict line, and the determinism result. If a model clears floors 1–4 deterministically, note its tok/s. This completes the four-stage offline benchmark suite (extraction, synthesis, validation, enrichment); the live layers — haiku/local search-recall for enrichment, the sonnet shadow test for validation — sit above the offline floors each stage now has.
