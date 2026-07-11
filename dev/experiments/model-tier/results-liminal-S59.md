@@ -539,3 +539,50 @@ hypothesis is falsified — on a consolidation task, lower precision carves more
 Config for reproduction: `llama-server -m Qwen3.5-122B-A10B-Q3_K_M-00001-of-00003.gguf
 -ngl 99 --n-cpu-moe 36 -fa 1 -c 32768 --parallel 4 --jinja
 --chat-template-kwargs '{"enable_thinking":false}'`.
+
+## CORRECTION (S59, same session) — the quant RECALL rankings above were raw-line-count, not gold-scored. Retracting the "more bits hurts / Q3 keeper" conclusion.
+
+The three straddle addendums above ranked quants by **raw concept-line count** (18 vs 15),
+never by the gold scorer (`score.py`, cliff gold = 10 concepts, mint_allow=1). Re-scored against
+that gold, the ranking **inverts**:
+
+| model | gold recall (/10) | raw lines | excess mints | determinism |
+|---|---|---|---|---|
+| 122B Q3_K_M | 0.90 | 18 | 0 | byte-DET |
+| 122B UD-Q4_K_XL | **1.00** | 15 | 0 | byte-DET |
+| 122B UD-Q3_K_XL | 0.90 | 18 | 0 | byte-DET |
+
+UD-Q4 is **not** dominated — gold-scored it caught all 10 golds (Q3/UD-Q3 each missed
+`production-eval-systems`). Q3's extra *lines* were non-gold concepts (`llm-as-judge`,
+`self-correction-loops`, `token-budget-management`, `context-window-management`,
+`rag-chunking-strategy-selection` — none in the gold set); they inflated the raw count while Q3
+missed an actual gold. **The "more bits over-fragments / lower precision carves more correctly"
+story is a raw-count artifact and is retracted.** What survives, gold-scored: all 122B quants
+cluster **0.90-1.00 gold recall — within one concept on a hand-made gold, no defensible ranking
+between them**; all are byte-DET; all 0 excess mints. Quant choice does not clearly move recall
+for the 122B on this task.
+
+**Robust, proxy-independent findings (unchanged):** determinism (all 122B DET, all 30B NONDET)
+and mint discipline (0 excess everywhere). **Caveats:** the harness is a reproduction of the
+extraction *decision*, not the production `catalog-sources` pipeline (which uses a Claude
+subagent); the gold set is a liminal-side reconstruction (10 concepts), validated only by
+reproducing win5's own relayed numbers (Q4_K_M 0.90-1.0, gemma4-31b ~0.80) — an authoritative
+recall ranking needs win5's real scoring, not this. Treat the earlier raw-count recall deltas as
+withdrawn.
+
+## 30B quant sweep (gold-scored) — standard Q4_K_M is fine; no quant fixes determinism.
+
+Swept `qwen3-30b-a3b-instruct` across quants on the cliff (5 passes, gold-scored):
+
+| quant | gold recall (/10) | excess mints | determinism (5×) | tps |
+|---|---|---|---|---|
+| Q4_K_M (std, deployed) | 0.90-1.00 | 0 | NONDET(2/5) | 174 |
+| UD-Q4_K_XL | 0.80 | 0 | NONDET(2/5) | 152 |
+| UD-Q5_K_XL | 0.80-0.90 | 0 | NONDET(2/5) | 144 |
+| UD-IQ2_M | 0.60-1.00 | 0 | NONDET(2/5) | 135 |
+
+Two solid results here (recall differences are within the reconstructed gold's noise, but these
+two are not): **(1) no quant fixes the 30B's cliff nondeterminism** — all flip 2-of-5, so it's
+intrinsic to the model+task, not the precision; and **(2) the deployed standard Q4_K_M is at
+least as good as every alternative** and the fastest, so there's no reason to swap it. Don't
+chase byte-determinism on the 30B via quantization; it isn't there.
