@@ -182,10 +182,14 @@ transient run files, so cancelling leaves the library untouched.
 
 ## Step 7: Stage approved sources into incoming/
 
-For each approved `CANDIDATE`/`WEAK` (deduped by URL), `WebFetch` the URL and
-write it into `$STACK/sources/incoming/` using the header below — NOT YAML
-frontmatter. Two fields are load-bearing for the deterministic pipeline steps
-that later consume a staged source; the rest are informational:
+For each approved `CANDIDATE`/`WEAK` (deduped by URL), fetch the page's real text
+with `fetch-source-text.sh` (command below) and write it into
+`$STACK/sources/incoming/` using the header below — NOT YAML frontmatter. **Do
+not use `WebFetch` for the body:** it answers a prompt with a small model, so it
+returns generated text, not the page — staging that would break the grounding
+chain (below) and fail the quote re-verify. Two fields are load-bearing for the
+deterministic pipeline steps that later consume a staged source; the rest are
+informational:
 
 - `publisher:` — a **PLAIN** line, not `**bold**`: `catalog-sources` W3 files the
   source under `sources/<publisher>/` by grepping `^publisher:` at line start, so a
@@ -225,40 +229,32 @@ publisher: {slug matching an existing sources/<dir>, or a new one}
 
 **Grounding discipline (stacks#79).** The body below the `---` is publication text, not your writing. Otherwise the grounding chain becomes model-grounded-in-model: a future validator would "verify" a claim against text this step wrote to match that claim.
 
-- **Store the full fetched text by default.** Paste the page's main content verbatim. Do not hand-pick a claim-sized snippet — a model-selected excerpt bakes in selection bias the later quote re-verify cannot catch.
-- **Excerpt only above a size cap.** If the fetched text exceeds ~1500 words, take a generous *contiguous* span (the whole section the supporting passage sits in, headings included), not a claim-tailored sentence. When you truncate, add `**Excerpt:** yes` to the header so the source is honestly labeled as partial.
+- **The body is the helper's raw output — never hand-picked or summarized.** `fetch-source-text.sh` emits the cleaned page text; a model-selected snippet or a `WebFetch` summary bakes in selection bias the later quote re-verify cannot catch.
+- **Excerpt above the size cap is automatic.** Above `--max-words` (default ~1500) the helper windows a *contiguous* span centered on `--quote` (the section the supporting passage sits in, headings included), so a passage late on the page is never dropped, and prints `EXCERPTED=1` — set `**Excerpt:** yes` when it does. It falls back to the full text if the window would miss the quote.
 - **No commentary in the body, ever.** No arithmetic, restatement, or framing tailored to the claim (e.g. "737 chars ≈ 184 tokens, within the 180–220 range"). Everything you want to say about *why* this grounds the claim lives in the header (`**Supports gap:**`) or the findings row, never interleaved into the source text.
 
-Generate the filename with `collision-dest.sh` (it returns a non-colliding path
-in the target dir). Substitute `{stack-root}` with the absolute stack path from
-prep's `Stack root:` line — do not rely on a `$STACK` variable, shell state does
-not survive across these blocks:
+Fetch the body and pick a non-colliding filename in one block. Substitute
+`{stack-root}` with the absolute stack path from prep's `Stack root:` line,
+`{url}` with the finding's URL, and `{supporting quote}` with its `quote` field
+(shell state does not survive across blocks, so pass literals, not `$VAR`s):
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/scripts/collision-dest.sh" "{stack-root}/sources/incoming" "{slug-or-title}.md"
+mkdir -p "{stack-root}/sources/incoming"
+DEST=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/collision-dest.sh" "{stack-root}/sources/incoming" "{slug-or-title}.md")
+BODY=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/fetch-source-text.sh" "{url}" --quote "{supporting quote}" 2>/tmp/fst.err)
+RC=$?; cat /tmp/fst.err   # WORDS=… EXCERPTED=0|1 QUOTE_FOUND=0|1
 ```
 
-Write the staged markdown (the header block above) to the path it printed.
+**Re-verify is the helper's `QUOTE_FOUND` (codex #8):** a `CANDIDATE` verdict does
+not guarantee a clean re-fetch (pages change, paywall, dynamic content). If `RC`
+is non-zero (fetch failed) OR the helper printed `QUOTE_FOUND=0` (the supporting
+quote is not on the re-fetched page), **skip this source** — do not stage a file
+that no longer supports the claim. The helper already confirmed the quote sits in
+the `$BODY` it returned, so no separate post-write grep is needed.
 
-**Re-verify after fetch (codex #8):** a `CANDIDATE` verdict does not guarantee a
-clean re-fetch (pages change, paywall, dynamic content). After writing each
-staged file, confirm the supporting quote still appears. The agent's `quote`
-field has its whitespace collapsed and carries no surrounding quotation marks, so
-flatten the re-fetched file the same way before matching (a literal `grep -Fq` of
-the raw quote against the raw page is brittle — line wraps differ):
-
-Substitute `{dest-path}` with the path you just wrote (not a `$DEST` variable —
-shell state does not survive between these blocks):
-
-```bash
-QUOTE_FLAT=$(printf '%s' "{supporting quote}" | tr -s '[:space:]' ' ')
-if ! tr -s '[:space:]' ' ' < "{dest-path}" | grep -Fq "$QUOTE_FLAT"; then
-  echo "WARN: supporting quote not found in re-fetched {dest-path} — skipping"; rm -f "{dest-path}"
-fi
-```
-
-If the fetch fails or the quote is gone, warn and skip that source (do not stage
-a file that no longer supports the claim).
+Otherwise write the file: the header block above (add `**Excerpt:** yes` when the
+helper printed `EXCERPTED=1`, omit the line otherwise), then a `---` line, then
+the `$BODY` text — to the `$DEST` path.
 
 ## Step 8: Report, then close the loop
 
