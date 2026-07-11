@@ -24,7 +24,7 @@ is usually not the accuracy blocker; the input context is.
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
 | Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
 | Validation | validator | `validation-benchmark.md` | Benchmark ready (S22) — 7-item labeled set, poison-recall + false-correction floors (offline layer; shadow test #95 above it). Awaiting liminal local scores. |
-| Enrichment | enrichment | — | not started |
+| Enrichment | enrichment | `enrichment-benchmark.md` | Benchmark ready (S22) — 6-item grounding-decision set, false-CANDIDATE + tier floors (offline layer; live search-recall above it). Awaiting liminal local scores. |
 
 ## Key finding (extraction)
 
@@ -38,4 +38,5 @@ tier (gemma 7-8→0, qwen 0-19→0). Shipped as 0.57.0.
 - `extraction-benchmark.md` — the extraction gold set + metric + floors (self-contained; the spec handed to liminal).
 - `synthesis-benchmark.md` — the synthesis gold set: faithfulness (no over-claim) + refusal floors, 3 items (self-contained; the spec handed to liminal).
 - `validation-benchmark.md` — the validation gold set: poison-recall (catch overstatement/contradiction) + false-correction (don't over-trim) floors, 7 labeled items across all verdict classes (self-contained; the offline layer, shadow test #95 above it).
+- `enrichment-benchmark.md` — the enrichment gold set: false-CANDIDATE (don't accept a topical-but-non-grounding source) + tier-accuracy floors, 6 grounding-decision items (self-contained; the offline layer, live search-recall above it).
 - `results-liminal-S59.md` — local-model scores + raw per-item output lines.
