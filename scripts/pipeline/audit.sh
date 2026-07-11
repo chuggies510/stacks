@@ -17,7 +17,7 @@ set -euo pipefail
 # pipeline is always prep -> validator dispatch -> gate -> finish, split at the
 # dispatch boundary):
 #
-#   prep    Resolve the library, enum articles/*.md, shard into CAP=3 batches, and
+#   prep    Resolve the library, enum articles/*.md, shard into CAP=5 batches, and
 #           write dev/audit/dispatch.tsv + run.env (with RUN_ID). Clears stale
 #           per-batch findings. Prints the paths + dispatch instructions the skill
 #           prose reads. Exits non-zero if the stack has no articles.
@@ -49,7 +49,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HELPERS="$SCRIPT_DIR/.."   # scripts/ — where the shared helpers live
 
-CAP=3   # articles per validator agent. Small on purpose: each agent re-reads every
+CAP=5   # articles per validator agent. Kept modest on purpose: each agent re-reads every
         # cited source too, so a big slice risks prompt-overflow + cross-article
         # contamination. Raise only if dispatch fan-out becomes the bottleneck.
 
@@ -331,7 +331,7 @@ phase_finish() {
 }
 
 # --- self-check -------------------------------------------------------------
-# Red-when-broken: seed a throwaway library with 4 articles (→ 2 batches at CAP=3),
+# Red-when-broken: seed a throwaway library with 6 articles (→ 2 batches at CAP=5),
 # run prep, assert the manifest shape, fabricate clean validator output → gate PASS,
 # then (a) drop one VALIDATED receipt row → gate FAILS naming that slug, (b) delete
 # a whole batch file → gate FAILS by path, then finish → report counts correct.
@@ -346,7 +346,7 @@ self_check() {
   mkdir -p "$d/mep/articles" "$d/mep/sources" "$d/mep/dev/audit"
   echo "# MEP" > "$d/mep/STACK.md"
   local s
-  for s in vav chiller pump cooling-tower; do
+  for s in vav chiller pump cooling-tower ahu boiler; do
     printf '# %s\n\nBody.\n' "$s" > "$d/mep/articles/$s.md"
   done
 
@@ -357,20 +357,22 @@ self_check() {
   bash "$0" prep mep >/dev/null 2>&1 || bad "prep-runs" "prep exited nonzero"
   local DISP="$d/mep/dev/audit/dispatch.tsv" ENV="$d/mep/dev/audit/run.env"
   [[ -f "$DISP" && -f "$ENV" ]] && ok "prep-writes-run-state" || bad "prep-writes-run-state" "missing dispatch.tsv/run.env"
-  # 4 rows, batch 0 = first 3 slugs, batch 1 = the 4th.
-  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "4" ]] \
+  # 6 rows, batch 0 = first 5 slugs, batch 1 = the 6th.
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "6" ]] \
      && grep -q $'^0\tchiller\t' "$DISP" && grep -q $'^1\tvav\t' "$DISP"; then
-    ok "prep-shards-cap3"
+    ok "prep-shards-cap5"
   else
-    bad "prep-shards-cap3" "expected 4 rows 3+1, got: $(cat "$DISP")"
+    bad "prep-shards-cap5" "expected 6 rows 5+1, got: $(cat "$DISP")"
   fi
   local RUN_ID; RUN_ID=$(grep -m1 '^RUN_ID=' "$ENV" | cut -d= -f2)
   [[ "$RUN_ID" =~ ^[0-9]+$ ]] && ok "run-env-has-runid" || bad "run-env-has-runid" "no RUN_ID"
 
-  # slugs per batch (sorted order: chiller cooling-tower pump | vav)
+  # slugs per batch (sorted order: ahu boiler chiller cooling-tower pump | vav)
   local F0="$d/mep/dev/audit/_audit-0.md" F1="$d/mep/dev/audit/_audit-1.md"
   mk_clean() {
     {
+      printf 'VALIDATED\tahu\t%s\n' "$RUN_ID"
+      printf 'VALIDATED\tboiler\t%s\n' "$RUN_ID"
       printf 'VALIDATED\tchiller\t%s\n' "$RUN_ID"
       printf 'VALIDATED\tcooling-tower\t%s\n' "$RUN_ID"
       printf 'VALIDATED\tpump\t%s\n' "$RUN_ID"
@@ -434,7 +436,7 @@ self_check() {
   mk_clean
   out=$(bash "$0" finish mep 2>&1) || bad "finish-runs" "finish exited nonzero"
   local REPORT="$d/mep/dev/audit/report.md" SS="$d/mep/dev/audit/soft-spots.tsv"
-  if grep -q 'articles=4 skipped=0 corrections=1 softspots=1' <<<"$out" \
+  if grep -q 'articles=6 skipped=0 corrections=1 softspots=1' <<<"$out" \
      && [[ -f "$REPORT" && -f "$SS" ]] \
      && grep -q $'^pump\tPumps rarely exceed' "$SS"; then
     ok "finish-writes-report-and-softspots"
@@ -446,9 +448,9 @@ self_check() {
 
   # --- incremental skip (verified.tsv now exists from the finish above) ---
   local VER="$d/mep/dev/audit/verified.tsv"
-  [[ -f "$VER" && "$(wc -l < "$VER" | tr -d ' ')" == "4" ]] && ok "finish-writes-verified" || bad "finish-writes-verified" "verified.tsv missing/wrong-size: $(cat "$VER" 2>/dev/null)"
+  [[ -f "$VER" && "$(wc -l < "$VER" | tr -d ' ')" == "6" ]] && ok "finish-writes-verified" || bad "finish-writes-verified" "verified.tsv missing/wrong-size: $(cat "$VER" 2>/dev/null)"
 
-  # (i) nothing changed → prep skips all 4, dispatch empty, NOTHING_TO_AUDIT.
+  # (i) nothing changed → prep skips all 6, dispatch empty, NOTHING_TO_AUDIT.
   out=$(bash "$0" prep mep 2>&1)
   if grep -q 'NOTHING_TO_AUDIT' <<<"$out" && [[ ! -s "$DISP" ]]; then
     ok "prep-skips-all-unchanged"
@@ -479,10 +481,10 @@ self_check() {
 
   # (iii) --full re-audits everything despite verified.tsv.
   bash "$0" prep mep --full >/dev/null 2>&1
-  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "4" ]]; then
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "6" ]]; then
     ok "prep-full-ignores-verified"
   else
-    bad "prep-full-ignores-verified" "expected 4 rows, got: $(cat "$DISP")"
+    bad "prep-full-ignores-verified" "expected 6 rows, got: $(cat "$DISP")"
   fi
 
   # (iv) truncated dispatch (N_ARTICLES>0 in run.env but zero rows) is a CORRUPTED

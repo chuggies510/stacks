@@ -24,7 +24,7 @@ SKILL_NAME="stacks:audit-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/
 
 ## Step 1: Prep — resolve, enum, shard (`audit.sh prep`)
 
-`audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, **skip the ones unchanged since their last audit** (incremental — see below), shard the rest into `CAP=3` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints how many were skipped vs. dispatched, the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
+`audit.sh prep` does everything deterministic in one call: resolve+cd the library, check the stack exists and has articles, enumerate `articles/*.md`, **skip the ones unchanged since their last audit** (incremental — see below), shard the rest into `CAP=5` batches, and write the run-state files (`dev/audit/dispatch.tsv`, `dev/audit/run.env` with `RUN_ID`). It prints how many were skipped vs. dispatched, the manifest path, the sources dir, the stack root, and the `RUN_ID` the dispatch below passes to each agent.
 
 ```bash
 bash "$CLAUDE_PLUGIN_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
@@ -42,7 +42,7 @@ Read `$STACK/STACK.md` (the stack root is in prep's output) for the source-hiera
 
 ## Step 3: Dispatch the validator over the article batches
 
-`prep` already sharded the articles into `CAP=3` batches — small on purpose: each validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. (Change the cap in `audit.sh`'s `CAP=` constant, not here.)
+`prep` already sharded the articles into `CAP=5` batches — kept modest on purpose: each validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. (Change the cap in `audit.sh`'s `CAP=` constant, not here.)
 
 Read the manifest `dev/audit/dispatch.tsv` (the `Manifest:` path from prep) — each row is `batch_tag<TAB>slug<TAB>article_path`. **In a single message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` = `stacks:validator`. Parallel dispatch — never sequential. Each agent prompt names:
 

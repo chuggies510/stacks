@@ -1,3 +1,8 @@
+## 0.54.0 — 2026-07-10
+
+**`/stacks:audit-stack` now hands each validator agent 5 articles instead of 3, so a full-library audit dispatches ~40% fewer agents (a 315-batch run becomes ~189) for the same coverage.** The validator batch size (`CAP`) was held at 3 while the enrichment pipeline moved to 5, on the untested worry that a bigger slice risks cross-article contamination (a validator re-reads every cited source, so article A's claim could get checked against article B's source). Operator-tuned up to 5: the isolation cost is unmeasured, the fan-out saving is real.
+- **`CAP=3 → CAP=5` in `audit.sh`; the self-check now seeds 6 articles (5+1) to keep exercising a two-batch shard/gate/finish path, and the audit-stack SKILL prose + tech-context reflect the new size.** No change to what the validator checks or the gate proves — only how many articles ride per agent. (`scripts/pipeline/audit.sh`, `skills/audit-stack/SKILL.md`)
+
 ## 0.53.1 — 2026-07-08
 
 **`enrich-stack` no longer silently hides a real gap when the flagged claim contains inline formatting — a soft spot whose claim has a `code span` or bold text now surfaces for enrichment instead of being dropped as "stale".** prep confirms a soft spot's claim still exists by matching it against the article, but it normalized only whitespace, not markdown: the `validator` emits the claim as plain prose (markup stripped) while the article keeps its `` `code` ``/`**bold**` markup, so a live claim carrying any markup failed the match and was counted stale — the operator saw "Nothing to enrich" while the gap sat unground (#99, hit on the hardware stack's first audit soft spot).
