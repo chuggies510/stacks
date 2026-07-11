@@ -1,0 +1,451 @@
+# Extraction-benchmark results — local models (from liminal S59, for win5 / stacks #95)
+
+Harness: local ollama on the 3900x (RTX 3090), greedy (temperature 0), `num_ctx=16384`
+(the cliff source is ~5k tokens; ollama's 4096 default would have truncated it and faked
+an over-mint — set high on purpose). 3 passes per item for the determinism check.
+Raw per-pass JSON: `/tmp/.../scratchpad/result_*.json` on the 3900x (transient); the raw
+lines are reproduced at the foot of this file.
+
+## Verdict: no local model clears the bar as-is.
+
+Every model fails the cliff mint-discipline floor (≤1 excess new slug). The floors that
+DO hold everywhere: tier accuracy (all ~1.0 — tiering is a solved problem here) and reuse
+recall on the easy items. The wall is slug **granularity**, not tiering and not recall.
+
+| Model | Item 1 (easy) | Item 2 (easy) | Item 3 (cliff) | Determinism | tok/s |
+|---|---|---|---|---|---|
+| **gemma4-31b** | recall 1.0, **0 mints ✓**, tier 1.0 | recall 1.0, **0 mints ✓**, tier 1.0 | recall 0.90–1.0 ✓, **mints 7–8 ✗ (allow 1)**, tier 1.0 | item1 DET; items 2,3 **NONDET** | ~35 |
+| **qwen3-30b-a3b-instruct** | recall 1.0, **mints 4 ✗**, tier 1.0 | recall 0.0–1.0 ✗, **mints 1 ✗**, tier 0.0 | recall 0.80–1.0, **mints 0–19** (pass0 +18 ✗, pass1–2 OK ✓), tier 1.0 | item1 DET; items 2,3 **NONDET** | ~185 |
+| **gpt-oss-20b** | recall 1.0, **mints 5–8 ✗**, tier 1.0 | recall 1.0, **mints 3 ✗**, tier 1.0 | **recall 0.20 ✗**, mints 6 ✗, tier 1.0 | item1 NONDET(3); items 2,3 DET | ~130 |
+
+## Two opposite failure modes, and why my prediction was wrong
+
+I predicted gemma's podly precision (0.999) would transfer to slug restraint. It did not.
+Podly is binary flag-or-not with a confident argmax; extraction asks "is this concept
+already covered by one of 42 existing articles, or is it genuinely new" — a
+granularity/aggregation judgment, a different axis than precision.
+
+- **Over-mint (fragmentation):** gemma minted 7–8 new slugs on the cliff, and **every one
+  is a sub-topic of an article it correctly emitted as reuse in the same pass** —
+  `just-in-time-context`, `tool-masking-schema-shrinking`, `context-compaction-vs-summarization`,
+  `file-system-as-context` are all inside the existing `context-engineering-production`;
+  `dual-embeddings-retrieval` ⊂ RAG; `shadow-mode-llm-testing` ⊂ `production-eval-systems`.
+  This is exactly the haiku failure you named — gemma more than doubled it (7–8 vs haiku's 3).
+  qwen's pass 0 did the same, harder (19 mints).
+- **Under-recall (lumping):** gpt-oss went the other way — abstracted the whole cliff into
+  4 reuse + 5 coarse new umbrellas (`llmops-production-deployments`,
+  `rag-based-pipelines-in-production`), recall 0.20. Deterministic and wrong.
+
+## Determinism broke — and that refines a prior liminal finding
+
+Earlier this session I found local greedy inference byte-deterministic (podly, 3× identical).
+That held for **short per-chunk binary output**. It does **not** hold for long
+variable-length extraction lists: a long list has many near-tie inclusion decisions, and at
+temp 0 the GPU's non-associative float reductions flip near-ties (the cold-load first pass
+diverges most). qwen item 3 is the extreme: **pass 0 minted 19 slugs, passes 1–2 minted 0**
+— same model, same temp 0, three consecutive calls. Determinism is task-shape-dependent,
+not a blanket property of local greedy.
+
+## The one tantalizing signal
+
+qwen3-30b-a3b-instruct **passes 1–2 on the cliff are the single best output any model
+produced**: recall 1.0, 0 excess mints, clean, in 2.2s at 177 tok/s. The capability is
+there; the reliability isn't (pass 0 blew up). That points at a fix rather than a dead end.
+
+## Recommendation
+
+Don't ship any of these as a drop-in extraction tier — the mint decision is the
+reasoning-heavy half and it's exactly where they break (consistent with the constrained-
+decoding "reasoning tax" evidence: force the structural decision inline and weak models
+fragment). Three things could rescue qwen (the capable-but-unreliable one), cheap to test:
+1. **Deterministic slug pre-match in code** — fuzzy-match each candidate concept against the
+   42 existing slugs before the model sees it; only genuinely unmatched concepts are eligible
+   to mint. Removes the fragmentation pull structurally.
+2. **Few-shot anchor** — 1–2 worked cliff examples in the prompt to pin the granularity.
+3. **Reason-before-decide field order** — let it justify reuse-vs-mint in prose first.
+
+I can run the few-shot variant on qwen next if you want a number on whether it stabilizes.
+
+## Raw per-item output lines
+
+### gemma4-31b:latest
+
+**item 1 pass 0** (9.0s, 35.3 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+```
+**item 1 pass 1** (1.1s, 36.3 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+```
+**item 1 pass 2** (1.1s, 36.3 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+```
+**item 2 pass 0** (2.7s, 34.5 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+```
+**item 2 pass 1** (1.6s, 35.5 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+```
+**item 2 pass 2** (1.6s, 35.5 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+```
+**item 3 pass 0** (14.9s, 34.0 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llm-as-judge | reuse:llm-as-judge | tier:3
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+production-eval-systems | reuse:production-eval-systems | tier:3
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3
+context-window-management | reuse:context-window-management | tier:3
+prompt-engineering | reuse:prompt-engineering | tier:3
+tool-integrated-reasoning | reuse:tool-integrated-reasoning | tier:3
+just-in-time-context | NEW | tier:3
+tool-masking-schema-shrinking | NEW | tier:3
+context-compaction-vs-summarization | NEW | tier:3
+dual-embeddings-retrieval | NEW | tier:3
+shadow-mode-llm-testing | NEW | tier:3
+circuit-breaker-llm-ops | NEW | tier:3
+session-tainting-security | NEW | tier:3
+```
+**item 3 pass 1** (12.5s, 34.0 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llm-as-judge | reuse:llm-as-judge | tier:3
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+production-eval-systems | reuse:production-eval-systems | tier:3
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+context-window-management | reuse:context-window-management | tier:3
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3
+tool-integrated-reasoning | reuse:tool-integrated-reasoning | tier:3
+prompt-engineering | reuse:prompt-engineering | tier:3
+context-engineering-production | reuse:context-engineering-production | tier:3
+just-in-time-context | NEW | tier:3
+tool-masking-schema-shrinking | NEW | tier:3
+context-compaction-vs-summarization | NEW | tier:3
+file-system-as-context | NEW | tier:3
+dual-embeddings-retrieval | NEW | tier:3
+shadow-mode-llm-testing | NEW | tier:3
+circuit-breaker-llm-ops | NEW | tier:3
+session-tainting-security | NEW | tier:3
+```
+**item 3 pass 2** (15.0s, 33.8 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llm-as-judge | reuse:llm-as-judge | tier:3
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+production-eval-systems | reuse:production-eval-systems | tier:3
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3
+context-window-management | reuse:context-window-management | tier:3
+prompt-engineering | reuse:prompt-engineering | tier:3
+tool-integrated-reasoning | reuse:tool-integrated-reasoning | tier:3
+just-in-time-context | NEW | tier:3
+tool-masking-schema-shrinking | NEW | tier:3
+context-compaction-vs-summarization | NEW | tier:3
+dual-embeddings-retrieval | NEW | tier:3
+shadow-mode-llm-testing | NEW | tier:3
+circuit-breaker-llm-ops | NEW | tier:3
+session-tainting-security | NEW | tier:3
+```
+
+### gpt-oss-20b:latest
+
+**item 1 pass 0** (19.3s, 135.3 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2  
+mt-bench | NEW | tier:2  
+chatbot-arena | NEW | tier:2  
+position-bias | NEW | tier:2  
+verbosity-bias | NEW | tier:2  
+self-enhancement-bias | NEW | tier:2  
+limited-reasoning-ability | NEW | tier:2  
+mitigation-of-llm-judge-biases | NEW | tier:2
+```
+**item 1 pass 1** (8.1s, 137.1 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+mt-bench | reuse:NEW | tier:2
+chatbot-arena | reuse:NEW | tier:2
+position-bias | reuse:NEW | tier:2
+verbosity-bias | reuse:NEW | tier:2
+self-enhancement-bias | reuse:NEW | tier:2
+```
+**item 1 pass 2** (11.2s, 136.1 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2  
+mt-bench | reuse:NEW | tier:2  
+chatbot-arena | reuse:NEW | tier:2  
+position-bias | reuse:NEW | tier:2  
+verbosity-bias | reuse:NEW | tier:2  
+self-enhancement-bias | reuse:NEW | tier:2  
+limited-reasoning-ability | reuse:NEW | tier:2  
+llm-judge-bias-mitigation | reuse:NEW | tier:2  
+llm-judge-agreement-with-human-preferences | reuse:NEW | tier:2
+```
+**item 2 pass 0** (18.8s, 134.2 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+api-gateway-token-budget-enforcement | reuse:NEW | tier:3
+llm-cost-monitoring-metrics | reuse:NEW | tier:3
+context-length-creep | reuse:NEW | tier:3
+```
+**item 2 pass 1** (18.9s, 133.7 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+api-gateway-token-budget-enforcement | reuse:NEW | tier:3
+llm-cost-monitoring-metrics | reuse:NEW | tier:3
+context-length-creep | reuse:NEW | tier:3
+```
+**item 2 pass 2** (18.9s, 132.7 tok/s):
+```
+token-budget-management | reuse:token-budget-management | tier:3
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3
+api-gateway-token-budget-enforcement | reuse:NEW | tier:3
+llm-cost-monitoring-metrics | reuse:NEW | tier:3
+context-length-creep | reuse:NEW | tier:3
+```
+**item 3 pass 0** (26.0s, 129.9 tok/s):
+```
+llmops-production-deployments | reuse:NEW | tier:3
+autonomous-agents-in-production | reuse:NEW | tier:3
+context-engineering | reuse:context-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llmops-evaluation-guardrails | reuse:NEW | tier:3
+rag-based-pipelines-in-production | reuse:NEW | tier:3
+llmops-software-engineering-practices | reuse:NEW | tier:3
+frontier-model-containment-and-harness-engineering | reuse:NEW | tier:3
+```
+**item 3 pass 1** (26.1s, 129.5 tok/s):
+```
+llmops-production-deployments | reuse:NEW | tier:3
+autonomous-agents-in-production | reuse:NEW | tier:3
+context-engineering | reuse:context-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llmops-evaluation-guardrails | reuse:NEW | tier:3
+rag-based-pipelines-in-production | reuse:NEW | tier:3
+llmops-software-engineering-practices | reuse:NEW | tier:3
+frontier-model-containment-and-harness-engineering | reuse:NEW | tier:3
+```
+**item 3 pass 2** (26.2s, 129.0 tok/s):
+```
+llmops-production-deployments | reuse:NEW | tier:3
+autonomous-agents-in-production | reuse:NEW | tier:3
+context-engineering | reuse:context-engineering | tier:3
+agent-memory-systems | reuse:agent-memory-systems | tier:3
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3
+llmops-evaluation-guardrails | reuse:NEW | tier:3
+rag-based-pipelines-in-production | reuse:NEW | tier:3
+llmops-software-engineering-practices | reuse:NEW | tier:3
+frontier-model-containment-and-harness-engineering | reuse:NEW | tier:3
+```
+
+### qwen3-30b-a3b-instruct:latest
+
+**item 1 pass 0** (24.3s, 186.3 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+mt-bench | reuse:NEW | tier:2
+chatbot-arena | reuse:NEW | tier:2
+llm-as-judge-biases | reuse:NEW | tier:2
+llm-as-judge-scalability | reuse:NEW | tier:2
+```
+**item 1 pass 1** (0.9s, 199.1 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+mt-bench | reuse:NEW | tier:2
+chatbot-arena | reuse:NEW | tier:2
+llm-as-judge-biases | reuse:NEW | tier:2
+llm-as-judge-scalability | reuse:NEW | tier:2
+```
+**item 1 pass 2** (0.6s, 199.0 tok/s):
+```
+llm-as-judge | reuse:llm-as-judge | tier:2
+mt-bench | reuse:NEW | tier:2
+chatbot-arena | reuse:NEW | tier:2
+llm-as-judge-biases | reuse:NEW | tier:2
+llm-as-judge-scalability | reuse:NEW | tier:2
+```
+**item 2 pass 0** (0.5s, 191.8 tok/s):
+```
+context-budget-enforcement-infrastructure | reuse:NEW | tier:3
+token-budget-management | reuse:token-budget-management | tier:1
+```
+**item 2 pass 1** (0.3s, 212.9 tok/s):
+```
+context-budget-enforcement-infrastructure | reuse:NEW | tier:3
+```
+**item 2 pass 2** (0.3s, 211.0 tok/s):
+```
+context-budget-enforcement-infrastructure | reuse:NEW | tier:3
+```
+**item 3 pass 0** (3.9s, 177.5 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3  
+context-engineering-production | reuse:context-engineering-production | tier:3  
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3  
+llm-evaluation-frameworks | reuse:llm-evaluation-frameworks | tier:3  
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3  
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3  
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3  
+llm-as-judge | reuse:llm-as-judge | tier:3  
+llm-judge-gate-wiring | reuse:llm-judge-gate-wiring | tier:3  
+shadow-mode-testing | NEW | tier:3  
+circuit-breakers-production | NEW | tier:3  
+user-controllable-guardrails | NEW | tier:3  
+red-teaming-continuous-practice | NEW | tier:3  
+model-context-protocol | NEW | tier:3  
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3  
+agent-memory-systems | reuse:agent-memory-systems | tier:3  
+reinforcement-learning-agent-training | NEW | tier:3  
+software-engineering-bottleneck | NEW | tier:3  
+distributed-systems-llm-ops | NEW | tier:3  
+networking-infrastructure-llm-ops | NEW | tier:3  
+security-compliance-llm-ops | NEW | tier:3  
+prompt-caching-architecture | NEW | tier:3  
+context-pollution-management | NEW | tier:3  
+choice-entropy-management | NEW | tier:3  
+tool-masking-techniques | NEW | tier:3  
+compaction-vs-summarisation | NEW | tier:3  
+dual-embeddings-retrieval | NEW | tier:3  
+file-system-as-context | NEW | tier:3  
+just-in-time-context-assembly | NEW | tier:3  
+autonomous-agent-workflows | NEW | tier:3  
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3
+```
+**item 3 pass 1** (2.2s, 177.3 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3  
+context-engineering-production | reuse:context-engineering-production | tier:3  
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3  
+llm-evaluation-frameworks | reuse:llm-evaluation-frameworks | tier:3  
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3  
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3  
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3  
+llm-as-judge | reuse:llm-as-judge | tier:3  
+production-eval-systems | reuse:production-eval-systems | tier:3  
+llm-judge-gate-wiring | reuse:llm-judge-gate-wiring | tier:3  
+llm-output-validation-pipeline | reuse:llm-output-validation-pipeline | tier:3  
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3  
+rag-chunking-strategy-selection | reuse:rag-chunking-strategy-selection | tier:3  
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3  
+agent-memory-systems | reuse:agent-memory-systems | tier:3  
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3  
+token-budget-management | reuse:token-budget-management | tier:3  
+context-window-management | reuse:context-window-management | tier:3  
+prompt-engineering | reuse:prompt-engineering | tier:3
+```
+**item 3 pass 2** (2.2s, 177.8 tok/s):
+```
+context-engineering | reuse:context-engineering | tier:3  
+context-engineering-production | reuse:context-engineering-production | tier:3  
+llm-cost-control-production | reuse:llm-cost-control-production | tier:3  
+llm-evaluation-frameworks | reuse:llm-evaluation-frameworks | tier:3  
+guardrails-infrastructure | reuse:guardrails-infrastructure | tier:3  
+durable-execution-agent-orchestration | reuse:durable-execution-agent-orchestration | tier:3  
+multi-agent-orchestration | reuse:multi-agent-orchestration | tier:3  
+llm-as-judge | reuse:llm-as-judge | tier:3  
+production-eval-systems | reuse:production-eval-systems | tier:3  
+llm-judge-gate-wiring | reuse:llm-judge-gate-wiring | tier:3  
+llm-output-validation-pipeline | reuse:llm-output-validation-pipeline | tier:3  
+retrieval-augmented-generation | reuse:retrieval-augmented-generation | tier:3  
+rag-chunking-strategy-selection | reuse:rag-chunking-strategy-selection | tier:3  
+agent-harness-engineering | reuse:agent-harness-engineering | tier:3  
+agent-memory-systems | reuse:agent-memory-systems | tier:3  
+mcp-production-patterns | reuse:mcp-production-patterns | tier:3  
+token-budget-management | reuse:token-budget-management | tier:3  
+context-window-management | reuse:context-window-management | tier:3  
+prompt-engineering | reuse:prompt-engineering | tier:3
+```
+
+
+---
+
+# ROUND 2 — pressing on the negative (liminal S59, same session)
+
+The round-1 fail was a harness bug, not a model limit. Two fixes tested.
+
+## The bug: the prompt fed a BARE list of 42 slug strings, no scope.
+
+The models fragmented because they could not SEE that `just-in-time-context` already
+lives inside `context-engineering-production` — they only had the slug string, never the
+article's scope. Proof: the index.md routing line for `context-engineering-production` reads
+"just-in-time loading, tool masking, compaction strategies, filesystem-as-context" — which is
+*verbatim* the four slugs gemma minted as NEW. Information starvation, not weak restraint.
+
+**Fix:** replace the bare slug list with `slug — one-line scope` (pulled from index.md
+routing lines) and tell the model to reuse if a concept falls within an existing article's
+described scope. One prompt change, no model change, no thinking enabled.
+
+## Result: over-minting eliminated across the board.
+
+| Model + described slugs | Cliff recall | Cliff mints (allow 1) | Determinism | tok/s | Verdict |
+|---|---|---|---|---|---|
+| **qwen3-30b-a3b-instruct** | 0.90–1.0 | **0** | nondet (every pass still ≥0.90) | ~170 | **CLEARS ALL FLOORS, ALL PASSES** |
+| gemma4-31b | 0.80 | 0 | **byte-DET ×3** | ~34 | 0 over-mint, recall 1 notch short |
+| qwen3.6-27b | 0.80 | 0 | **byte-DET ×3** | ~34 | 0 over-mint, recall 1 notch short |
+| qwen3-14b-claude-distill | 0.80 | 3–78 | nondet | ~50 | still over-mints; Opus-distill made it *chattier*, not more disciplined |
+
+Baseline → described-slugs delta: gemma 7–8 mints → **0**; qwen-instruct 0–19 → **0**;
+qwen3.6 (untested baseline) → 0. The fix is the information, not the model.
+
+## What's left is a determinism-vs-recall trade, not an over-mint problem.
+
+- **qwen3-30b-a3b-instruct** is the passing pick: recall ≥0.90 with 0 mints on every one of 9
+  passes, fastest (170 tps, cliff in 1.6–3.1 s). Cost: cliff output varies 0.90↔1.0 pass to
+  pass (both pass). If you want a reproducible stage, run it twice and intersect, or seed it.
+- **gemma4-31b / qwen3.6-27b** give byte-identical output across 3 passes and never over-mint,
+  but cap at 0.80 cliff recall — they drop `multi-agent-orchestration` + `retrieval` (qwen3.6)
+  or `production-eval-systems` + `retrieval` (gemma) as non-substantive. A recall-nudge prompt
+  line did NOT lift qwen3.6 (held at exactly 8 concepts, deterministically). Closing that last
+  notch needs a few-shot anchor, not an instruction.
+
+## Answers to the three questions
+
+1. **Right tests?** Yes — the benchmark caught a real harness bug. Two suggestions: the cliff
+   is n=1, so add 1–2 more rich sources before trusting the granularity metric; and consider
+   whether a mechanical post-filter (a minted NEW slug whose concept overlaps an article the
+   model reused in the same pass → auto-collapse) makes the bar less strict than the pipeline
+   truly needs — that structural error may be catchable after all.
+2. **Smartest models?** Capability was never the bottleneck. Newer (qwen3.6) and Opus-distilled
+   (qwen3-14b-distill) did NOT beat the mid qwen3-30b-a3b-instruct; the distill was the worst.
+3. **Right prompts/outputs?** This was the whole bug. Bare slugs → described slugs flips
+   over-minting off universally. The one-line output format is fine as-is once the INPUT carries
+   article scope. Feeding the reuse-target's scope is the load-bearing change.
+
+**Bottom line:** a local model DOES clear your extraction bar — qwen3-30b-a3b-instruct with
+scope-described slugs — at ~$0 marginal and 170 tok/s. Give it the article scopes and it stops
+fragmenting.
+
+## Addendum: gemma4-26b-a4b-it-qat (4B-active MoE, quant-aware trained)
+
+Faster than dense gemma (~115 tps vs 34) but **fails the cliff**: recall 0.70–0.80 and it
+creeps back to over-minting (+2) on 2 of 3 passes, nondet. Perfect on the easy items. The 4B
+active budget isn't enough to hold the 42-article scope map AND recall thoroughly on a rich
+source. Note: the winner (qwen3-30b-a3b-instruct) is ALSO a low-active MoE (3B active) — so
+it's not active-param count that decides it, it's the specific model (qwen's 30B total + training).
