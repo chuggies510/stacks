@@ -386,6 +386,11 @@ phase_finish() {
   # W4: regenerate the Map of Contents (preserves the ## Reading Paths section).
   bash "$HELPERS/regenerate-moc.sh" "$STACK"
 
+  # W4b: refresh this stack's article/source counts in the root catalog.md — the
+  # only step that touches it after new-stack, so without this its counts freeze
+  # at scaffold time (a cataloged stack reads "0 articles, 0 sources").
+  bash "$HELPERS/regenerate-catalog.sh" "$LIB" || true
+
   # Cleanup: transient W1/W2 working + run-state files. articles/, sources/, and
   # index.md are the durable artifacts the skill commits.
   rm -f "$DEV"/batch-*-concepts.md "$DEV"/_dedup*.md "$DEV"/_dedup-meta.txt \
