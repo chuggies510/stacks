@@ -22,7 +22,7 @@ is usually not the accuracy blocker; the input context is.
 | Stage | Agent | Benchmark | Status |
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
-| Synthesis | article-synthesizer | — | not started |
+| Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
 | Validation | validator | — | not started |
 | Enrichment | enrichment | — | not started |
 
@@ -36,4 +36,5 @@ tier (gemma 7-8→0, qwen 0-19→0). Shipped as 0.57.0.
 ## Files
 
 - `extraction-benchmark.md` — the extraction gold set + metric + floors (self-contained; the spec handed to liminal).
+- `synthesis-benchmark.md` — the synthesis gold set: faithfulness (no over-claim) + refusal floors, 3 items (self-contained; the spec handed to liminal).
 - `results-liminal-S59.md` — local-model scores + raw per-item output lines.
