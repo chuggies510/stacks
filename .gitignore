@@ -11,3 +11,4 @@ __pycache__/
 # transient /start /stop session markers (accidentally committed S11, untracked S16)
 .claude/.session-main-active
 .worktree-active
+.claude/.session-current
