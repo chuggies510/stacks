@@ -63,7 +63,7 @@ Read `{stack}/STACK.md` for the source hierarchy (tier rankings for conflict res
 - its **`batch_id`** = the string `batch-` followed by column 1's numeric tag (column 1 holds `1`, `2`, …, so `batch_id` is `batch-1`, `batch-2`, …), which fixes its output path `dev/extractions/{batch_id}-concepts.md`,
 - its assigned **source path** (column 2),
 - the path to `{stack}/STACK.md` (source hierarchy + scope),
-- the existing `{stack}/articles/` listing (for slug-immutability and reuse checks).
+- the existing `{stack}/articles/` listing (the authoritative slug set, for slug-immutability checks), **and** `{stack}/index.md`'s `## Articles` map — the `slug — scope` routing lines that say what each existing article already covers. The scope lines are the reuse-vs-mint decision surface: a concept that falls within an existing article's *described scope* reuses that slug instead of minting a new one, which is what stops a rich source fragmenting one article into several new sub-topic slugs (stacks#106). If `index.md` has no `## Articles` map yet (first catalog run, no articles), the bare listing stands.
 
 ## Step 5: Gate W1 (`catalog.sh gate-w1`)
 
