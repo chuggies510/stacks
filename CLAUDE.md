@@ -95,6 +95,10 @@ Do not commit test library content to this repo.
 
 ## Gotchas
 
+### `\t` in a single-quoted `grep` pattern behaves differently inside a script than when you test it through the Bash tool
+
+The Bash tool wraps `grep` as a shell **function** that runs `ugrep` (verify with `type grep`). `ugrep` interprets `\t` in a single-quoted ERE (`grep -qE '^0\tslug$'`) as a tab, so a pattern tested interactively through the Bash tool MATCHES. But that function is NOT exported into the child `bash` a script spawns (`bash scripts/pipeline/catalog.sh …`), where `grep` is real **GNU grep** — which treats `\t` in a single-quoted pattern as a literal `t`, so the identical pattern NEVER matches a tab-separated line. A pipeline `--self-check` assertion authored/verified through the Bash tool therefore passes falsely and fails (silently, deterministically) when the harness runs it in child bash. This cost 3/23 catalog self-check assertions false-failing every run (#104, fixed 0.60.0). Always write a tab in a bash regex as ANSI-C `$'\t'` (e.g. `grep -qE $'^0\tslug$'`) — the form the rest of the pipeline scripts already use — never `'\t'`. When authoring or debugging a self-check, run it via `bash scripts/pipeline/<x>.sh --self-check` (child bash = real grep), not by pasting the grep into the Bash tool. `awk -F'\t'` is unaffected (awk interprets `\t` itself).
+
 ### Template `.gitignore` Self-Shadows Its Own `.gitkeep` Placeholders
 
 When a template subtree (e.g. `templates/stack/`) ships both a `.gitignore` and a `.gitkeep` inside a to-be-ignored child directory, bare-directory patterns silently block their own placeholder. `sources/trash/` in `templates/stack/.gitignore` matches `templates/stack/sources/trash/` AND `templates/stack/sources/trash/.gitkeep` — so `git add` of the .gitkeep refuses, the template directory ships without its placeholder, and downstream scaffolding has no empty dir to seed. Use `dir/*` + `!dir/.gitkeep`:
