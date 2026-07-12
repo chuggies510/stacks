@@ -126,6 +126,25 @@ fi
 
 Non-fatal by design: a local-inference failure logs a `status:"local-inference-failed"` record and never blocks `finish`. Read the `SHADOW_SUMMARY` line for the shadowed/skipped/failed counts. Requires Ollama reachable at `localhost:11434`; if it is not, every slug logs a failure record and the run proceeds normally.
 
+### Step 8.6: Advisory verify of the local drafts (verify-and-fix rollout, opt-in — #109)
+
+**Also gated on `STACKS_LOCAL_SHADOW=1`, and only after Step 8.5 produced the local drafts.** This is the advisory window before flipping synthesis to verify-and-fix (`dev/specs/verify-and-fix.md`): it measures whether, if the local draft became the article and the cloud model fixed only its defects, the result would clear the synthesis floors — **without changing anything.** `articles/` and the authoritative sonnet path are untouched.
+
+For each slug in `dev/extractions/dispatch-w2.tsv` whose local draft exists at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`, dispatch one **`stacks:article-verifier`** agent (cloud sonnet, ≤25 per message, same wave cap as W2). Give each agent absolute paths, scope pinned to exactly these three files:
+- concept block (scoring truth): `{LIBRARY}/{stack}/dev/extractions/_dedup-{slug}.md`
+- local draft to grade: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`
+- grade JSON to write: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify/{slug}.json`
+
+The agent grades floor-clearance (claim recall, over-claims, structure) and lists the citation fixes it would make; it uses Read + Write only and never Edits an article. Create the output dir first (`mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify"`), then after the wave returns, aggregate the go/no-go read:
+
+```bash
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/synth-verify-summary.sh" \
+  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify" || true
+```
+
+Read the `clears floors: N/M` line. Floor breaches (over-claims, recall misses, structural fails) are what to inspect before flipping to verify-and-fix; citation fixes are the expected cheap edits the cloud verify step owns on the flip (the local drafter is weak at self-citing). Advisory only — nothing here is authoritative, and `finish` proceeds regardless.
+
 ## Step 9: Finish, log, commit (`catalog.sh finish`)
 
 `finish` runs the post-synthesis deterministic tail: tag-drift enforcement (halts before filing if any article carries an out-of-vocabulary tag, so its source stays in `incoming/` for the next run), W3 source filing (each `incoming/` source moved to its publisher dir with citations rewritten; a source with no `publisher:` field files under `sources/unknown/` and is reported), W4 MoC regeneration, then cleanup of the transient run files. It prints a `CATALOG_SUMMARY: sources=… new=… updated=… unfiled=…` line.

@@ -1,3 +1,8 @@
+## 0.62.0 — 2026-07-12
+
+**Opt-in advisory verify: grade whether the local drafts would clear the accuracy floors if we flipped synthesis to verify-and-fix, without changing what ships (#109).**
+- **Advisory verify window:** with `STACKS_LOCAL_SHADOW=1`, after the local drafts are produced a cloud verifier (`stacks:article-verifier`) grades each draft against the synthesis floors (every block claim present, zero over-claims, valid structure) and lists the citations it would add — writing a per-slug grade JSON and editing nothing. `synth-verify-summary.sh` aggregates a go/no-go floor-clearance read. This is the calibrate-before-flip step (library best-practice: shadow a judge before it gates) for the verify-and-fix recipe — local drafts, cloud verifies and fixes only the failures — specced in `dev/specs/verify-and-fix.md`. Articles and the authoritative sonnet path stay untouched. (`skills/catalog-sources/SKILL.md`, `agents/article-verifier.md`, `dev/experiments/model-tier/harness/synth-verify-summary.sh`)
+
 ## 0.61.0 — 2026-07-12
 
 **Opt-in pilot: run a local model as a shadow of the cloud synthesizer and log the difference for grading, without changing what ships (#109).**
