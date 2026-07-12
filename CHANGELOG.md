@@ -1,3 +1,9 @@
+## 0.64.0 — 2026-07-12
+
+**Wire the extraction stage's verify-and-fix machinery into the catalog skill as an opt-in advisory step, the way synthesis already is (#109).**
+- **Catalog Step 5.5 (opt-in, `STACKS_LOCAL_SHADOW=1`):** after `gate-w1`, a new `shadow-extract-run.sh` runs the local model's extraction on each W1 source, applies the deterministic `slug-prematch.sh` gate (exact/normalized collisions → forced reuse; token-overlap → NEAR), and writes a NEAR/NEW survivor manifest; the skill then dispatches the cloud `stacks:extraction-verifier` over the survivors (semantic reuse-vs-mint against the scope map) and `extraction-verify-summary.sh` reports over-mints-caught vs genuine-new. Mirrors the synthesis advisory (Step 8.5/8.6) — the cloud `source-extractor` output that feeds dedup stays authoritative and untouched; this only observes. Smoke-tested end-to-end on one source. (`skills/catalog-sources/SKILL.md`, `dev/experiments/model-tier/harness/shadow-extract-run.sh`)
+- **Still pending:** validation and enrichment SKILL wiring need their own local-run harnesses first (a validation run over real article claims; the enrichment search→fetch→judge loop). The `stacks:extraction-verifier` agent registers on the next plugin reload.
+
 ## 0.63.0 — 2026-07-12
 
 **Build the verify-and-fix machinery for the other three worker stages (validation, extraction, enrichment) on the same recipe synthesis proved — cheap tier does the object judgment, a deterministic gate owns each meta-judgment, a cloud verifier grades the rest (#109).**

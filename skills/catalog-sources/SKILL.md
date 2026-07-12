@@ -78,6 +78,31 @@ bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" gate-w1 {stack}
 
 A non-zero exit names the ungated batch file(s) — an extractor that wrote nothing or wrote a stale file. Surface it and stop.
 
+## Step 5.5: Local-extraction shadow + advisory verify (verify-and-fix rollout, opt-in — #109)
+
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set.** Default runs skip it. This is the extraction analog of the synthesis advisory (Step 8.5/8.6): it grades whether the cheap local tier could do W1 extraction behind the harness — the recipe is the cheap tier proposes concepts + slugs, the deterministic **slug pre-match gate** owns exact/normalized collisions, and the cloud **`extraction-verifier`** owns the semantic reuse-vs-mint judgment (the over-mint the gate can't see). **The cloud `source-extractor` output that feeds W1b/dedup is authoritative and untouched; this only observes.** Runs after `gate-w1` and before `finish` clears `dispatch-w1.tsv`.
+
+First, the local extraction + gate pass (writes a NEAR/NEW survivor manifest; exact-collision reuses are harness-resolved and never sent to the cloud):
+
+```bash
+if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
+  STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+  bash "$STACKS_ROOT/dev/experiments/model-tier/harness/shadow-extract-run.sh" {stack} || echo "extraction shadow returned non-zero — non-fatal, continuing"
+fi
+```
+
+Non-fatal by design (Ollama unreachable → every source logs a failure and the run proceeds). Read the `SHADOW_EXTRACT_SUMMARY` line for the sources/candidates/survivors counts, and the survivor manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extractions/survivors.tsv` (rows: `slug<TAB>local_decision<TAB>prematch`).
+
+Then the advisory verify: **reset the grade dir** (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify"`), then for each survivor row dispatch one **`stacks:extraction-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent absolute paths, scope pinned to: the stack's scope map `{LIBRARY}/{stack}/index.md` and articles dir `{LIBRARY}/{stack}/articles/` (the reuse test), the survivor's `slug`/`local_decision`/`prematch`, and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify/{slug}.json`. It verifies each NEAR/NEW candidate against the scope map (fragment → `reuse:<slug>`, genuine gap → `NEW`) and never edits any extraction, article, or index. After the wave returns, aggregate:
+
+```bash
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/extraction-verify-summary.sh" \
+  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify" || true
+```
+
+Read the `over-mint caught` / `genuine new` line — how many of the local tier's mints were fragments the gate+verifier would catch before shipping vs real gaps. Advisory only; `finish` proceeds regardless.
+
 ## Step 6: Dedup + near-dup review (`catalog.sh dedup`)
 
 `dedup` runs the deterministic W1b merge (union `source_paths` per slug, classify each unique slug new/updated, flag near-duplicate titles), asserts the merged output's shape, and writes the W2 manifest (`dev/extractions/dispatch-w2.tsv`, one slug per row) + `run.env` with `RUN_ID_W2`.
