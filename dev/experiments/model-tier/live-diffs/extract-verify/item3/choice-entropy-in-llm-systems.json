@@ -1,0 +1,1 @@
+{"slug":"choice-entropy-in-llm-systems","local_decision":"NEW","prematch":"NEW","verdict":"reuse:mcp-production-patterns","is_overmint":true,"reason":"mcp-production-patterns' scope line names choice entropy explicitly and already attributes the Databook coinage and filtering-schema fix."}

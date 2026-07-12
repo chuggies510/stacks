@@ -1,0 +1,1 @@
+{"slug":"shadow-mode-testing","local_decision":"NEW","prematch":"NEW","verdict":"reuse:production-eval-systems","is_overmint":true,"reason":"production-eval-systems' scope line names shadow mode explicitly and its Key concepts section already defines shadow mode with the same Ramp example."}

@@ -1,0 +1,1 @@
+{"slug":"context-pollution-management","local_decision":"NEW","prematch":"NEW","verdict":"reuse:mcp-production-patterns","is_overmint":true,"reason":"mcp-production-patterns' scope line names context pollution explicitly as one of the two dominant MCP failure modes it already covers."}

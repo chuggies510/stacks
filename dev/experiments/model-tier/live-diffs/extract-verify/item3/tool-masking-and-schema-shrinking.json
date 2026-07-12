@@ -1,0 +1,1 @@
+{"slug":"tool-masking-and-schema-shrinking","local_decision":"NEW","prematch":"NEW","verdict":"reuse:context-engineering-production","is_overmint":true,"reason":"context-engineering-production's scope line names tool masking explicitly and has a dedicated 'Tool masking' subsection covering Databook's config layer and Manus logit masking."}

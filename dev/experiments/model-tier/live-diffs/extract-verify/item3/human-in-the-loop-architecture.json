@@ -1,0 +1,1 @@
+{"slug":"human-in-the-loop-architecture","local_decision":"NEW","prematch":"NEW","verdict":"reuse:durable-execution-agent-orchestration","is_overmint":true,"reason":"durable-execution-agent-orchestration's scope line names the park-run human-in-the-loop pattern explicitly and its Patterns section already documents it in full."}

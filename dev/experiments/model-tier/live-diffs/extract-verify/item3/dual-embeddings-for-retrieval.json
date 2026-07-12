@@ -1,0 +1,1 @@
+{"slug":"dual-embeddings-for-retrieval","local_decision":"NEW","prematch":"NEW","verdict":"reuse:retrieval-augmented-generation","is_overmint":true,"reason":"retrieval-augmented-generation's scope line names dual embeddings explicitly and its Patterns section already documents the Glowe skincare dual-embedding example."}

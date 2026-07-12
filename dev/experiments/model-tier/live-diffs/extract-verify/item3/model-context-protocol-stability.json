@@ -1,0 +1,1 @@
+{"slug":"model-context-protocol-stability","local_decision":"NEW","prematch":"NEW","verdict":"reuse:mcp-production-patterns","is_overmint":true,"reason":"mcp-production-patterns' scope line covers MCP adoption 'after a year of real deployments' and its overview states MCP 'has reached relative stability' -- the exact claim behind this candidate."}

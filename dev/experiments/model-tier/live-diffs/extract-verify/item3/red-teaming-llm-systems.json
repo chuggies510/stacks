@@ -1,0 +1,1 @@
+{"slug":"red-teaming-llm-systems","local_decision":"NEW","prematch":"NEW","verdict":"reuse:production-eval-systems","is_overmint":true,"reason":"production-eval-systems' scope line and title name continuous red teaming explicitly as one of its four core mechanisms, with the Cox Automotive example already written up."}

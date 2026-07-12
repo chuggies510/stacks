@@ -23,6 +23,8 @@ declare -A GOLD=( [1]="CLEAN" [2]="CORRECTION/overstatement" [3]="CORRECTION/con
                    [4]="CLEAN" [5]="CORRECTION/overstatement" [6]="CORRECTION/add-citation"
                    [7]="SOFTSPOT" )
 
+GATE_SH="$HERE/claim-citation-gate.sh"
+
 item_block() {
   case "$1" in
     1) cat <<'EOF'
@@ -73,10 +75,25 @@ parse_label() {
 echo "Model: $MODEL"
 echo
 
+# --- STEP 1 of the recipe: run the deterministic citation gate on each
+# item's claim BEFORE the model ever sees it (#109). The gate decides
+# CITED/UNCITED as pure regex, not a model judgment; an UNCITED item gets a
+# preamble line telling the model it may not return CLEAN, closing the S24
+# item-6 miss structurally rather than hoping the prompt's own STEP 1 holds.
+declare -A GATE
+for i in 1 2 3 4 5 6 7; do
+  claim_text=$(item_block "$i" | sed -n 's/^Claim[^:]*: //p' | head -1)
+  GATE[$i]=$(bash "$GATE_SH" "$claim_text")
+done
+
 # --- 3 greedy passes over all 7 items ---
 for pass in 1 2 3; do
   for i in 1 2 3 4 5 6 7; do
-    { printf '%s\n\n' "$RUBRIC"; item_block "$i"; printf '\nOUTPUT one line as specified above.\n'; } \
+    preamble=""
+    if [[ "${GATE[$i]}" == "UNCITED" ]]; then
+      preamble="STEP 1 (harness-determined): this claim carries NO inline citation. You may NOT return CLEAN — decide CORRECTION/add-citation or SOFTSPOT only."$'\n\n'
+    fi
+    { printf '%s' "$preamble"; printf '%s\n\n' "$RUBRIC"; item_block "$i"; printf '\nOUTPUT one line as specified above.\n'; } \
       > "$WORK/prompt_${i}.txt"
     outfile="$WORK/pass${pass}_item${i}.txt"
     if bash "$INFER" "$MODEL" "$WORK/prompt_${i}.txt" "$outfile" 2>"$WORK/pass${pass}_item${i}.err"; then

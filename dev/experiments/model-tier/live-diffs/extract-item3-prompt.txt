@@ -1,0 +1,352 @@
+```
+You extract knowledge from ONE source into concept entries for a knowledge wiki.
+INPUTS: (a) the source text; (b) EXISTING_SLUGS — the articles that already exist;
+(c) the tier rubric.
+For each DISTINCT, in-scope concept the source covers (in-scope = LLM production/
+research knowledge; discard pure reference such as CLI-flag or API listings):
+  - assign a kebab-case slug;
+  - if an existing article in EXISTING_SLUGS covers this concept, REUSE that exact
+    slug; only mint a NEW slug when none covers it;
+  - assign tier 1-4 per the rubric.
+Be CONSERVATIVE: do not fragment one concept into several, do not mint a slug for a
+concept an existing article already covers, do not invent concepts.
+OUTPUT: one line per concept, exactly:  <slug> | reuse:<existing-slug|NEW> | tier:<N>
+
+TIER RUBRIC:
+```
+Tier 1 Official     — vendor docs, model cards, API reference, official cookbooks
+Tier 2 Standard     — peer-reviewed papers, vendor research blogs, established surveys
+Tier 3 Practitioner — LLMOps practitioner blogs, conference talks, production case studies
+Tier 4 General      — forum posts, X/HN/Reddit threads
+Higher tiers win conflicts.
+
+EXISTING_SLUGS: agent-harness-engineering,agent-memory-systems,apple-silicon-unified-memory-llm-serving,compiled-ai-pattern,constrained-decoding-structured-output,context-engineering,context-engineering-production,context-window-management,dnip-calibration,dora-weight-decomposed-lora,durable-execution-agent-orchestration,focal-loss-class-weighted-token-loss,generator-verifier-gap,guardrails-infrastructure,llm-as-judge,llm-cost-control-production,llm-evaluation-frameworks,llm-hallucinated-citations,llm-judge-gate-wiring,llm-output-stylistic-tells,llm-output-validation-pipeline,lora-base-model-recall-precision-alignment,lora-degenerate-output-diagnosis,lora-eos-pad-collision,lora-fast-eval-iteration-gate,lora-hybrid-mamba-architecture-screening,lora-merge-then-quantize-vs-quant-aware,lora-output-schema-coupling,lora-prompt-loss-weight,lora-prompt-mismatch,lora-rank-classification,lora-target-modules-attn-vs-mlp,mcp-production-patterns,moe-cpu-ram-expert-offload,moe-total-memory-sizing,multi-agent-orchestration,orpo-hard-negatives,production-eval-systems,prompt-distillation-few-shot-compression,prompt-engineering,rag-chunking-strategy-selection,retrieval-augmented-generation,self-correction-loops,token-budget-management,tool-integrated-reasoning
+
+SOURCE TEXT:
+# What 1,200 Production Deployments Reveal About LLMOps in 2025
+
+**Author:** Alex Strick van Linschoten
+**Published:** December 19, 2025
+**Source:** https://www.zenml.io/blog/what-1200-production-deployments-reveal-about-llmops-in-2025
+**Tier:** 3 (practitioner blog, ZenML company)
+
+---
+
+## 1. Real Engineering Replaces POC Demos
+
+The LLMOps Database crossed 1,200 case studies, documenting a fundamental shift from experimental deployments to production systems handling real business-critical functions. Teams have moved beyond weekend chatbots to rebuild core processes around LLM capabilities.
+
+### Real Business Outcomes
+
+Organizations now report quantified financial impact rather than theoretical efficiency gains. Stripe built a domain-specific foundation model processing roughly 1.3% of global GDP in payments. Their card-testing fraud detection improved from 59% to 97% accuracy for major merchants.
+
+Amazon's Rufus service scaled to 80,000 Trainium chips during Prime Day, serving 250 million users with 140% year-over-year monthly growth and 60% increase in purchase completion rates.
+
+DoorDash expanded into retail by rebuilding their recommendation engine to handle 100,000+ item catalogues. Their hybrid retrieval system, inferring preferences from order history, delivered double-digit click-through rate improvements.
+
+### Processing at Scale
+
+Production systems now operate at volumes that would have seemed aspirational a year ago:
+
+- ByteDance processes billions of videos daily for content moderation using multimodal LLMs on Inferentia2 chips, achieving 50% cost reduction
+- Shopify's product classification system handles 30 million predictions daily across 10,000+ categories with 85% merchant acceptance
+- Cursor's Tab feature now handles over 400 million requests per day with online reinforcement learning achieving 28% code acceptance improvement
+
+### Quantified Revenue Impact
+
+Organizations increasingly report specific financial outcomes:
+
+- **nib health insurer:** Over 4 million chatbot interactions generating approximately $22 million in documented savings with 60% chat deflection
+- **PGA Tour:** Reduced article generation costs by 95% to $0.25 per article, producing 800 articles weekly
+- **Riskspan:** Transformed 3-4 week manual process to 3-5 days, reducing per-deal costs by 90x to under $50
+- **CBRE:** Reduced SQL query generation time by 67% and improved database query performance by 80%
+
+### Autonomous Agents Doing Real Work
+
+Agents increasingly complete multi-step workflows autonomously:
+
+- **Western Union/Unum:** Converted 2.5 million COBOL lines in 1.5 hours, reducing project timeline from 7 years to 3 months
+- **Ramp:** Policy agent handles over 65% of expense approvals autonomously with explainable reasoning and uncertainty handling
+- **Harman International:** Reduced SAP documentation from 15 months to 2 months while cutting costs by 70%
+
+### Search and Retrieval Remains Central
+
+Despite "RAG is dead" declarations, sophisticated retrieval architectures remain essential. LinkedIn rebuilt their GenAI stack with RAG-based pipelines supporting multi-agent orchestration. Teams discovered that reaching 80% quality happened quickly; pushing past 95% required disproportionate effort.
+
+---
+
+## 2. Context Engineering > Prompt Engineering
+
+The shift from prompt engineering (2023) to context engineering (2024-2025) represents the clearest dividing line between reliable and inconsistent LLM systems.
+
+### The Problem with More Context
+
+The naive approach of stuffing all history, tools, and documentation into context windows produces predictable failures:
+
+- Manus found that context rot begins between 50k-150k tokens regardless of theoretical maximums
+- Dropbox experienced "analysis paralysis" when exposing too many tools to their Dash agent
+- Tool outputs consume 100x more tokens than user messages, making aggressive context pruning critical for cost control
+
+### Just-in-Time Context
+
+Rather than loading everything upfront, successful systems dynamically assemble context based on immediate state:
+
+- **Shopify's Sidekick:** Collocates instructions with tool outputs rather than loading all instructions at start
+- **Elyos AI:** Uses "just-in-time in, just-in-time out," actively cleaning context that's served its purpose
+- Teams describe this as dynamic assembly that maintains cache efficiency and keeps models focused
+
+### Tool Masking and Schema Shrinking
+
+When reducing tool numbers isn't possible, reducing their complexity works:
+
+- **Databook's approach:** Places configuration layer between agents and tools, masking APIs to expose only relevant fields
+- **Manus logit masking:** Mathematically prevents model from selecting irrelevant tools while maintaining caching
+- Tool definitions function as prompts themselves, allowing different masks for different agents
+
+### Compaction Versus Summarisation
+
+Managing long-running sessions requires distinguishing reversible from irreversible reduction:
+
+- **Compaction:** Converts verbose tool outputs into minimal representations while preserving full information recoverability
+- **Summarisation:** Loses information permanently, used only as last resort
+- Staged approach: trigger compaction first on oldest tool calls, only resort to summarisation when diminishing returns occur
+
+### The File System as Context
+
+Some teams treat the operating system itself as long-term memory:
+
+- **Manus:** Runs agents in full virtual machine sandboxes, using grep/cat/ls for context retrieval
+- **Claude Code pattern:** Uses the codebase as context, treating file operations as retrieval mechanism
+- Simpler retrieval mechanisms often work better than sophisticated semantic search when context is naturally bounded
+
+### Dual Embeddings and Specialised Representations
+
+Teams create multiple embeddings for the same content to enable targeted retrieval:
+
+- **Glowe skincare system:** Creates separate embeddings for product metadata versus user effects
+- TF-IDF weighting ensures rare but meaningful effects aren't drowned out by generic descriptions
+- Model receives what's relevant to current query rather than everything about a product
+
+---
+
+## 3. The Frontier: Where Production Meets Experimentation
+
+Agent infrastructure and memory systems remain in active flux, representing genuine production needs without consensus approaches.
+
+### Agent Infrastructure: Harnesses and Learning Loops
+
+Each frontier model arrives with different behavioral patterns requiring specific harness engineering:
+
+- **Cursor's Codex adaptation:** Renamed tools to align with shell conventions; dropping reasoning traces caused 30% performance degradation
+- **Manus:** Implemented layered action space with atomic functions, sandbox utilities, and API-calling layer
+- Reinforcement learning approaches are becoming accessible: **OpenPipe's ART·E** trained Qwen-14B with GRPO, outperforming OpenAI's o3 on email research with training on single H100 for ~$80
+
+### Memory: The Problem Everyone Acknowledges
+
+Production teams consistently express frustration about context window resets:
+
+- **LangChain's Lance Martin:** Implemented simple file-based long-term memory updated continuously with feedback
+- **Personize.ai:** Uses proactive memory with internal agents inferring insights ahead of time rather than retrieving raw data
+- Explored approaches include knowledge graphs, user-confirmed preferences, and hybrid systems—none yet stabilized
+
+---
+
+## 4. MCP at One Year: Quiet Stabilisation
+
+The Model Context Protocol has achieved relative stability after roughly one year in production.
+
+### Enterprise Adoption
+
+- **Loblaws:** Built MCP ecosystem wrapping 50+ internal APIs with task-oriented tools combining multiple backend operations
+- **Swisscom:** Uses MCP for network operation agents accessing topology graphs and alarm systems across multi-cloud infrastructure
+- Emphasis remains on MCP as integration infrastructure rather than AI magic
+
+### SaaS Companies Building the Ecosystem
+
+- **HubSpot:** First CRM building remote MCP server, took less than four weeks to ship
+- **Sentry:** MCP server scaled to 60 million requests per month with just three-person team managing infrastructure
+
+### Real Struggles: Context Pollution and Choice Entropy
+
+- **CloudQuery:** Tool naming proved critical, renaming `example_queries` to `known_good_queries` moved it from ignored to frequently used
+- **Databook:** Coined "choice entropy" to describe problems when seeing dozens of data fields; solution involves filtering schemas for specific tasks
+
+### The Holdouts
+
+**Digits** explicitly rejected MCP for production due to unresolved security questions around internal data. Not everyone is adopting, and security concerns haven't been fully addressed for high-stakes financial data.
+
+### Interesting Patterns
+
+**Goodfire's Jupyter integration:** Discovered agents could bypass security permissions through notebook tool calls, circumventing native protections. Standardization only provides value when well-implemented.
+
+---
+
+## 5. Evals and Guardrails: Where the Engineering Actually Happens
+
+Evaluation systems and guardrails have transformed from informal checks into sophisticated engineering disciplines.
+
+### The Death of the Vibe Check
+
+Organizations now implement "crawl, walk, run" evaluation strategies:
+
+- **Ramp:** Turns every user-reported failure into regression test case; created "golden datasets" carefully reviewed by internal team
+- **GitHub:** Runs comprehensive offline evaluations catching regressions before production
+- Edge cases require careful interpretation, user feedback alone introduces affinity bias
+
+### Traditional ML Policing Generative AI
+
+- **DoorDash:** Built "Zero-Data Statistical Query Validation" using automated linting, EXPLAIN-based checking, and metadata validation without exposing sensitive data to AI models
+- Pattern repeats: deterministic checks and traditional ML validate, constrain, or gate LLM behavior
+
+### Architectural Guardrails: Moving Safety Out of the Prompt
+
+Safety logic moved from prompts to infrastructure represents the most significant theme:
+
+- **Oso framework:** "Three-Component Identity" (user, agent, session) with session tainting preventing prompt injection attacks
+- **Wakam insurance:** Dual-layer permission system where users can only invoke agents if holding permissions for underlying data
+- **Komodo Health:** LLM has zero authentication/authorization knowledge; security handled entirely by APIs
+
+### Creative Solutions at the Edges
+
+- **Toyota:** Stream splitting technique prevents LLM from altering legal disclaimers by splitting output into natural language, image IDs, and disclaimer IDs
+- **Incident.io:** "Time travel evaluation" replays historical incidents to assess if agent correctly identifies actual root causes
+- **Digits:** Routes generation to one provider, evaluation to different provider to prevent "grading your own test"
+
+### User-Controllable Guardrails
+
+- **Ramp:** "Autonomy slider" lets users specify where/when agents can act autonomously combined with deterministic rules
+- Acknowledges different organizations have vastly different risk tolerances
+
+### Circuit Breakers: Preparing for Inevitable Failure
+
+- **Cox Automotive:** Implements circuit breakers on cost and conversation turns; stops automatically at P95 thresholds
+- DoorDash calls this "budgeting the loop" with strict step and time limits
+
+### Shadow Mode: Testing at Scale Without Risk
+
+- **Ramp:** Runs agents in shadow mode on transactions before live actions; LLM Judge compares predictions to actual outcomes
+- Only enables live actions once shadow accuracy hits specific threshold
+
+### The LLM-as-Judge Pattern
+
+- **Cox Automotive:** Generates test conversations, uses separate LLM to evaluate quality against standards
+- **Amazon Prime Video:** Uses independent LLM evaluator selectively for insufficient pass/fail metrics
+- Provides scalable automated assessment impossible through manual review
+
+### Red Teaming as Ongoing Practice
+
+- **Cox Automotive:** Continuous red teaming (not one-time assessment) integrated throughout development lifecycle
+- Testing checks what works; red teaming tries to break it
+- Continues after every code deployment and prompt change
+
+---
+
+## 6. Software Engineering Skills: The Hidden Bottleneck
+
+Production LLM systems are distinguished by software engineering fundamentals rather than AI research credentials. The bottleneck is engineering, not intelligence.
+
+### Infrastructure Before Intelligence
+
+- **LinkedIn:** Engineering work focused on capacity/latency tradeoffs, async non-blocking pipelines, streaming response parsing
+- **Meta:** Network architecture redesigns addressing checkpoint data growth (gigabytes to terabytes annually) and training job latencies (8 seconds to 300 seconds), achieved 300x latency improvement through ECMP load balancing, BGP virtual IP injection, eBPF kernel hooks
+
+### Durable Execution: Treating State Seriously
+
+- **Slack DX team:** Uses Temporal for multi-agent escalation handling 5,000+ monthly requests; failed tasks resume where they left off
+- **Railway:** Uses Ingest for durability; results cached so retries continue from failed step
+- Distinguishes agents that work in production from those functioning in demos
+
+### Agent Orchestration as Microservices
+
+- **LinkedIn:** Applies existing messaging infrastructure and gRPC for inter-agent coordination
+- **DoorDash:** Decomposers, progress trackers for dependencies, persistent workspaces for artifact sharing
+- **GetOnStack:** Learned hard lessons when infinite conversation loops between agents cost $47,000 in four weeks; required six weeks building message queues, circuit breakers, cost controls, monitoring
+
+### The Hardware Layer
+
+- **Cursor:** Built fast agent models, trained custom models fine-tuned for specific use cases
+- **H2O.ai:** Autonomous storage management improved utilisation from 25% to 80%, reducing footprint from 2 petabytes to under 1
+
+### Human-in-the-Loop as Architecture
+
+Progressive autonomy rather than removing humans from loop entirely:
+
+- **Incident.io:** Time travel evaluation ensures agents don't hallucinate fixes unavailable at specific moments
+- Systems start with AI as suggestions, graduate to autonomous actions for high-confidence cases
+
+### What the Skills Shortage Actually Looks Like
+
+Core skills being deployed include:
+
+- **Distributed systems and platform engineering:** Managing state, consistency, consensus across agents; message queues, service meshes, orchestration
+- **Networking and infrastructure:** Optimizing data flow, latency, hardware utilization
+- **Security and compliance:** Session tainting, dual-layer permissions, API-based authorization
+
+Closing the gap requires systems handling failure gracefully, scaling predictably, integrating with existing infrastructure. Differentiation lies in infrastructure, not prompt optimization.
+
+---
+
+## 7. Hyperscalers and the Allure of the Frontier
+
+Teams shipping reliable systems aren't waiting for next model releases; they're treating frontier models as probabilistic components requiring containment and verification.
+
+### The Frontier Model Isn't a Silver Bullet
+
+- **Cubic:** Performance degraded when giving agent more tools; success came from removing tools and forcing explicit reasoning logs
+- **Amazon Alexa:** Adding more few-shot examples decreased accuracy through overfitting
+- Frontier promise of unlimited capability runs into production requirements
+
+### Treating Models as Untrustworthy Components
+
+Successful implementations explicitly contain unreliable LLM components:
+
+- **PwC:** Moved beyond probabilistic validation to mathematical verification with Automated Reasoning checks
+- **Stripe compliance agents:** Decomposed complex reviews into bite-sized tasks on strict "rails" preventing rabbit-holing
+- **Zalando:** Encountered "Surface Attribution Error" where models blamed technologies simply because mentioned; ~10% attribution errors persist even with Claude Sonnet
+
+### Engineering the Harness, Not Waiting for the Engine
+
+- **Trainline:** Built user context simulator generating synthetic tickets for real trains, sampling actual queries for testing
+- **Care Access:** Cut costs 86% through prompt caching architecture, separating static (cached) from dynamic (questioned) content
+- Infrastructure engineering rather than model upgrades
+
+### Value Extraction Now, Not Later
+
+- **Rocket Companies:** Consolidated 10 petabytes of data; value from unified foundation enabled approvals in 8 minutes (weeks previously)
+- **Robinhood:** Reduced latency 50% through hierarchical tuning (prompt optimization → trajectory tuning → LoRA) without frontier models
+
+### The Hyperscaler Ecosystem: Enabling, Not Solving
+
+Cloud providers enable infrastructure, not solutions. Teams use managed services for standardized access and caching but build differentiation above these platforms. **Stripe** chose Bedrock for unified security vetting and prompt caching but built internal LLM proxy for traffic management, fallback, bandwidth allocation.
+
+### Production Problems Aren't Capability Problems
+
+- **Alexa team:** Acknowledged "far more work lay ahead than completed" after initial capability demonstration
+- Getting models to work reliably at scale across 600 million devices required context engineering, prompt caching, speculative execution, token minimisation
+- Better models shift where challenges lie without eliminating them
+
+---
+
+## What the Database Actually Tells Us
+
+After cataloguing 1,200+ production LLM deployments, organizations are shipping systems generating real revenue through software engineering discipline rather than secret models or proprietary techniques.
+
+### Solidified Patterns
+
+- **Context engineering** as genuine discipline: leaner contexts produce smarter outputs; tool definitions are prompts; million-token windows are ceilings
+- **Guardrails moved to infrastructure:** Architectural constraints provide guarantees prompt engineering cannot
+- **Skills in demand:** Distributed systems, networking, infrastructure management, building reliable systems from unreliable components
+
+### Areas Remaining in Flux
+
+Agent harnesses, memory systems, and reinforcement learning show promising results but haven't stabilized into consensus patterns across diverse use cases.
+
+### Consistent Finding
+
+The bottleneck is engineering rather than intelligence. Organizations distinguishing themselves deploy discipline about failure modes, rigor about evaluation, and focus on bulletproof architecture rather than uncertain components.
+
+The wild west has given way to engineering discipline. Organizations winning with LLMs are distinguished by infrastructure, evaluation practices, operational discipline, and treating AI systems with same rigor as mission-critical technology rather than through model access or prompt libraries.
+
+The experimentation phase has ended. The engineering phase has begun.
+
+OUTPUT: one line per concept, exactly <slug> | reuse:<existing-slug|NEW> | tier:<N>. Nothing else.

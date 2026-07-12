@@ -1,0 +1,1 @@
+{"slug":"user-controllable-guardrails","local_decision":"NEW","prematch":"NEW","verdict":"reuse:guardrails-infrastructure","is_overmint":true,"reason":"guardrails-infrastructure already has a dedicated 'Autonomy sliders' key concept and field-notes discussion of Ramp's user-configurable autonomy slider, the exact source example behind this candidate."}

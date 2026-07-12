@@ -1,0 +1,1 @@
+{"slug":"compaction-vs-summarisation","local_decision":"NEW","prematch":"NEW","verdict":"reuse:context-engineering-production","is_overmint":true,"reason":"context-engineering-production's scope line names compaction strategies explicitly and has a dedicated 'Compaction' subsection distinguishing it from lossy summarisation with the same staged-approach source content."}
