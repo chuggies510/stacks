@@ -586,3 +586,61 @@ two are not): **(1) no quant fixes the 30B's cliff nondeterminism** — all flip
 intrinsic to the model+task, not the precision; and **(2) the deployed standard Q4_K_M is at
 least as good as every alternative** and the fastest, so there's no reason to swap it. Don't
 chase byte-determinism on the 30B via quantization; it isn't there.
+
+## VALIDATOR stage (issue #109) — 4 local tiers clear both floors; cheapest is the 30B we already run
+
+Scored against your `validation-benchmark.md` 7-item offline gold set (each item = one claim +
+its verbatim cited-source excerpt, your validator rubric fed verbatim, `think=False`, temp 0,
+3 greedy passes). Floors: **poison recall {2,3,5} ≥ 0.90** (catch+properly-correct every planted
+overstatement/contradiction), **false-correction {1,4,6,7} = 0** (never alter a supported/softspot
+claim). Correction *texts* on caught poisons were manually reviewed (a CORRECTION token whose
+replacement still overstates does not count).
+
+| model | poison {2,3,5} | false-corr {1,4,6,7} | action /7 | determ (3×) | floors 1-2 |
+|---|---|---|---|---|---|
+| **qwen3.6-27b** | **1.00** (3/3 proper) | **0.00** | 6/7 | DET | **PASS** |
+| **gemma4-31b** | **1.00** (3/3 proper) | **0.00** | 6/7 | DET | **PASS** |
+| **qwen3-30b-a3b** Q4_K_M | **1.00** (3/3 proper) | **0.00** | 5/7 | DET | **PASS** |
+| **gpt-oss-20b** | **1.00** (3/3 proper) | **0.00** | 5/7 | DET | **PASS** |
+
+Per-item verdict matrix (gold on top; ✓=exact, swap=within-CORRECTION subtype swap that still
+removed the poison, miss6=CLEAN on the add-citation item):
+
+| item→ | 1 CLEAN | 2 OVER | 3 CONTRA | 4 CLEAN | 5 OVER | 6 ADD-CITE | 7 SOFTSPOT |
+|---|---|---|---|---|---|---|---|
+| qwen3.6-27b | ✓ | ✓ | ✓ | ✓ | ✓ | CLEAN(miss) | ✓ |
+| gemma4-31b | ✓ | ✓ | ✓ | ✓ | ✓ | CLEAN(miss) | ✓ |
+| qwen3-30b-a3b | ✓ | ✓ | OVER(swap) | ✓ | ✓ | CLEAN(miss) | ✓ |
+| gpt-oss-20b | ✓ | CONTRA(swap) | ✓ | ✓ | ✓ | CLEAN(miss) | ✓ |
+
+Findings:
+- **All four clear both gated floors deterministically.** Poison recall 3/3 on every model with
+  proper replacement text (item-2 loses "consistently outperforms", item-3 fixes 300→~3,000,
+  item-5 loses "any/zero-risk"). Zero false-corrections. The two subtype swaps (30B called the
+  contradiction an overstatement; gpt-oss the reverse) still produced the correct fix — per your
+  metric-3 note, a minor error, not a floor breach.
+- **The cheapest viable validator is the model we already run for extraction.** `qwen3-30b-a3b`
+  (3B active, ~170 tps VRAM-resident) clears the validator floors AND came back **byte-DET here**
+  — where it is NONDET on extraction. Determinism is per-task, not per-model: these validation
+  items have wide enough logit margins that nothing flips. If that holds under more passes, one
+  model serves both the interactive catalog loop (extraction) and the batch audit (validation).
+- **Universal add-citation miss (item 6).** All four returned CLEAN on the uncited-but-listed Cox
+  claim — "source supports it" reads as CLEAN, the "…but add the inline `[slug]`" nuance is
+  underweighted. Benign under-action (leaves a *true* claim uncited; not poison, not a false trim),
+  but it means no cheap tier nails the add-citation class solo. Worth knowing before you pin one.
+- **qwen3.6-27b wrote the best corrections** — its item-5 trim kept the "only once shadow accuracy
+  hits a threshold" gate that gemma trimmed away. If action-accuracy quality (not just floor-clear)
+  is the tiebreak, 27b edges gemma.
+
+Caveats: (1) **tps deliberately omitted** — validator outputs are single ~20-token lines (too short
+to measure throughput) AND this run shared the 3090 with a live podly LoRA-training job (VRAM
+contention → partial CPU offload). Real throughput is the extraction-measured numbers (gemma ~34,
+27b ~37, 30b ~170 tps). (2) **Single-item proxy**: the harness feeds one claim + its source per
+call; the real `validator` agent reads the whole article + all cited sources and checks every claim
+— this isolates the discrimination decision, same proxy shape as the extraction harness, not the
+full multi-claim trajectory. (3) Determinism is for the run's placement; a fully-VRAM-resident
+deploy could differ on float-order-sensitive near-ties, though these items showed wide margins.
+- **122B-A10B straddle (Q3_K_M): pending.** Harness is built (llama-server endpoint); the run is
+  deferred because the 3090 is currently held by a podly LoRA training run (curator-first). Will
+  score it when the card frees — it is the capability-ceiling probe and the best shot at nailing
+  item 6.
