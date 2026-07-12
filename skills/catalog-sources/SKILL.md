@@ -113,6 +113,19 @@ bash "$STACKS_ROOT/scripts/pipeline/catalog.sh" gate-w2 {stack}
 
 A non-zero exit names the ungated article(s). Surface it and stop; the sources stay in `incoming/` (finish is not reached) and the next run retries.
 
+## Step 8.5: Local-model shadow diff (pilot, opt-in — #109)
+
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set in the environment.** Default catalog runs skip this entirely: the pilot doubles synthesis work (a local draft per slug) and exists to grade a local model against the cloud one, not to ship anything. When enabled, after `gate-w2` passes and *before* `finish` clears the transient `_dedup-<slug>.md` + `dispatch-w2.tsv`, it runs the local synthesis model (Ollama) on each W2 concept block, applies the mechanical post-filters (tag-vocab + `[source: X]`→`[X]` + deterministic refusal gate), and appends a local-vs-cloud structural diff to `dev/experiments/model-tier/live-diffs/synthesis.jsonl` — the channel the liminal peer session grades for recall/over-claim. **The shipped sonnet article is authoritative and untouched; this only observes.**
+
+```bash
+if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
+  STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+  bash "$STACKS_ROOT/dev/experiments/model-tier/harness/shadow-synth-run.sh" {stack} || echo "shadow pilot returned non-zero — non-fatal, continuing to finish"
+fi
+```
+
+Non-fatal by design: a local-inference failure logs a `status:"local-inference-failed"` record and never blocks `finish`. Read the `SHADOW_SUMMARY` line for the shadowed/skipped/failed counts. Requires Ollama reachable at `localhost:11434`; if it is not, every slug logs a failure record and the run proceeds normally.
+
 ## Step 9: Finish, log, commit (`catalog.sh finish`)
 
 `finish` runs the post-synthesis deterministic tail: tag-drift enforcement (halts before filing if any article carries an out-of-vocabulary tag, so its source stays in `incoming/` for the next run), W3 source filing (each `incoming/` source moved to its publisher dir with citations rewritten; a source with no `publisher:` field files under `sources/unknown/` and is reported), W4 MoC regeneration, then cleanup of the transient run files. It prints a `CATALOG_SUMMARY: sources=… new=… updated=… unfiled=…` line.

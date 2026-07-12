@@ -11,7 +11,10 @@
 # style `tags:` followed by `  - a` lines.
 set -euo pipefail
 
-VOCAB="llm llmops evals llm-as-judge rag agents hallucination observability shadow-mode context-engineering prompt-engineering guardrails memory mcp multi-agent cost-economics fine-tuning"
+# Vocab defaults to the llm-stack list (the #109 pilot stack); the shadow runner
+# overrides TAG_VOCAB with the target stack's allowed_tags so other stacks don't
+# get their tags silently mis-dropped against the wrong vocabulary.
+VOCAB="${TAG_VOCAB:-llm llmops evals llm-as-judge rag agents hallucination observability shadow-mode context-engineering prompt-engineering guardrails memory mcp multi-agent cost-economics fine-tuning}"
 
 file="${1:?Usage: tag-postfilter.sh <article-file>}"
 [[ -f "$file" ]] || { echo "ERROR: no such file: $file" >&2; exit 1; }

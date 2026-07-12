@@ -1,3 +1,9 @@
+## 0.61.0 — 2026-07-12
+
+**Opt-in pilot: run a local model as a shadow of the cloud synthesizer and log the difference for grading, without changing what ships (#109).**
+- **Local-shadow synthesis pilot:** with `STACKS_LOCAL_SHADOW=1` set, a catalog run also drafts each article with a local Ollama model (qwen3-30b-a3b) after the sonnet articles are gated, and appends a local-vs-cloud structural diff to `dev/experiments/model-tier/live-diffs/synthesis.jsonl` for the liminal peer to grade. The sonnet article still ships, untouched — the pilot only observes. Default off; non-fatal if Ollama is unreachable. (`skills/catalog-sources/SKILL.md`, `dev/experiments/model-tier/harness/{shadow-synth-run,synth-shadow}.sh`)
+- **Deterministic harness gates for the weak tier:** the local model's unstable meta-judgments are decided in code, not by the model — a tag post-filter drops out-of-vocab tags (read from the target stack's `allowed_tags`, not hardcoded), a citation normalizer rewrites `[source: X]`→`[X]`, and a claim-count refusal gate forces a write at/above a hard floor (the model's refuse-or-write call is prompt-chaotic — a cosmetic framing change flips it). (`dev/experiments/model-tier/harness/{tag-postfilter,citation-normalizer,synth-shadow}.sh`)
+
 ## 0.60.1 — 2026-07-11
 
 **Follow-up hardening of the 0.60.0 batch after an adversarial (codex) review caught three real edge cases the first pass missed.**

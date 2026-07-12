@@ -16,9 +16,12 @@ LIVE_DIFFS="$MTIER/live-diffs"
 BENCH="$MTIER/synthesis-benchmark.md"
 INFER="$HERE/local-infer.sh"
 POSTFILTER="$HERE/tag-postfilter.sh"
+NORMALIZER="$HERE/citation-normalizer.sh"
 MODEL="${MODEL:-qwen3-30b-a3b-instruct}"
 RUN_ID="${RUN_ID:-manual}"
-VOCAB="llm llmops evals llm-as-judge rag agents hallucination observability shadow-mode context-engineering prompt-engineering guardrails memory mcp multi-agent cost-economics fine-tuning"
+# TAG_VOCAB is exported by shadow-synth-run.sh from the target stack's STACK.md
+# allowed_tags; default is the llm-stack list (the #109 pilot stack).
+VOCAB="${TAG_VOCAB:-llm llmops evals llm-as-judge rag agents hallucination observability shadow-mode context-engineering prompt-engineering guardrails memory mcp multi-agent cost-economics fine-tuning}"
 
 concept_file="${1:?Usage: synth-shadow.sh <concept-block-file> <cloud-article-file|NONE> <item-id>}"
 cloud_file="${2:?}"
@@ -65,9 +68,22 @@ json_for() { # <words> <cites> <tt> <to> <ht> <hlv> <hs> <hr> <rel-path>
       body_path:$body_path}'
 }
 
-# Assemble prompt: verbatim rubric (lines 17-41) + tag vocab (lines 46-48) + concept block
+# Assemble prompt: verbatim synth rubric (benchmark lines 17-41) + allowed tags
+# ($VOCAB — the stack's allowed_tags via TAG_VOCAB, or the llm default) + block
 sed -n '17,41p' "$BENCH" > "$work/prompt.txt"
-{ echo; echo "Allowed tags:"; sed -n '46,48p' "$BENCH"; echo; cat "$concept_file"; } >> "$work/prompt.txt"
+{ echo; echo "Allowed tags: $VOCAB"; echo; cat "$concept_file"; } >> "$work/prompt.txt"
+
+# Deterministic refusal gate (liminal S61): the weak tier's refuse-or-write call
+# is prompt-CHAOTIC — a cosmetic framing change flips it, same fragility class as
+# the validator's one-token flag flip — so decide it in code, not the model.
+# Count the block's claim bullets; at/above the floor, append an explicit WRITE
+# directive that overrides the rubric's thin-concept refusal. Below the floor the
+# rubric's genuine refusal stands (the thin-concept case).
+CLAIM_FLOOR="${CLAIM_FLOOR:-2}"
+n_claims=$(awk '/^###[[:space:]]*Claims/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{c++} END{print c+0}' "$concept_file")
+if [[ "$n_claims" -ge "$CLAIM_FLOOR" ]]; then
+  printf '\nThis concept block has %d claims, at or above the substantive-article floor. WRITE the article for it; do NOT refuse or report insufficient claims.\n' "$n_claims" >> "$work/prompt.txt"
+fi
 
 localraw="$work/local_raw.md"
 t0=$(date +%s.%N)
@@ -86,7 +102,8 @@ grep -A6 '^tags:' "$localraw" >&2 || echo "(no tags: line found)" >&2
 
 local_body="$LIVE_DIFFS/bodies/${item_id}__local.md"
 cp "$localraw" "$local_body"
-bash "$POSTFILTER" "$local_body"
+bash "$POSTFILTER" "$local_body"     # drop out-of-vocab tags
+bash "$NORMALIZER" "$local_body"     # [source: X] -> [X]
 
 echo "--- tags after filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$local_body" >&2 || echo "(no tags: line found)" >&2
