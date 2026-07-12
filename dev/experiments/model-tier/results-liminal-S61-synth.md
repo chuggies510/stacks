@@ -58,8 +58,15 @@ byte-deterministically at ~195 tps, ~$0 marginal — a strict upgrade on this st
 consolidates extraction + validation + synthesis onto one local model. gemma is a viable fallback
 (nondet + 5x slower). qwen3.6-27b is out on speed.
 
-Next per the benchmark's stage order: validator shadow test (already green in S59 — run local
-qwen3-30b-a3b alongside sonnet on real articles, compare catch-rate); enrichment last.
+Next per the benchmark's stage order: synthesis-first is the clean pilot (this result). The
+validator is NOT shadow-ready: the S59 "poison 1.00, byte-DET green" was scored on the pre-gate-
+first prompt; under the current gate-first rubric the item-3 contradiction check regressed (the
+citation gate rubber-stamps a cited-but-contradictory claim as CLEAN, a deterministic miss; peer
+re-scored ~0.58, an independent re-run 0.00). The gate-first prompt that fixed item-6 add-citation
+traded away item-3 contradiction detection. Validator needs a prompt fix (split the contradiction
+check from the citation gate) BEFORE any shadow test. Enrichment last. Caution worth carrying:
+byte-DET is not a quality signal, a determinism check blesses a deterministic-wrong verdict as
+"stable/passing" while it ships poison.
 
 Item 2 is n=1 on the over-claim cliff; stacks (S25) is adding 1-2 more over-claim items from the
 LLM stack for a second pass. Re-run when those land.
