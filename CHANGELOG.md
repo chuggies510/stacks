@@ -1,3 +1,11 @@
+## 0.62.1 — 2026-07-12
+
+**Fix five real edge cases an adversarial (codex) review caught in the 0.62.0 advisory verify before it ran live (#109).**
+- **Wrong manifest path + stale-grade mixing:** Step 8.6 read the W2 slug list from `dev/extractions/dispatch-w2.tsv` (this repo) but the manifest lives under the LIBRARY — corrected the path, and the grade dir is now reset each run so the summary counts only the current batch, not a prior run's leftover `{slug}.json`. (`skills/catalog-sources/SKILL.md`)
+- **Stale draft graded as current:** a failed local inference used to leave an earlier run's draft in place to be graded against the new block — the shadow now clears each slug's draft before inference, so a failure leaves no draft and the verify skips it. (`dev/experiments/model-tier/harness/synth-shadow.sh`)
+- **Verifier scope couldn't do a tag-vocab check:** dropped that check from the verifier entirely — the harness `tag-postfilter.sh` already guarantees in-vocab tags before grading, so re-checking it (needing an out-of-scope `STACK.md`) duplicated a code-owned meta-judgment. (`agents/article-verifier.md`)
+- **Trusted a model boolean for floor-clearance:** the summary now DERIVES clearance from the recall/over-claim/structure fields instead of the agent's self-reported `clears_floors`, so an inconsistent grade can't self-certify; self-check extended to prove it. (`dev/experiments/model-tier/harness/synth-verify-summary.sh`)
+
 ## 0.62.0 — 2026-07-12
 
 **Opt-in advisory verify: grade whether the local drafts would clear the accuracy floors if we flipped synthesis to verify-and-fix, without changing what ships (#109).**

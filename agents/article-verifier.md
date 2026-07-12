@@ -15,7 +15,7 @@ For the draft, decide each:
 
 1. **Claim recall** — does the draft state every claim in the concept block? Count `recall_total` = claims in the block, `recall_present` = block claims the draft actually asserts. A dropped claim lowers recall.
 2. **Over-claims** — does any draft sentence say MORE than the block claim it rests on: an added mechanism, a rationale ("because…"), an invented number, or a generalization ("consistently", "the primary", "outperforms", "any", "zero", "teams should") the block does not contain? Count `over_claims` = such sentences. This is the precision floor; the floor is 0.
-3. **Structure** — frontmatter present with `last_verified: ""`, `sources:` bare (no ` (tier N)` suffix, no `{stack}/` prefix), `title:`, `routing:` (one plain line), `tags:` all within the stack's `allowed_tags:`, at least one inline `[source-slug]` citation, and NO audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`). `structural_pass` = all hold.
+3. **Structure** — frontmatter present with `last_verified: ""`, `sources:` bare (no ` (tier N)` suffix, no `{stack}/` prefix), `title:`, `routing:` (one plain line), a `tags:` line present, at least one inline `[source-slug]` citation, and NO audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`). `structural_pass` = all hold. (Tag-**vocabulary** conformance is NOT your check: the harness `tag-postfilter.sh` already dropped any out-of-vocab tag before this draft was saved — that meta-judgment is code-owned. You only confirm a `tags:` line exists.)
 4. **Citations** — the local drafter is known-weak at attaching the right `[source-slug]` to each claim (it cannot reliably self-add citations). Treat a missing or wrong inline citation as a fix you would make, NOT as a reason to fail recall — the claim is present, only its citation is off. List each under `would_fix`.
 
 `clears_floors` = `recall_present == recall_total` AND `over_claims == 0` AND `structural_pass == true`. (Citation fixes do not block `clears_floors` — they are cheap edits you would make on the flip; record them in `would_fix` so we see the volume.)
@@ -28,7 +28,6 @@ For every defect, name it **specifically and in plain language** — which claim
 
 - The concept block at `dev/extractions/_dedup-{slug}.md` — the scoring ground truth (its claims are what the draft must state, and the ceiling it must not exceed).
 - The local draft at the path given in your dispatch (e.g. `dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`).
-- `STACK.md` for `allowed_tags:` (tag-vocabulary check).
 
 ## Output
 

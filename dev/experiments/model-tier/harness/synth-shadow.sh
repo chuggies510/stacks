@@ -29,6 +29,11 @@ item_id="${3:?}"
 [[ -f "$concept_file" ]] || { echo "ERROR: concept block not found: $concept_file" >&2; exit 1; }
 
 mkdir -p "$LIVE_DIFFS/bodies"
+# Remove any prior local draft for this slug up front: a failed inference below
+# exits before the fresh cp, so without this an earlier run's stale draft would
+# survive and get graded against THIS run's block (codex, #109). No draft is the
+# correct state on inference failure — the advisory verify then skips the slug.
+rm -f "$LIVE_DIFFS/bodies/${item_id}__local.md"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
 in_vocab() { local t="$1" v; for v in $VOCAB; do [[ "$t" == "$v" ]] && return 0; done; return 1; }

@@ -130,12 +130,12 @@ Non-fatal by design: a local-inference failure logs a `status:"local-inference-f
 
 **Also gated on `STACKS_LOCAL_SHADOW=1`, and only after Step 8.5 produced the local drafts.** This is the advisory window before flipping synthesis to verify-and-fix (`dev/specs/verify-and-fix.md`): it measures whether, if the local draft became the article and the cloud model fixed only its defects, the result would clear the synthesis floors — **without changing anything.** `articles/` and the authoritative sonnet path are untouched.
 
-For each slug in `dev/extractions/dispatch-w2.tsv` whose local draft exists at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`, dispatch one **`stacks:article-verifier`** agent (cloud sonnet, ≤25 per message, same wave cap as W2). Give each agent absolute paths, scope pinned to exactly these three files:
+For each slug in the W2 manifest `{LIBRARY}/{stack}/dev/extractions/dispatch-w2.tsv` (column 2 — the manifest lives under the LIBRARY, not this repo) whose local draft exists at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`, dispatch one **`stacks:article-verifier`** agent (cloud sonnet, ≤25 per message, same wave cap as W2). Give each agent absolute paths, scope pinned to exactly these three files:
 - concept block (scoring truth): `{LIBRARY}/{stack}/dev/extractions/_dedup-{slug}.md`
 - local draft to grade: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`
 - grade JSON to write: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify/{slug}.json`
 
-The agent grades floor-clearance (claim recall, over-claims, structure) and lists the citation fixes it would make; it uses Read + Write only and never Edits an article. Create the output dir first (`mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify"`), then after the wave returns, aggregate the go/no-go read:
+The agent grades floor-clearance (claim recall, over-claims, structure) and lists the citation fixes it would make; it uses Read + Write only and never Edits an article. **Reset the grade dir first** so the summary reflects only THIS batch, not a prior run's leftover `{slug}.json` (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify"`), then dispatch. After the wave returns, aggregate the go/no-go read:
 
 ```bash
 STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
