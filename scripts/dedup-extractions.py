@@ -3,9 +3,79 @@
 # Usage: python3 dedup-extractions.py <extr_dir> <dedup_path>
 # Side-output: writes _dedup-meta.txt to extr_dir; caller must source it for env var injection.
 
-import os, re, sys, glob
-from difflib import SequenceMatcher
+import os, re, sys, glob, math
 from itertools import combinations
+from collections import Counter
+
+# --- near-dup similarity (stacks#106) ---------------------------------------
+# Flag two NEW slugs that are the same concept under different titles, WITHOUT
+# flagging distinct concepts that share a boilerplate title template. The pre-#106
+# metric (raw SequenceMatcher on the whole title) did both wrong on a cold-start
+# catalog: it flagged "HVAC/Plumbing/Electrical Walk-Through Scope (E2018)" as
+# mutual dups (shared template) and missed "HVAC Walk-Through Scope" vs "HVAC
+# Systems Observation" (a real dup with differing titles).
+#
+# Fix: strip *template* tokens — those appearing in >= _BOILERPLATE_DF of the
+# candidate titles, which are generic scaffolding, not a dup signal — then score the
+# remaining distinctive tokens with a plain set cosine. A genuine same-concept pair
+# shares a distinctive token present in only those ~2 titles (kept); a template phrase
+# spans many titles (dropped). Ceiling: a concept minted under 3+ different titles by
+# 3+ blind extractors loses its shared token to the cutoff — rare; the operator's
+# near-dup review and the index-scope reuse hint remain the backstops.
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_STOP = {"the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "with",
+         "by", "is", "are", "as", "at"}
+_BOILERPLATE_DF = 3     # a token in >= this many titles is template scaffolding, not a dup signal
+NEAR_DUP_FLOOR = 0.40   # ponytail: set-cosine floor. Report-only, so bias loose (a spurious
+                        # pair is a cheap operator skip; a miss is silent). Tune per corpus.
+
+def _title_tokens(title):
+    return [t for t in _TOKEN_RE.findall(title.casefold()) if len(t) > 1 and t not in _STOP]
+
+def near_dup_pairs_from_titles(titles):
+    """titles: {slug: title}. Return [(a, b, score)] with score >= NEAR_DUP_FLOOR,
+    most-similar first. Score = cosine over each title's DISTINCTIVE token set
+    (template tokens shared by >= _BOILERPLATE_DF titles removed first)."""
+    slugs = sorted(titles)
+    df = Counter()
+    for s in slugs:
+        for t in set(_title_tokens(titles[s])):
+            df[t] += 1
+    sets = {s: {t for t in _title_tokens(titles[s]) if df[t] < _BOILERPLATE_DF} for s in slugs}
+    pairs = []
+    for a, b in combinations(slugs, 2):
+        sa, sb = sets[a], sets[b]
+        if not sa or not sb:
+            continue
+        score = len(sa & sb) / math.sqrt(len(sa) * len(sb))
+        if score >= NEAR_DUP_FLOOR:
+            pairs.append((a, b, score))
+    return sorted(pairs, key=lambda p: -p[2])
+
+def _self_check():
+    # The #106 cold-start case: 4 building systems sharing a title template + one real
+    # dup (hvac split across two extractors under different titles). The template pairs
+    # must NOT flag; the real HVAC pair MUST.
+    titles = {
+        "hvac": "HVAC Walk-Through Scope (E2018)",
+        "plumbing": "Plumbing Walk-Through Scope (E2018)",
+        "electrical": "Electrical Walk-Through Scope (E2018)",
+        "roofing": "Roofing Walk-Through Scope (E2018)",
+        "hvac-systems-pca-observation": "HVAC Systems Observation",
+        "chiller-efficiency": "Chiller Efficiency Metrics",
+    }
+    flagged = {frozenset((a, b)) for a, b, _ in near_dup_pairs_from_titles(titles)}
+    def has(x, y):
+        return frozenset((x, y)) in flagged
+    assert has("hvac", "hvac-systems-pca-observation"), f"real HVAC dup not flagged; flagged={flagged}"
+    for a, b in combinations(["hvac", "plumbing", "electrical", "roofing"], 2):
+        assert not has(a, b), f"boilerplate-template pair {a}~{b} wrongly flagged; flagged={flagged}"
+    assert not has("chiller-efficiency", "hvac"), "unrelated pair flagged"
+    print("dedup-extractions near-dup self-check: PASS", file=sys.stderr)
+
+if len(sys.argv) >= 2 and sys.argv[1] == "--self-check":
+    _self_check()
+    sys.exit(0)
 
 extr_dir, dedup_path = sys.argv[1], sys.argv[2]
 batch_files = sorted(glob.glob(os.path.join(extr_dir, "batch-*-concepts.md")))
@@ -118,23 +188,20 @@ with open(dedup_path, "w") as f:
 # that are really the same concept under different names. Exact-slug match can't see
 # these (they never collide), so two thin stubs would ship forever. Extractors run
 # blind to each other, so this can only be caught here, after all blocks are merged.
-# Title is the cheap high-signal field present in every block (routing lives in the
-# article, not the extraction). Flag pairs above a similarity floor for the operator
-# to merge before synthesis; report-only, never auto-merges (a wrong merge is worse
-# than two stubs). Only NEW slugs — an updated slug already has its article. (stacks#78)
-NEAR_DUP_FLOOR = 0.72
+# Similarity is distinctive-token set cosine (see near_dup_pairs_from_titles at the
+# top): it strips the shared boilerplate title template that made the old raw-string
+# ratio flag distinct systems and miss real dups (stacks#106). Report-only, never
+# auto-merges (a wrong merge is worse than two stubs). Only NEW slugs — an updated
+# slug already has its article. (stacks#78, #106)
 new_slugs = sorted(s for s in slug_sources if not slug_target_article[s])
-near_dup_pairs = []
-for a, b in combinations(new_slugs, 2):
-    ratio = SequenceMatcher(None, _norm_title(slug_title[a]), _norm_title(slug_title[b])).ratio()
-    if ratio >= NEAR_DUP_FLOOR:
-        near_dup_pairs.append((a, b, ratio))
-        print(
-            f"WARNING: new slugs '{a}' and '{b}' have {ratio:.0%}-similar titles "
-            f"('{slug_title[a]}' vs '{slug_title[b]}') — likely the same concept split "
-            "across parallel extractors; review and merge before synthesis.",
-            file=sys.stderr,
-        )
+near_dup_pairs = near_dup_pairs_from_titles({s: slug_title[s] for s in new_slugs})
+for a, b, score in near_dup_pairs:
+    print(
+        f"WARNING: new slugs '{a}' and '{b}' have {score:.0%} distinctive-title overlap "
+        f"('{slug_title[a]}' vs '{slug_title[b]}') — likely the same concept split "
+        "across parallel extractors; review and merge before synthesis.",
+        file=sys.stderr,
+    )
 
 # Emit slug list, new/updated classification, and counts to _dedup-meta.txt for caller to source.
 updated_slugs = [s for s in slug_sources if slug_target_article[s]]

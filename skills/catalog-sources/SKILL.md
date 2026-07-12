@@ -65,6 +65,8 @@ Read `{stack}/STACK.md` for the source hierarchy (tier rankings for conflict res
 - the path to `{stack}/STACK.md` (source hierarchy + scope),
 - the existing `{stack}/articles/` listing (the authoritative slug set, for slug-immutability checks), **and** `{stack}/index.md`'s `## Articles` map — the `slug — scope` routing lines that say what each existing article already covers. The scope lines are the reuse-vs-mint decision surface: a concept that falls within an existing article's *described scope* reuses that slug instead of minting a new one, which is what stops a rich source fragmenting one article into several new sub-topic slugs (stacks#106). If `index.md` has no `## Articles` map yet (first catalog run, no articles), the bare listing stands.
 
+Dispatch each extractor with `run_in_background: true` so the session stays responsive during the multi-minute agent runtime; the harness delivers a completion notification per agent. This phase is a barrier: do not run Step 5 (`catalog.sh gate-w1`) until every dispatched extractor has reported completion. Backgrounding preserves the barrier (you still wait for all agents) while keeping the session interactive and letting you interleave other work.
+
 ## Step 5: Gate W1 (`catalog.sh gate-w1`)
 
 After all extractors return, gate the batch. One source maps 1:1 to one `batch-<tag>-concepts.md`, so a missing/empty/stale concept file fails **by path** — that presence check is the per-source coverage.
@@ -97,6 +99,8 @@ Read `dev/extractions/dispatch-w2.tsv` — each row is `wave_tag<TAB>slug`. Arti
 - `{stack}/articles/{slug}.md` **only if** the slug is in `dedup`'s `Updated slugs` list (an update — the agent reads the existing article and revises it; new slugs have no such file),
 - `{stack}/STACK.md` (source hierarchy + `allowed_tags`),
 - `{stack}/index.md`'s `## Articles` map — the `[[slug|title]] — scope` routing lines that say what each sibling article already covers. This is the content-boundary surface (stacks#110): it tells the synthesizer what NOT to restate (a sibling's territory) and what it can cross-link inline instead of re-explaining. If `index.md` has no `## Articles` map yet (first catalog run, no articles), the agent writes without it — there are no siblings to bound against.
+
+Within each wave, dispatch the synthesizers with `run_in_background: true` so the session stays responsive during the multi-minute agent runtime; the harness delivers a completion notification per agent. Each wave is a barrier: wait for every synthesizer in the wave to report completion before starting the next wave, and do not run Step 8 (`catalog.sh gate-w2`) until the final wave's agents have all completed. Backgrounding preserves the barrier while keeping the session interactive.
 
 ## Step 8: Gate W2 (`catalog.sh gate-w2`)
 

@@ -121,6 +121,14 @@ stack root `$STACK`, and its `BATCH_TAG` (the `batch_tag` value). Tell each agen
 to write its findings to `$STACK/dev/enrich/_enrich-${BATCH_TAG}.md`. Parallel
 dispatch — never sequential.
 
+Dispatch each batch agent with `run_in_background: true` so the session stays
+responsive during the multi-minute agent runtime; the harness delivers a
+completion notification per agent. This phase is a barrier: do not run the
+gate (Step 4) until every dispatched agent for this wave has reported
+completion. Backgrounding preserves the barrier (you still wait for all
+agents) while keeping the session interactive and letting you interleave
+other work.
+
 ## Step 4: Gate — every dispatched gap must be receipted (`enrich.sh gate`)
 
 After all agents return, gate the batch. `enrich.sh gate` re-reads the run-state

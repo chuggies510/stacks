@@ -436,7 +436,7 @@ EOF
   bash "$0" prep mep >/dev/null 2>&1 || bad "prep-runs" "prep exited nonzero"
   if [[ -f "$DEV/dispatch-w1.tsv" && -f "$DEV/run.env" ]] \
      && [[ "$(wc -l < "$DEV/dispatch-w1.tsv" | tr -d ' ')" == "2" ]] \
-     && grep -qE '^1\t.*economizer\.md$' "$DEV/dispatch-w1.tsv"; then
+     && grep -qE $'^1\t.*economizer\\.md$' "$DEV/dispatch-w1.tsv"; then
     ok "prep-writes-w1-manifest"
   else
     bad "prep-writes-w1-manifest" "manifest: $(cat "$DEV/dispatch-w1.tsv" 2>/dev/null)"
@@ -513,7 +513,7 @@ EOF
   # dedup after a valid sentinel: the pure-ref source contributes no slug, the other still does.
   mk_w1; printf '# no-concepts: pure CLI flag reference, no behavior knowledge\n' > "$DEV/batch-2-concepts.md"
   bash "$0" dedup mep >/dev/null 2>&1 || bad "dedup-after-sentinel-runs" "dedup nonzero after sentinel"
-  if grep -qE '^0\tvav-airflow$' "$DEV/dispatch-w2.tsv" && ! grep -q 'airside-economizer' "$DEV/dispatch-w2.tsv"; then
+  if grep -qE $'^0\tvav-airflow$' "$DEV/dispatch-w2.tsv" && ! grep -q 'airside-economizer' "$DEV/dispatch-w2.tsv"; then
     ok "dedup-drops-sentinel-source-slug"
   else
     bad "dedup-drops-sentinel-source-slug" "w2: $(cat "$DEV/dispatch-w2.tsv" 2>/dev/null)"
@@ -530,8 +530,8 @@ EOF
   # --- dedup ----------------------------------------------------------------
   bash "$0" dedup mep >/dev/null 2>&1 || bad "dedup-runs" "dedup exited nonzero"
   if [[ -f "$DEV/dispatch-w2.tsv" ]] \
-     && grep -qE '^0\tairside-economizer$' "$DEV/dispatch-w2.tsv" \
-     && grep -qE '^0\tvav-airflow$' "$DEV/dispatch-w2.tsv"; then
+     && grep -qE $'^0\tairside-economizer$' "$DEV/dispatch-w2.tsv" \
+     && grep -qE $'^0\tvav-airflow$' "$DEV/dispatch-w2.tsv"; then
     ok "dedup-writes-w2-manifest"
   else
     bad "dedup-writes-w2-manifest" "w2: $(cat "$DEV/dispatch-w2.tsv" 2>/dev/null)"

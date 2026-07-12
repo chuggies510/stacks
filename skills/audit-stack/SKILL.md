@@ -45,7 +45,11 @@ Read `$STACK/STACK.md` (the stack root is in prep's output) for the source-hiera
 
 `prep` already sharded the articles into `CAP=5` batches — kept modest on purpose: each validator re-reads every article in its slice *plus* the sources each claim cites, so a large slice both risks "prompt too long" and pollutes one context with many articles' claims (a claim from article A gets checked against article B's source). Per-article isolation matters more than minimizing dispatch count. (Change the cap in `audit.sh`'s `CAP=` constant, not here.)
 
-Read the manifest `dev/audit/dispatch.tsv` (the `Manifest:` path from prep) — each row is `batch_tag<TAB>slug<TAB>article_path`. **In a single message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` = `stacks:validator`. Parallel dispatch — never sequential. Each agent prompt names:
+Read the manifest `dev/audit/dispatch.tsv` (the `Manifest:` path from prep) — each row is `batch_tag<TAB>slug<TAB>article_path`. **In a single message, emit one `Agent` tool call per distinct `batch_tag`**, `subagent_type` = `stacks:validator`. Parallel dispatch — never sequential.
+
+Dispatch each batch agent with `run_in_background: true` so the session stays responsive during the multi-minute validator runtime; the harness delivers a completion notification per agent. This phase is a barrier: do not run Step 4 (`audit.sh gate`) until every dispatched agent for this wave has reported completion. Backgrounding preserves the barrier (you still wait for all agents) while keeping the session interactive and letting you interleave other work.
+
+Each agent prompt names:
 
 - its assigned **article paths** (column 3 of that batch's manifest rows),
 - the stack's sources directory `$STACK/sources/` (the agent reads what each claim cites; it excludes `sources/incoming/` and `sources/trash/`),

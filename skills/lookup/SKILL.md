@@ -94,6 +94,8 @@ Read the selected chapter files (each is reference-grade handbook Markdown with 
 
 **Miss decision (both surfaces now checked).** A **miss** is: Step 6 found no article AND Step 6.5 found no chapter. On a miss, do not synthesize from nothing — run Step 8 to log it, then go to **Step 9 (auto-enrich on a miss)**. Only if Step 9 is not applicable (no stack matched in Hop-1, or it stages nothing) tell the user: "No matching content found in stacks: {STACKS_TO_SEARCH[*]}." If Step 6.5 found chapters even though Step 6 found no article, that is a **hit** — synthesize from the chapters in Step 7; do not auto-enrich.
 
+**Anti-pattern.** The enrich path (Step 9) IS the web search. If answering needs information not in the articles or chapters, that is a miss — run Step 9, never call WebSearch/WebFetch to answer the lookup directly. A raw web answer is ungrounded (never quote-verified, tiered, or filed) and leaves the miss unrecorded, so the same gap recurs.
+
 ## Step 7: Synthesize answer
 
 Using the article content — and any reference chapters recognized in Step 6.5 — synthesize an answer to the user's query.
@@ -104,6 +106,7 @@ Requirements:
 - For any content drawn from a **reference chapter** (Step 6.5), cite it to the printed book: book name, volume/chapter, and the printed page range from its frontmatter (`book`, `volume`, `chapter`, `printed_pages`). A handbook chapter IS a citable primary source.
 - If the articles and chapters don't fully answer the question, say what's missing
 - Do not invent information beyond what the articles and chapters contain
+- Do not call WebSearch/WebFetch to fill a gap here — that is a miss, not a synthesis task. The enrich path (Step 9) IS the web search: it quote-verifies, tiers, catalogs, and commits what it finds. A raw web answer skips all of that and leaves the miss unrecorded.
 
 **Collect primary sources.** Before formatting the response, gather the base sources from every article read. Each article has a `sources:` frontmatter list of relative paths in the canonical **bare** form — `sources/{publisher}/{file}.md` — per the article contract (`references/article-contract.md`, plugin root; the whole corpus was normalized to bare in stacks#88). Resolve each by prepending the stack the article belongs to: read `$LIBRARY/{stack}/{path}`. For each unique resolved path, read the first 8 lines and extract:
 - The H1 heading (title of the original publication)
