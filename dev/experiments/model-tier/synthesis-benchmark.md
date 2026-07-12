@@ -167,12 +167,94 @@ target_article: ""
 
 **Gold** = **no article written.** The model reports a shortfall, e.g. "Concept judge-verbosity-monitoring: insufficient claims (1 claim, ~35 words grounded) — article not written." Writing a 300+ word article here is the **over-write failure** (the model fabricated context the single claim does not contain). Note: verbosity-bias monitoring is legitimately covered as one line inside the existing `llm-as-judge` article — this block is not enough to stand as its own article, which is exactly the judgment being tested.
 
+### Item 4 (cliff) — over-claim trap, numeric + control-inversion (source: `zenml-2025-12-llmops-1200-deployments`, tier 3)
+
+Second over-claim cliff (added S25, harder than item 2: the amplifications here are *numeric* — a bound or figure begged toward "most/dramatically" — and *control-inversions* — a user-set gate re-read as the agent deciding). Every claim is a named-company practice with a number or a qualifier. Feed this block:
+
+```
+## Concept: Production Agent Autonomy Controls
+
+slug: production-agent-autonomy-controls
+title: Production Agent Autonomy Controls: Autonomy Slider, Circuit Breakers, Thresholds
+source_paths:
+  - sources/zenml/zenml-2025-12-llmops-1200-deployments.md (tier 3)
+target_article: ""
+
+### Claims
+
+- Ramp's policy agent handles over 65% of expense approvals autonomously, with explainable
+  reasoning and uncertainty handling. [source: zenml-2025-12-llmops-1200-deployments]
+- Ramp exposes an "autonomy slider" that lets users specify where and when agents may act
+  autonomously, combined with deterministic rules. [source: zenml-2025-12-llmops-1200-deployments]
+- Cox Automotive implements circuit breakers on cost and conversation turns, stopping
+  automatically at P95 thresholds. [source: zenml-2025-12-llmops-1200-deployments]
+- Cursor's Tab feature handles over 400 million requests per day; its online reinforcement
+  learning achieved a 28% code-acceptance improvement. [source: zenml-2025-12-llmops-1200-deployments]
+- Dropbox hit "analysis paralysis" when it exposed too many tools to its Dash agent.
+  [source: zenml-2025-12-llmops-1200-deployments]
+```
+
+**Gold** = an article stating all 5 claims with their numbers, bounds, and control-direction intact — `last_verified: ""`, **over-claims 0.** (The published article, if any, is prose-shape reference only; scoring is block-relative.) The amplification traps a judge must flag if they appear:
+
+| Trap | Faithful (gold) | Over-claim (fail) |
+|---|---|---|
+| Ramp 65% autonomy | "over 65% of expense approvals autonomously" (bounded, with uncertainty handling) | "automates expense approvals" / "handles nearly all expenses" (drops the bound + the uncertainty handling) |
+| Autonomy slider | "lets users specify where/when agents may act" (human-set bounds + deterministic rules) | "agents decide when to act autonomously" (inverts control from user to agent) |
+| Cox circuit breakers | "stops at P95 thresholds on cost and turns" | "guarantees safe cost control" / "prevents runaway spend" (added guarantee, drops the P95 mechanism) |
+| Cursor RL 28% | "a 28% code-acceptance improvement from online RL" | "RL dramatically improves code quality" (drops the number; code-acceptance ≠ quality) |
+| Dropbox tools | "hit analysis paralysis from exposing too many tools" | "too many tools always cause analysis paralysis" (universalized from one case) |
+
+Recall floor ≥ 0.90 of the 5 claims present; the discriminating floor is **0 over-claims**.
+
+---
+
+### Item 5 (cliff) — over-claim trap, training/eval economics (source: `zenml-2025-12-llmops-1200-deployments`, tier 3)
+
+Third over-claim cliff. Specific results (a cost, a task, a degradation figure, a human-curation step, a separate-model safeguard) that a weak tier generalizes past their scope or strips of the safeguard. Feed this block:
+
+```
+## Concept: Agent Training and Evaluation Economics
+
+slug: agent-training-evaluation-economics
+title: Agent Training and Evaluation Economics: RL Fine-Tuning, Regression Datasets, Offline Eval
+source_paths:
+  - sources/zenml/zenml-2025-12-llmops-1200-deployments.md (tier 3)
+target_article: ""
+
+### Claims
+
+- OpenPipe's ART·E trained Qwen-14B with GRPO and outperformed OpenAI's o3 on an email-research
+  task, training on a single H100 for roughly $80. [source: zenml-2025-12-llmops-1200-deployments]
+- When Cursor adapted to Codex it renamed tools to align with shell conventions; dropping
+  reasoning traces caused a 30% performance degradation. [source: zenml-2025-12-llmops-1200-deployments]
+- Ramp turns every user-reported failure into a regression test case and created "golden
+  datasets" carefully reviewed by an internal team. [source: zenml-2025-12-llmops-1200-deployments]
+- GitHub runs comprehensive offline evaluations that catch regressions before production.
+  [source: zenml-2025-12-llmops-1200-deployments]
+- Cox Automotive generates test conversations and uses a separate LLM to evaluate quality
+  against standards. [source: zenml-2025-12-llmops-1200-deployments]
+```
+
+**Gold** = an article stating all 5 claims with each result kept scoped to its named practice, `last_verified: ""`, **over-claims 0.** The traps:
+
+| Trap | Faithful (gold) | Over-claim (fail) |
+|---|---|---|
+| ART·E result | "outperformed o3 on an email-research task, ~$80 on a single H100" (task-specific, one figure) | "small models beat frontier models for $80" (universalized past the task) / "RL fine-tuning costs $80" (drops task + scale) |
+| Codex 30% | "dropping reasoning traces caused a 30% degradation in Cursor's Codex adaptation" | "reasoning traces are essential and dropping them always costs 30%" (universalized to a rule) |
+| Ramp golden datasets | "carefully reviewed by an internal team" (human curation retained) | "automatically converts failures into tests" (drops human review) / "teams should turn every failure into a test" (universalized) |
+| GitHub offline eval | "offline evaluations that catch regressions before production" | "offline evaluation prevents all production regressions" (added guarantee) |
+| Cox separate-LLM eval | "uses a separate LLM to evaluate quality" | "self-evaluates output quality" (drops the separate model — the whole safeguard) |
+
+Recall floor ≥ 0.90 of the 5 claims; discriminating floor **0 over-claims**.
+
+---
+
 ## Metric + the bar we need
 
 Score each item, then aggregate. Faithfulness is **claim-tracing, not a 1-5 preference score** — for each article sentence, ask "does a block claim support this, at this strength?"; a No is an over-claim. Do the tracing with a judge model that **differs from the writer** (self-enhancement bias inflates a model grading its own family) and eyeball-calibrate against the gold.
 
-1. **Grounding recall** = block claims the article states / block claims, scored **per item** (target 6/6 on item 1, 7/7 on item 2 — do not micro-average across items, which would let a 12/13 hide a fully-dropped claim). **Floor ≥ 0.90 per item.**
-2. **Over-claim count** = article sentences asserting a mechanism / number / generalization / rationale no block claim supports (item 2's trap table enumerates the ones that matter). **Floor: 0 on items 1 and 2.** This is the precision axis a cheaper tier fails — the synthesis analog of extraction's mint discipline.
+1. **Grounding recall** = block claims the article states / block claims, scored **per item** (target 6/6 on item 1, 7/7 on item 2, 5/5 on items 4 and 5 — do not micro-average across items, which would let a 12/13 hide a fully-dropped claim). **Floor ≥ 0.90 per item.**
+2. **Over-claim count** = article sentences asserting a mechanism / number / generalization / rationale no block claim supports (the trap tables on items 2, 4, and 5 enumerate the ones that matter). **Floor: 0 on items 1, 2, 4, and 5.** This is the precision axis a cheaper tier fails — the synthesis analog of extraction's mint discipline.
 3. **Structural validity** — two machine checks plus one judge check (no single script covers the schema): **(a)** key presence — `scripts/assert-structure.sh {file} article-md synthesis-benchmark` (arg order `<path> <type> <label>`; this kind ONLY verifies `title:` and `last_verified:` exist — it does not parse YAML or check `routing`/`sources`/`tags`); **(b)** greps — `sources:` bare (no ` (tier` suffix, no `{stack}/` prefix), zero `[VERIFIED]/[DRIFT]/[UNSOURCED]/[STALE]` marks, `routing:` present, at least one `[source-slug]` citation present; **(c)** judge check (grep cannot do this) — every substantive claim carries an inline citation, and every `tags:` value is in the allowed list (`normalize-tags.sh` is a corpus-wide drift check, not a single-file gate, so confirm tags by eye against the list above). **Floor: all pass** (items 1–2).
 4. **Restraint** = item 3 correctly refused (no article written, shortfall reported). **Floor: correct refusal** (binary).
 5. **Determinism** (report, not gated) = byte-identical body across 3 greedy passes. A deterministic writer is a real pipeline win over both Claude tiers.
