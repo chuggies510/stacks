@@ -36,17 +36,13 @@ normalized. Never prepend the stack name: write `sources/cpsc/legacy-wiring.md`,
 
 **Tag values** MUST be chosen from the `allowed_tags:` list in `STACK.md`. Read that list before writing frontmatter and pick only from it. If `allowed_tags:` is absent or the list is empty, include the literal line `[tag-vocabulary not declared]` at the top of your return text (agents have no separate stdout channel, so the caller surfaces this marker) and proceed with free-form tags — backward-compat for stacks that haven't migrated. A post-W2 drift check (`scripts/normalize-tags.sh`) halts the catalog pipeline if any article carries an out-of-vocabulary tag.
 
-**Body:** length follows the grounded claims (soft cap ~1200 words for complex topics); do not pad to a target. Use an inline `[source-slug]` citation on every claim. No `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` markers in the body — these are a legacy audit vocabulary the current validator no longer emits (it fixes contradictions in place instead), and this agent never writes them.
-
-## Strip-on-Rewrite Rule
-
-When an existing article is present on input (`target_article` is set): strip any legacy audit marks from the existing article body before producing the updated version. The marks to strip are: `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]`. Older audit cycles left these inline; the current validator emits none, but un-migrated articles may still carry them, so strip every occurrence, then rewrite the article incorporating the new claims.
+**Body:** length follows the grounded claims (soft cap ~1200 words for complex topics); do not pad to a target. Use an inline `[source-slug]` citation on every claim. No legacy audit markers (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`) in the body — this agent never writes them.
 
 ## First Write vs. Update Behavior
 
 **First write** (no existing article): write the article from scratch using the concept block's claims. Set `last_verified: ""`.
 
-**Update** (existing article present): read the existing article, apply the Strip-on-Rewrite Rule above, merge the new claims with the existing body content (prefer the new extraction for any claim the concept block explicitly covers; retain existing body content that the concept block does not address). Set `last_verified: ""` (the validator will repopulate this on the next A1 pass).
+**Update** (existing article present): read the existing article, merge the new claims with the existing body content (prefer the new extraction for any claim the concept block explicitly covers; retain existing body content that the concept block does not address), set `last_verified: ""` (the validator will repopulate this on the next A1 pass). If the existing body carries any legacy audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`), strip every occurrence first — older audit cycles left them inline; the current validator emits none.
 
 ## Example 1: First write — new article
 
@@ -59,19 +55,11 @@ Body (excerpt):
 
 No audit marks. `last_verified` left as empty string.
 
-## Example 2: Update with strip-prior-cycle marks
+## Example 2: Update — merge new claims into an existing article
 
-Existing article `articles/chiller-efficiency-metrics.md` body contains:
-> COP [VERIFIED] is the ratio of cooling output to electrical input. [DRIFT] Some sources define EER...
+Existing article `articles/chiller-efficiency-metrics.md` covers COP and EER. Input: a new concept block adds IPLV claims from a second source, `target_article: chiller-efficiency-metrics`.
 
-Input: new concept block adds claims about IPLV from a second source.
-
-Process:
-1. Strip `[VERIFIED]` and `[DRIFT]` from the existing body. Result: `COP is the ratio of cooling output to electrical input. Some sources define EER...`
-2. Merge new IPLV claims from the concept block into the article body.
-3. Write the updated article. Set `last_verified: ""`.
-
-The output article body must not contain any `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, or `[STALE]` strings. Strip every occurrence before writing.
+Process: read the existing article; merge the new IPLV claims into the body (retain the existing COP/EER content the concept block doesn't touch; prefer the new extraction for any claim it explicitly covers); set `last_verified: ""`. If the existing body carries any legacy audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`), strip them first — the current validator emits none.
 
 ## Example 3: Concept too thin — no write
 

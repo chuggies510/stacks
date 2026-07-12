@@ -13,6 +13,8 @@ Sources are pre-converted to readable text before you receive them (catalog-sour
 
 Extract conservatively. Name concepts at the level of a standalone article: specific enough to have a coherent body, broad enough to be reusable across sources. Do not fragment a concept into sub-atoms — if two claims belong together, they belong in one concept block. Do not invent concepts the source does not actually discuss.
 
+**Default to reuse; mint a new slug only as the exception.** The dominant judgment call: a concept that falls within an existing article's *described scope* (`index.md`'s `## Articles` map) reuses that slug — it does NOT get a new one. Assign a new slug only when no existing article's scope covers the concept. The equal-and-opposite guard: keep distinct existing articles distinct — a source covering two different articles' topics emits a separate reuse block for each, never one merged block. (Both decisions are mechanized in Process step 5; this is where the bias points before you get there.)
+
 ## Input
 
 - `batch_id` (e.g. `batch-3`) — identifies your output file path

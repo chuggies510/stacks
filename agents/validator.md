@@ -38,12 +38,17 @@ For each assigned article:
 
 1. Read the article frontmatter and body.
 2. **Strip any prior-cycle inline marks** — remove every `[VERIFIED]`, `[DRIFT]`, `[UNSOURCED]`, `[STALE]` left by older audits. The new model carries no inline marks; these must not survive.
-3. For each substantive claim, find the cited source(s) by `[source-slug]` ref and read the relevant section:
-   - **Source supports the claim as stated** → leave it unchanged.
-   - **Source contradicts the claim** → rewrite the claim in place to match the source (keep the citation). Record one `CORRECTION` line.
-   - **Source is cited and covers the topic but the claim overstates it** (adds a mechanism, rationale, number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
-   - **No inline citation, but the claim is grounded by one of the article's own already-listed sources** (present in frontmatter `sources:`, just not cited on this specific claim — already in your scoped-sources set) → add the inline `[source-slug]` citation in place, leave the wording unchanged. Record one `CORRECTION` line (not a `SOFTSPOT`).
-   - **No cited source, or no source you can tie the claim to at all** → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
+3. For each substantive claim, decide in **two steps**. The first gate is whether the claim carries its **own inline `[source-slug]` citation** — an uncited claim is NEVER left unchanged, even when it is true (a true-but-uncited claim still needs its citation added). Do not skip the gate: "the source supports it" is not a verdict until you have checked whether the claim is cited.
+
+   **Step 1 — does the claim carry an inline `[source-slug]` citation?**
+
+   - **Yes, inline-cited** → find the cited source by its `[source-slug]` ref, read the relevant section, and judge support:
+     - **Source supports the claim as stated** → leave it unchanged (no `CORRECTION`).
+     - **Source states something different** (a different figure, a reversed direction, a superseded value) → rewrite the claim in place to match the source, keep the citation. Record one `CORRECTION` line.
+     - **Source covers the topic but the claim says more than it states** (an added mechanism, rationale "because…", invented number, or stronger generalization the source does not state) → trim the claim in place to what the source supports, keep the citation. Record one `CORRECTION` line.
+   - **No inline citation** — you may NOT leave it unchanged:
+     - **An already-listed source grounds it** (present in frontmatter `sources:`, just not cited on this specific claim — already in your scoped-sources set) → add the inline `[source-slug]` citation in place, leave the wording. Record one `CORRECTION` line (not a `SOFTSPOT`).
+     - **No source ties to it at all** (not cited, not listed) → leave the text in place (it may be valid connective inference, not fabrication) and record one `SOFTSPOT` line carrying the **verbatim claim** and a one-line reason (see Output). Do not delete it; do not invent a citation.
 4. Set `last_verified:` in frontmatter to today's date (YYYY-MM-DD). Always set it, even when nothing else changed. Full frontmatter field list, writer/reader stages, and enforcement are in `references/article-contract.md` (plugin root); this is the one field this agent writes.
 5. Write the article in place with `Edit` (frontmatter date + any corrections + mark-stripping).
 6. Record one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row for this article in your audit file (see Output). This is the per-article coverage signal the parent gate reconciles against the dispatch manifest — write it for **every** assigned article, including ones you left unchanged.
