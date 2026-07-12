@@ -40,8 +40,10 @@ principle says that is impossible; these were doomed by construction:
 
 - **Validator prompt-split** — tried to fix an unstable judgment with a better prompt.
 - **Refusal calibration curve** — tried to *tune* a chaotic judgment (liminal: no curve exists).
-- **Byte-determinism / temp-0 chasing** — tried to *stabilize* it via sampling; the
-  instability is in expert routing, not sampling.
+- **Byte-determinism / temp-0 chasing** — tried to *stabilize* it via sampling; but the
+  failures reproduce deterministically at temp 0 (refusal flips on a cosmetic preamble,
+  enrichment dedup flips on instruction ordering), so they were never sampling noise and
+  stabilizing sampling cannot touch them.
 - **Majority-vote-of-N on the validator** — voting fixes a coin-flip, not a deterministic
   or ordering-dependent miss.
 
