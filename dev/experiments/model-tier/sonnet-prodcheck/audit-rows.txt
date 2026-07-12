@@ -1,0 +1,4 @@
+VALIDATED	llm-as-a-judge-evaluation-method	1783872017
+CORRECTION	llm-as-a-judge-evaluation-method	"roughly 300 expert votes" → "~3,000 (~3K) expert votes" per [arxiv-2306.05685-llm-as-judge-mt-bench]
+CORRECTION	llm-as-a-judge-evaluation-method	trimmed "consistently outperforms human raters ... preferred grader" (not in source) to "matches human preferences at over 80% agreement" per [arxiv-2306.05685-llm-as-judge-mt-bench]
+SOFTSPOT	llm-as-a-judge-evaluation-method	Most teams find a two-week evaluation window sufficient to validate a new judge model before rolling it into production grading pipelines.	no scoped source covers evaluation-window duration
