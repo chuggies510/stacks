@@ -63,8 +63,11 @@ prematch() { # <candidate> <existing-list-newline>
 }
 
 load_existing() { # <file-or-dir> -> newline slug list
-  if [[ -d "$1" ]]; then ls "$1"/*.md 2>/dev/null | xargs -r -n1 basename | sed 's/\.md$//'
-  elif [[ -f "$1" ]]; then grep -vE '^\s*$' "$1"
+  # An EMPTY but existing set (no articles yet, first catalog) is VALID → exit 0
+  # with empty output (→ every candidate NEW). Only a MISSING path exits 1 (codex
+  # #109). find/`|| true` keep the empty case from tripping set -e/pipefail.
+  if [[ -d "$1" ]]; then find "$1" -maxdepth 1 -name '*.md' -printf '%f\n' 2>/dev/null | sed 's/\.md$//'
+  elif [[ -f "$1" ]]; then grep -vE '^[[:space:]]*$' "$1" || true
   else echo "ERROR: existing set not found: $1" >&2; return 1; fi
 }
 

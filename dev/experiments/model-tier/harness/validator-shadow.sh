@@ -140,6 +140,7 @@ case "${L1[6]}" in
     ;;
   CORRECTION/add-citation) item6_note="add-citation caught correctly (gate-first prompt closed the S24 miss)" ;;
   SOFTSPOT) item6_note="mis-flagged as SOFTSPOT (should be add-citation)" ;;
+  INVALID/*) item6_note="MODEL RETURNED CLEAN on an uncited claim — harness COERCED it to INVALID (the structural gate fired); add-citation NOT resolved" ;;
 esac
 [[ "${L1[7]}" == CORRECTION* ]] && false_corrections=$((false_corrections+1))
 false_correction_rate=$(awk -v f="$false_corrections" 'BEGIN{printf "%.2f", f/4}')

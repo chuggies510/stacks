@@ -31,12 +31,15 @@ cited() {
   #   [[wikilinks]]        — cross-links, not sources
   #   [text](url)          — markdown links (the [text] is not a source slug)
   #   [VERIFIED]/[DRIFT]/… — legacy audit marks
-  # A real citation is [source-slug], and slugs are LOWERCASE kebab per the
-  # article contract, so the surviving match requires a lowercase leading char —
-  # this excludes bracketed labels like [Figure-1]/[Table 2] (codex #109).
+  # A real citation is [source-slug]. Slugs derive from source basenames, which
+  # are NOT forced lowercase (e.g. [OpenAI-GPT4]), so match ANY case but require at
+  # least one LETTER — this excludes pure-numeric footnote labels like [1]/[42]
+  # while still accepting mixed-case slugs (codex #109). A bracketed proper-noun
+  # label such as [Figure-1] is indistinguishable from a slug by regex and reads
+  # CITED (a rare, accepted false-positive — the alternative broke real citations).
   local t="$1"
   t=$(sed -E 's/\[\[[^]]*\]\]//g; s/\[[^]]*\]\([^)]*\)//g; s/\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]//g' <<< "$t")
-  grep -qE '\[[a-z0-9][a-z0-9._-]*\]' <<< "$t"
+  grep -qE '\[[a-zA-Z0-9._-]*[a-zA-Z][a-zA-Z0-9._-]*\]' <<< "$t"
 }
 
 gate() { if cited "$1"; then echo CITED; else echo UNCITED; fi; }
@@ -61,8 +64,10 @@ self_check() {
   chk CITED   "See [[shadow-mode]]; agreement was over 80% [arxiv-2306.05685-llm-as-judge-mt-bench]."  # wikilink + real citation
   chk CITED   "Cost was roughly \$80 on a single H100. [zenml-2025-12-llmops-1200-deployments]"        # numbers/punctuation around the slug
   chk UNCITED "Accuracy improved; see [paper](https://example.com/paper)."                            # markdown link, NOT a source citation
-  chk UNCITED "Verbosity bias is visible in [Figure-1]."                                              # bracketed label (uppercase), not a slug
   chk CITED   "See [analysis](https://x.com) and the data [zenml-2025-12-llmops-1200-deployments]."   # markdown link stripped, real citation remains
+  chk CITED   "GPT-4 beat the baseline. [OpenAI-GPT4]"                                                # MIXED-CASE source slug must still read CITED (codex #109)
+  chk UNCITED "The result held across trials [1]."                                                    # pure-numeric footnote label, not a slug
+  chk UNCITED "See results [42] and [7] below."                                                       # numeric labels only
   if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; return 1; fi
 }
 

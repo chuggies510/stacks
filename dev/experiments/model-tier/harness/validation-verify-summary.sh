@@ -23,16 +23,19 @@ self_check() {
   # false, poison_caught:true) but gold_verdict is a CORRECTION the local MISSED
   # (local CLEAN). The summary must DERIVE poison/caught from the verdicts and
   # ignore the booleans, else d's real miss is hidden.
-  printf '%s\n' '{"batch":"a","items":[{"claim_id":"1","gold_verdict":"CORRECTION/overstatement","local_verdict":"CORRECTION/overstatement","is_poison":true,"poison_caught":true,"is_false_correction":false},{"claim_id":"2","gold_verdict":"CORRECTION/contradiction","local_verdict":"CORRECTION/overstatement","is_poison":true,"poison_caught":true,"is_false_correction":false},{"claim_id":"3","gold_verdict":"CLEAN","local_verdict":"CLEAN","is_poison":false,"poison_caught":false,"is_false_correction":false}]}' > "$d/a.json"
+  # batch a also carries claim 4 = an add-citation item: it is NOT poison (not a
+  # wrong claim) and NOT a false-correction (gold is not CLEAN/SOFTSPOT), so it
+  # must be excluded from BOTH denominators (codex #109 — was miscounted as poison).
+  printf '%s\n' '{"batch":"a","items":[{"claim_id":"1","gold_verdict":"CORRECTION/overstatement","local_verdict":"CORRECTION/overstatement"},{"claim_id":"2","gold_verdict":"CORRECTION/contradiction","local_verdict":"CORRECTION/overstatement"},{"claim_id":"3","gold_verdict":"CLEAN","local_verdict":"CLEAN"},{"claim_id":"4","gold_verdict":"CORRECTION/add-citation","local_verdict":"CORRECTION/add-citation | src"}]}' > "$d/a.json"
   printf '%s\n' '{"batch":"b","items":[{"claim_id":"5","gold_verdict":"CORRECTION/overstatement","local_verdict":"CLEAN","is_poison":true,"poison_caught":false,"is_false_correction":false}]}' > "$d/b.json"
   printf '%s\n' '{"batch":"c","items":[{"claim_id":"7","gold_verdict":"CLEAN","local_verdict":"CORRECTION/overstatement","is_poison":false,"poison_caught":false,"is_false_correction":true}]}' > "$d/c.json"
   printf '%s\n' '{"batch":"d","items":[{"claim_id":"9","gold_verdict":"CORRECTION/overstatement","local_verdict":"CLEAN","is_poison":false,"poison_caught":true,"is_false_correction":false}]}' > "$d/d.json"
   local out; out=$(VERIFY_DIR="$d" run 2>&1)
   local fail=0
   grep -q 'graded: 4'                      <<<"$out" || { echo "FAIL: graded count"; fail=1; }
-  grep -q 'poison recall: 2/4'              <<<"$out" || { echo "FAIL: poison recall (derived from verdicts, not the lying booleans in d)"; fail=1; }
-  grep -q 'false-correction rate: 1/2'      <<<"$out" || { echo "FAIL: false-correction rate (non-poison denominator only)"; fail=1; }
-  grep -q 'items graded: 6'                <<<"$out" || { echo "FAIL: items graded count"; fail=1; }
+  grep -q 'poison recall: 2/4'              <<<"$out" || { echo "FAIL: poison recall (contradiction/overstatement only; add-citation excluded)"; fail=1; }
+  grep -q 'false-correction rate: 1/2'      <<<"$out" || { echo "FAIL: false-correction rate (gold CLEAN/SOFTSPOT denominator; add-citation excluded)"; fail=1; }
+  grep -q 'items graded: 7'                <<<"$out" || { echo "FAIL: items graded count"; fail=1; }
   if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; return 1; fi
 }
 
@@ -53,7 +56,13 @@ run() {
   # correction (gold CLEAN or SOFTSPOT), so the denominator is the non-poison
   # items only — never letting a poison item into the false-correction rate.
   jq -s '
-    def is_poison: (.gold_verdict // "" | startswith("CORRECTION"));
+    # POISON is only contradiction/overstatement — a claim that is WRONG and must
+    # be caught. add-citation (uncited-but-grounded) is NOT poison and NOT a
+    # false-correction: it is the citation-presence axis the gate owns, so it is
+    # excluded from both denominators (codex #109). FALSE-CORRECTION is the local
+    # CORRECTing a claim gold says is fine (gold CLEAN or SOFTSPOT).
+    def is_poison: (.gold_verdict // "" | test("^CORRECTION/(contradiction|overstatement)"));
+    def gold_ok:   (.gold_verdict // "" | (. == "CLEAN" or . == "SOFTSPOT"));
     def local_corrects: (.local_verdict // "" | startswith("CORRECTION"));
     [.[] | .items[]] as $items
     | {
@@ -61,8 +70,8 @@ run() {
         items_graded:        ($items | length),
         poison_total:        ($items | map(select(is_poison)) | length),
         poison_caught:       ($items | map(select(is_poison and local_corrects)) | length),
-        false_correction_total: ($items | map(select(is_poison | not)) | length),
-        false_correction_count: ($items | map(select((is_poison | not) and local_corrects)) | length)
+        false_correction_total: ($items | map(select(gold_ok)) | length),
+        false_correction_count: ($items | map(select(gold_ok and local_corrects)) | length)
       }
     | "graded: \(.graded)\n"
     + "items graded: \(.items_graded)\n"

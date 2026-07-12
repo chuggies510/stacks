@@ -53,8 +53,11 @@ is_dup() { # <candidate-url> <filed-newline-list> -> 0 if a normalized match exi
 gate() { if is_dup "$1" "$2"; then echo DUP; else echo NEW; fi; }
 
 load_filed() { # <file-or-dash> -> newline url list
+  # An EMPTY but existing filed set (cold start — enrichment initializes
+  # _filed-sources.tsv empty) is VALID → exit 0, empty output (→ candidate NEW).
+  # Only a MISSING path exits 1 (codex #109). `|| true` keeps empty from tripping set -e.
   if [[ "$1" == "-" ]]; then cat
-  elif [[ -f "$1" ]]; then grep -vE '^\s*$' "$1"
+  elif [[ -f "$1" ]]; then grep -vE '^[[:space:]]*$' "$1" || true
   else echo "ERROR: filed-urls source not found: $1" >&2; return 1; fi
 }
 
