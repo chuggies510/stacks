@@ -55,20 +55,29 @@ autonomy slider left user-controlled not agent-controlled (item 4), Cursor's 28%
 
 ## Head-to-head
 
-| Axis | sonnet | haiku (this run) | qwen3-30b (liminal S59/S61) |
+Each axis uses one commensurable value across all three tiers (pass/fail on the floor, or a
+relative-cost band). The precise haiku numbers live in the sections above; sonnet is the
+pinned production reference; qwen numbers are liminal's (S59/S61).
+
+| Axis | sonnet | haiku | qwen3-30b |
 |---|---|---|---|
-| Synthesis recall / over-claim | baseline | 23/23 · 0 | full · 0 |
-| Validation poison recall / false-corr | baseline | 1.00 / 0 | 1.00 / 0 |
-| Validation item-6 add-citation (gate-first) | catches | catches | catches |
-| Determinism (byte-identical across passes) | no (cloud) | **no (cloud, not measured)** | **yes (byte-DET, temp 0)** |
-| Marginal cost | paid | paid (cheaper than sonnet) | ~$0 (local) |
+| Clears synthesis floors (recall + 0 over-claim) | yes | yes | yes |
+| Clears validation floors (poison 1.00 / false-corr 0) | yes | yes | yes |
+| Catches add-citation under gate-first | yes | yes | yes |
+| Marginal cost | subscription (highest) | subscription (lower) | local (~$0) |
+
+Determinism is deliberately NOT a row: it is retired as a decision criterion (see
+`DESIGN-local-tier.md` § Aim). It was a testing scaffold, not the goal — good output, not
+identical output. For the record only: qwen is byte-identical at temp 0, haiku (cloud) is
+not, and this was not multi-pass-measured for haiku.
 
 ## Conclusion
 
 Behind the harness, **haiku clears the same synthesis and validation floors qwen does.** The
 earlier "haiku fails / qwen passes" split was an artifact of comparing raw-haiku to
 harnessed-qwen — on extraction the *raw* over-mint was haiku 3 vs qwen 19 (qwen worse), and
-that meta-judgment is the harness's job for both. The real differentiators between the two
-cheap tiers are **determinism** (qwen byte-identical, haiku not) and **cost** (qwen ~$0). Not
-a capability gap on these two roles. Determinism for haiku was not multi-pass-measured here
-(cloud sampling makes byte-identity structurally unavailable); it is not claimed.
+that meta-judgment is the harness's job for both. On these two roles there is **no capability
+gap** between the tiers behind the harness — the choice is **cost and operational fit**
+(qwen ~$0 local throughput vs haiku on subscription quota). Determinism is not a
+differentiator: it was a testing scaffold, now retired as a criterion (see
+`DESIGN-local-tier.md` § Aim). Good output is the goal, not identical output.

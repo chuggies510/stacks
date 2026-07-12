@@ -5,6 +5,27 @@ worker stages by two independent derivations (stacks S25 meta-pattern pass + lim
 per-stage measurement). Governs how each stage is wired to a local model; inherit it
 rather than re-benchmarking each stage from scratch.
 
+## Aim (rebased S25): good output, not identical output
+
+The goal is a cheap tier that produces GOOD output — clears the accuracy floors — not one
+that reproduces the authoritative model byte for byte. Byte-determinism (temp 0, identical
+across passes) was a **testing scaffold**: a cheap, brutal way to detect "did the output
+change" while we proved the harness works. It is now relaxed as a production criterion. A
+good article that differs from sonnet's wording is a success, not a diff to chase.
+
+Two consequences of the S25 measurements:
+
+- **Tier choice is cost/ops, not capability.** Behind the harness, both a local tier
+  (qwen3-30b, ~$0) and a cheaper subscription tier (haiku) clear the synthesis and
+  validation floors. Determinism no longer breaks the tie; cost and operational fit do.
+  (And "cloud" here is subscription tokens, not metered API credits — so the local-vs-cloud
+  cost gap is throughput/quota, not a dollar meter.)
+- **The authoritative step becomes verify-and-fix, not rewrite-from-scratch.** "Log the
+  identity diff" made sense only while determinism was the lens. With good-output as the
+  goal, the cloud pass should CHECK the local draft against the floors and fix only what
+  fails — cheaper than re-synthesizing every article. That is where the cloud-token savings
+  the pilot was built for actually live.
+
 ## The principle
 
 A weak local model (qwen3-30b-a3b on a 24GB card) is **strong at bounded content
