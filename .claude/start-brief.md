@@ -1,8 +1,8 @@
 <!--
 Start-brief: distilled orientation loaded by /start.
-Distilled 2026-07-11 from:
+Distilled 2026-07-12 from:
   tech-context.md @ cb8be4f8a32c35b5910de9ad419626ecffa5b07c
-  system-patterns.md @ c56e1d058a8f7352b61a66ec2463095469dbea39
+  system-patterns.md @ c5b2266ce4a5536e4b9a075fd3f64de2a73f6fe1
 Run /workspace-toolkit:refresh-start-brief when source files have drifted substantively.
 -->
 
@@ -78,7 +78,7 @@ Scale-sensitive waves (catalog W1/W2, audit A1) are sharded and dispatched by th
 - **Per-item coverage gate:** `check-coverage.sh` reconciles a dispatch manifest against per-item receipt rows, failing by name on omission/duplicate/unknown-id/missing file. `--batched` reconciles per batch.
 - **Article contract SSOT:** `references/article-contract.md` is the one frontmatter/source-ref/tier/concept-block schema definition; five stages point at it instead of restating. `extraction_hash`/`updated` are dead and stripped.
 - **Slug immutability:** W1 cannot rename an existing article's slug; combined with W1b dedup, prevents silent overwrite by parallel W2 dispatches.
-- **Corpus scope map to all 4 worker agents (0.57.0–0.58.0):** each worker (extractor/synthesizer/enrich/validator) now receives the `index.md ## Articles` scope map for its corpus-relative judgment (reuse-vs-mint, what-to-cross-link, is-this-already-sourced, does-this-belong), not just a bare listing. The lever generalized from extraction to all stages. Model-tier eval (#95 / epic #109): sonnet stays the reliable tier; whether a cheaper or local model holds each stage's floor is the open question. All four stages now have an offline gold-set benchmark in `dev/experiments/model-tier/` (extraction, synthesis, validation, enrichment), each scored on its own discrimination axis (over-claim, poison-recall + false-correction, false-CANDIDATE), adversarially reviewed by two codex passes — the recurring failure is restraint under surface similarity, not transcription. Design half done; local scoring by liminal + the live layers (enrich search-recall, validator shadow test) remain.
+- **Corpus scope map to all 4 worker agents (0.57.0–0.58.0):** each worker (extractor/synthesizer/enrich/validator) now receives the `index.md ## Articles` scope map for its corpus-relative judgment (reuse-vs-mint, what-to-cross-link, is-this-already-sourced, does-this-belong), not just a bare listing. The lever generalized from extraction to all stages. Model-tier eval (#95 / epic #109): sonnet stays the reliable tier; whether a cheaper or local model holds each stage's floor is the open question. All four stages have an offline gold-set benchmark in `dev/experiments/model-tier/` (extraction, synthesis, validation, enrichment); the recurring failure is restraint under surface similarity, not transcription. **The direction is now decided (ADR-002): a cheap-tier verify-and-fix recipe** — the cheap tier does one object judgment, a deterministic harness gate owns each meta-judgment (`claim-citation-gate`/`slug-prematch`/`url-dedup-gate` in `harness/`), and a cloud verifier (`agents/*-verifier.md`) grades/fixes the residue; determinism retired. All four stages' machinery is built + self-checked; three proven live (synthesis 4/4, validation item-6 e2e, extraction 35/38 over-mints caught). Wired opt-in (`STACKS_LOCAL_SHADOW=1`) into catalog: synthesis Step 8.5/8.6, extraction Step 5.5. Remaining: validation + enrichment SKILL wiring (each needs a local-run harness), then the authoritative flips.
 
 ---
 
