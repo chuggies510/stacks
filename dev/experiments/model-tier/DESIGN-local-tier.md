@@ -27,11 +27,23 @@ where the weak tier is unstable. The model owns only the content, where it is ex
 | **Synthesis** | write the article from the block | refusal gate (claim-count floor), tag-vocab filter, `[source: X]`→`[X]` normalizer | recall 13/13, 0 over-claims; refusal was prompt-chaotic, tags/citations mechanical | **shipped 0.61.0** |
 | **Validation** | judge ONE claim vs its cited source | run **per-claim** (isolate the across-article aggregation) | per-claim: recall 1.00 / false-corr 0.00 / byte-DET; whole-article batch: over-flags + scan-instability | recipe known |
 | **Extraction** | describe a concept | deterministic **slug pre-match** (isolate reuse-vs-mint) before the model sees it | over-mint was the granularity meta-judgment; described-slugs fixed most, pre-match closes it | recipe known |
-| **Enrichment** | ground ONE gap in a source | **URL dedup as `candidate_url in filed_urls` set-membership**, emit DUP in code, skip the call when the URL is already filed | grounding 3/3, false-CANDIDATE 0/2, byte-DET; the ONLY miss was the dedup it was handed | recipe known |
+| **Enrichment** | ground ONE gap in a source | **URL dedup as `candidate_url in filed_urls` set-membership**, emit DUP in code, skip the call when the URL is already filed | grounding 3/3, false-CANDIDATE 0/2, byte-DET; the ONLY miss was the dedup it was handed | recipe known; full local loop (search+fetch+judge) proven S59/S60, re-verified S25 |
 
 Enrichment is the sharpest illustration: its grounding (the object judgment) is genuinely
 good, and its single failure was a containment check a probabilistic model should never
 have run. The fix isn't a better prompt — it's not asking the model.
+
+### The harness is model-agnostic (haiku ≈ qwen behind it)
+
+The principle predicts the harness makes ANY adequate-content tier pass, not just the local
+one. Confirmed (S25, `results-stacks-S25-haiku.md`): `claude-haiku-4-5` run behind the same
+harness clears the **synthesis** floors (recall 23/23, 0 over-claims on all three over-claim
+cliffs) and the **validation** floors (poison recall 1.00, false-correction 0, and it catches
+the item-6 add-citation class under the gate-first prompt — the same lever qwen needed). The
+earlier "haiku fails, qwen passes" read was an artifact of comparing *raw* haiku to *harnessed*
+qwen: on extraction the raw over-mint was haiku 3 vs qwen 19 (qwen worse), and that meta-judgment
+is the harness's job for both. The two cheap tiers differ on **determinism** (qwen byte-identical
+at temp 0; haiku, cloud, not) and **cost** (qwen ~$0 local), not capability on these roles.
 
 ## What this principle eliminates (dead ends, do not revisit)
 
@@ -59,8 +71,12 @@ local wiring for stage S =
 Under the live-diff pilot architecture (local-first, cloud-authoritative, log-the-diff),
 this makes each stage a **mechanical application**, not a research project: wire it on the
 recipe, ship the cloud output, let the accumulated diff grade the local tier over real
-runs. Extraction (slug pre-match) and validation (per-claim) are the next two; enrichment's
-web-tool dependency is a separate problem (agentic tool use), so it stays on Claude for now.
+runs. Extraction (slug pre-match) and validation (per-claim) are the next two. Enrichment
+fits the same recipe end to end: its acquisition half (form a query, search, fetch) runs
+local too — liminal proved the full loop S59/S60 and re-verified it live this session
+(gemma4-31b forms its own query → Brave Search API → fetch → CANDIDATE/tier verdict, $0
+marginal, no cloud). Giving the local model `web_search`/`web_fetch` via ollama `/api/chat`
+tools is a tool-wiring task, not a reason to keep the stage on Claude.
 
 ## Provenance
 
