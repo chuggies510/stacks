@@ -29,10 +29,14 @@ self_check() {
   printf '%s\n' '{"slug":"agent-rl-fine-tuning","local_decision":"NEW","prematch":"NEW","verdict":"reuse:agent-harness-engineering","is_overmint":true,"reason":"already stated in agent-harness-engineering body (OpenPipe GRPO)","recall_gaps":["source also covers judge-calibration drift, local dropped it entirely"]}' > "$d/b.json"
   printf '%s\n' '{"slug":"token-budget","local_decision":"NEW","prematch":"NEAR:token-budget-management","verdict":"reuse:token-budget-management","is_overmint":true,"reason":"token-budget-management scope line already covers capacity/tokenization budgeting","recall_gaps":[]}' > "$d/c.json"
   printf '%s\n' '{"slug":"guardrail-escalation","local_decision":"NEW","prematch":"NEW","verdict":"reuse:guardrails-infrastructure","is_overmint":false,"reason":"agent mis-set is_overmint despite a reuse verdict — inconsistent record","recall_gaps":[]}' > "$d/d.json"
+  # (e) local was ALREADY correct (local_decision reuse:, verifier confirms the
+  # same reuse) — this is NOT an over-mint the verifier caught, so it must be
+  # excluded from over_mint_caught (codex #109: don't miscredit correct locals).
+  printf '%s\n' '{"slug":"cost-budget","local_decision":"reuse:llm-cost-control-production","prematch":"NEAR:llm-cost-control-production","verdict":"reuse:llm-cost-control-production","is_overmint":false,"reason":"local already reused correctly","recall_gaps":[]}' > "$d/e.json"
   local out; out=$(VERIFY_DIR="$d" run 2>&1)
   local fail=0
-  grep -q 'graded: 4'                 <<<"$out" || { echo "FAIL: graded count"; fail=1; }
-  grep -q 'over-mint caught: 3'        <<<"$out" || { echo "FAIL: over-mint-caught (derived from verdict, not the is_overmint boolean)"; fail=1; }
+  grep -q 'graded: 5'                 <<<"$out" || { echo "FAIL: graded count"; fail=1; }
+  grep -q 'over-mint caught: 3'        <<<"$out" || { echo "FAIL: over-mint-caught (flips only — local-already-reuse 'e' must NOT count)"; fail=1; }
   grep -q 'genuine new: 1'             <<<"$out" || { echo "FAIL: genuine-new count"; fail=1; }
   grep -q 'recall gaps noted: 1'       <<<"$out" || { echo "FAIL: recall gaps count"; fail=1; }
   grep -q 'go/no-go' <<<"$out"         || { echo "FAIL: missing go/no-go line"; fail=1; }
@@ -47,13 +51,16 @@ run() {
   [[ ${#files[@]} -gt 0 ]] || { echo "No grade JSONs in $dir — run a batch with the extraction verifier first."; return 1; }
 
   # Slurp all grade objects; compute the go/no-go aggregates in one jq pass.
-  # over_mint_caught and genuine_new are both DERIVED from the .verdict string
-  # (startswith "reuse:" vs == "NEW") — never from .is_overmint alone, so a
-  # miswritten is_overmint boolean cannot hide or fabricate an over-mint catch.
+  # An over-mint CAUGHT is one the verifier FLIPPED: local_decision was not
+  # already a reuse (NEW/NEAR) AND the verifier's verdict is reuse:. Counting
+  # every reuse: verdict would miscredit a candidate the local extractor already
+  # got right (local said reuse, verifier confirmed reuse) as a catch (codex
+  # #109). Both counts derive from local_decision + verdict, never .is_overmint.
   jq -s '
+    def flipped: (.local_decision // "NEW" | startswith("reuse:") | not) and (.verdict | startswith("reuse:"));
     {
       graded:          length,
-      over_mint_caught: (map(select(.verdict | startswith("reuse:"))) | length),
+      over_mint_caught: (map(select(flipped)) | length),
       genuine_new:      (map(select(.verdict == "NEW")) | length),
       recall_gaps:      (map(.recall_gaps // []) | add | length)
     }
@@ -65,7 +72,8 @@ run() {
 
   echo "---"
   jq -s -r '
-    (map(select(.verdict | startswith("reuse:"))) | length) as $caught
+    def flipped: (.local_decision // "NEW" | startswith("reuse:") | not) and (.verdict | startswith("reuse:"));
+    (map(select(flipped)) | length) as $caught
     | (map(select(.verdict == "NEW")) | length) as $new
     | ($caught + $new) as $total
     | if $total == 0 then "go/no-go: no routed candidates to grade"

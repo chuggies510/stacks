@@ -29,11 +29,14 @@ self_check() {
   printf '%s\n' '{"gap":"b","candidate_url":"u-b","grounding_valid":false,"tier_ok":true,"would_reject":true,"reason":"topical only"}' > "$d/b.json"
   printf '%s\n' '{"gap":"c","candidate_url":"u-c","grounding_valid":true,"tier_ok":false,"would_reject":true,"reason":"forum stamped tier 2"}' > "$d/c.json"
   printf '%s\n' '{"gap":"d","candidate_url":"u-d","grounding_valid":false,"tier_ok":true,"would_reject":false,"reason":"agent under-reported its own reject"}' > "$d/d.json"
+  # (e) FAIL-CLOSED: grounding_valid is missing entirely — an unverifiable
+  # grounding must count as a false candidate, not slip through as safe.
+  printf '%s\n' '{"gap":"e","candidate_url":"u-e","tier_ok":true,"reason":"agent omitted grounding_valid"}' > "$d/e.json"
   local out; out=$(VERIFY_DIR="$d" run 2>&1)
   local fail=0
-  grep -q 'graded: 4' <<<"$out"                  || { echo "FAIL: graded count"; fail=1; }
-  grep -q 'valid grounding: 2/4' <<<"$out"        || { echo "FAIL: valid grounding (derived, not trusting would_reject)"; fail=1; }
-  grep -q 'false candidates: 2' <<<"$out"         || { echo "FAIL: false candidate count (must include the inconsistent 'd' case)"; fail=1; }
+  grep -q 'graded: 5' <<<"$out"                  || { echo "FAIL: graded count"; fail=1; }
+  grep -q 'valid grounding: 2/5' <<<"$out"        || { echo "FAIL: valid grounding (derived, not trusting would_reject)"; fail=1; }
+  grep -q 'false candidates: 3' <<<"$out"         || { echo "FAIL: false candidate count (must include inconsistent 'd' AND missing-field 'e')"; fail=1; }
   grep -q 'tier mismatches: 1' <<<"$out"          || { echo "FAIL: tier mismatch count"; fail=1; }
   grep -q 'go/no-go: NO-GO' <<<"$out"              || { echo "FAIL: go/no-go line"; fail=1; }
   if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; return 1; fi
@@ -50,13 +53,20 @@ run() {
   jq -s '
     {
       graded:         length,
-      # DERIVE false_candidate from .grounding_valid; do not trust the agent-
-      # reported .would_reject boolean (a grade can report would_reject:false
-      # while grounding_valid is false). The harness owns this computation.
+      # DERIVE from .grounding_valid; do not trust the agent-reported
+      # .would_reject boolean. FAIL CLOSED: a grade whose grounding_valid is
+      # anything other than an explicit true (false, null, or missing) counts as
+      # a false candidate — an unverifiable grounding is not a safe one (codex
+      # #109). valid_grounding requires an explicit true.
       valid_grounding: (map(select(.grounding_valid == true))  | length),
-      false_candidate: (map(select(.grounding_valid == false)) | length),
-      tier_mismatch:   (map(select(.tier_ok == false))         | length)
+      false_candidate: (map(select(.grounding_valid != true))  | length),
+      tier_mismatch:   (map(select(.tier_ok != true))          | length)
     }
+    # GO gates on grounding (the safety floor — a hallucinated grounding is
+    # unsafe to ship). A tier mismatch is reported, not a blocker: the source is
+    # real and states the claim, only mis-tiered, which the operator fixes on
+    # staging. (The agent-reported would_reject folds tier in for the per-candidate
+    # staging call; the FLIP go/no-go is a coarser local-loop-safety question.)
     | . + { go: (.false_candidate == 0) }
     | "graded: \(.graded)\n"
     + "valid grounding: \(.valid_grounding)/\(.graded)\n"

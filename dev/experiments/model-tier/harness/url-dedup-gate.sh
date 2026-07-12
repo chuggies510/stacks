@@ -22,16 +22,22 @@
 #   bash url-dedup-gate.sh --self-check
 set -euo pipefail
 
-normalize_url() { # <url> -> normalized host+path
-  local u="$1"
+normalize_url() { # <url> -> normalized host+path[+query]
+  local u="$1" query="" base host rest=""
   u="${u%%#*}"                    # strip #fragment
   u=$(sed -E 's#^[Hh][Tt][Tt][Pp][Ss]?://##' <<<"$u")  # strip scheme, case-insensitive
-  u="${u%/}"                      # strip one trailing slash
-  local host="${u%%/*}" rest=""
-  case "$u" in */*) rest="/${u#*/}" ;; esac
-  host="${host,,}"                 # lowercase host
+  # Split off the query BEFORE any path/slash handling so (a) a query on a
+  # slash-less URL (example.com?x=A) is not swallowed into the host and
+  # lowercased, and (b) the trailing-slash strip applies to the PATH, not to a
+  # path that happens to precede a query (path?q vs path/?q must match). Query
+  # values are kept case-sensitive — they can be (codex #109).
+  case "$u" in *\?*) query="?${u#*\?}"; base="${u%%\?*}" ;; *) base="$u" ;; esac
+  base="${base%/}"                 # strip one trailing slash from the path
+  host="${base%%/*}"
+  case "$base" in */*) rest="/${base#*/}" ;; esac
+  host="${host,,}"                 # lowercase host only
   host="${host#www.}"              # strip leading www.
-  printf '%s%s' "$host" "$rest"
+  printf '%s%s%s' "$host" "$rest" "$query"
 }
 
 is_dup() { # <candidate-url> <filed-newline-list> -> 0 if a normalized match exists
@@ -53,7 +59,7 @@ load_filed() { # <file-or-dash> -> newline url list
 }
 
 self_check() {
-  local filed; filed=$(printf '%s\n' "https://example.com/article" "https://arxiv.org/abs/2306.05685")
+  local filed; filed=$(printf '%s\n' "https://example.com/article" "https://arxiv.org/abs/2306.05685" "https://example.com/search?q=Cats")
   local fail=0
   chk() { local got; got=$(gate "$1" "$filed"); [[ "$got" == "$2" ]] || { echo "FAIL: '$1' -> got '$got' want '$2'"; fail=1; }; }
   chk "http://example.com/article"              "DUP"  # scheme differs
@@ -63,6 +69,8 @@ self_check() {
   chk "HTTPS://EXAMPLE.COM/article"              "DUP"  # host case differs
   chk "https://example.com/other-article"       "NEW"  # different path
   chk "https://arxiv.org/abs/2306.05686"         "NEW"  # different id, near-miss path
+  chk "https://example.com/search/?q=Cats"      "DUP"  # trailing slash BEFORE the query still normalizes (codex #109)
+  chk "https://example.com/search?q=cats"       "NEW"  # query VALUE case differs -> fail-closed to NEW, not lowercased to DUP
   if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; return 1; fi
 }
 
@@ -70,5 +78,9 @@ case "${1:-}" in
   --self-check) self_check ;;
   "") echo "Usage: url-dedup-gate.sh <candidate-url> <filed-urls-file|-> | --self-check" >&2; exit 2 ;;
   *) [[ -n "${2:-}" ]] || { echo "Usage: url-dedup-gate.sh <candidate-url> <filed-urls-file|->" >&2; exit 2; }
-     gate "$1" "$(load_filed "$2")" ;;
+     # Capture the loader separately so a missing filed-set FAILS (exit 1) rather
+     # than being masked in a command substitution and falling through to NEW —
+     # a masked failure would authorize a duplicate URL as new (codex #109).
+     filed=$(load_filed "$2") || exit 1
+     gate "$1" "$filed" ;;
 esac

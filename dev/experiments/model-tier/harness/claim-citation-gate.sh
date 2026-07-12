@@ -27,10 +27,16 @@ set -euo pipefail
 
 cited() {
   # $1 = claim text. Returns 0 (CITED) if an inline [source-slug] survives after
-  # removing [[wikilinks]] and audit marks; 1 (UNCITED) otherwise.
+  # removing things that LOOK like a bracket token but are not source citations:
+  #   [[wikilinks]]        — cross-links, not sources
+  #   [text](url)          — markdown links (the [text] is not a source slug)
+  #   [VERIFIED]/[DRIFT]/… — legacy audit marks
+  # A real citation is [source-slug], and slugs are LOWERCASE kebab per the
+  # article contract, so the surviving match requires a lowercase leading char —
+  # this excludes bracketed labels like [Figure-1]/[Table 2] (codex #109).
   local t="$1"
-  t=$(sed -E 's/\[\[[^]]*\]\]//g; s/\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]//g' <<< "$t")
-  grep -qE '\[[a-zA-Z0-9][a-zA-Z0-9._-]*\]' <<< "$t"
+  t=$(sed -E 's/\[\[[^]]*\]\]//g; s/\[[^]]*\]\([^)]*\)//g; s/\[(VERIFIED|DRIFT|UNSOURCED|STALE)\]//g' <<< "$t")
+  grep -qE '\[[a-z0-9][a-z0-9._-]*\]' <<< "$t"
 }
 
 gate() { if cited "$1"; then echo CITED; else echo UNCITED; fi; }
@@ -54,6 +60,9 @@ self_check() {
   chk UNCITED "The judge favored longer answers here [DRIFT]"                             # a legacy audit mark is not a citation
   chk CITED   "See [[shadow-mode]]; agreement was over 80% [arxiv-2306.05685-llm-as-judge-mt-bench]."  # wikilink + real citation
   chk CITED   "Cost was roughly \$80 on a single H100. [zenml-2025-12-llmops-1200-deployments]"        # numbers/punctuation around the slug
+  chk UNCITED "Accuracy improved; see [paper](https://example.com/paper)."                            # markdown link, NOT a source citation
+  chk UNCITED "Verbosity bias is visible in [Figure-1]."                                              # bracketed label (uppercase), not a slug
+  chk CITED   "See [analysis](https://x.com) and the data [zenml-2025-12-llmops-1200-deployments]."   # markdown link stripped, real citation remains
   if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; return 1; fi
 }
 

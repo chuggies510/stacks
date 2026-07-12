@@ -101,6 +101,16 @@ for pass in 1 2 3; do
     else
       label="ERROR"
     fi
+    # STRUCTURAL enforcement, not just the preamble instruction: the harness owns
+    # the citation-presence meta-judgment, so a CLEAN returned on an UNCITED claim
+    # is structurally invalid regardless of what the model said. Coerce it to
+    # INVALID/uncited-clean so CLEAN is IMPOSSIBLE in the recorded output for an
+    # uncited claim (the preamble alone is advisory — the model could ignore it;
+    # codex #109). The add-citation-vs-SOFTSPOT split still needs the model's
+    # content judgment, so we reject the CLEAN rather than fabricate a verdict.
+    if [[ "${GATE[$i]}" == "UNCITED" && "$label" == "CLEAN" ]]; then
+      label="INVALID/uncited-clean"
+    fi
     printf '%s' "$label" > "$WORK/label_${pass}_${i}.txt"
     echo "pass $pass item $i -> $label" >&2
   done

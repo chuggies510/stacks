@@ -89,5 +89,9 @@ case "${1:-}" in
   --self-check) self_check ;;
   "") echo "Usage: slug-prematch.sh <candidate> <existing-slugs-file|articles-dir> | --self-check" >&2; exit 2 ;;
   *) [[ -n "${2:-}" ]] || { echo "Usage: slug-prematch.sh <candidate> <existing-slugs-file|articles-dir>" >&2; exit 2; }
-     prematch "$1" "$(load_existing "$2")" ;;
+     # Capture the loader in its own statement so a missing existing-set FAILS
+     # (exit 1) instead of being masked inside a command substitution — a masked
+     # failure would fall through to NEW, authorizing a duplicate mint (codex #109).
+     existing=$(load_existing "$2") || exit 1
+     prematch "$1" "$existing" ;;
 esac
