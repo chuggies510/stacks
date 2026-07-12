@@ -19,28 +19,37 @@ For each item: read one article **claim** (as it appears in the body) and the **
 - **CORRECTION / add-citation** — the claim carries no inline citation, but one of the article's own already-listed sources (in frontmatter `sources:`) states it. Add the `[source-slug]` citation; leave the wording.
 - **SOFTSPOT** — the claim can be tied to **no** source at all (not cited, not listed). Leave the text in place and flag it verbatim. Never invent a citation or a fix.
 
-The two boundaries a cheaper tier fails: **overstatement vs. CLEAN** (miss → poison) and **overstatement vs. SOFTSPOT** (a claim whose source is cited but overstated gets *trimmed*; a claim with no source at all gets *flagged, not trimmed*).
+The boundaries a cheaper tier fails: **overstatement vs. CLEAN** (miss → poison), **overstatement vs. SOFTSPOT** (a claim whose source is cited but overstated gets *trimmed*; a claim with no source at all gets *flagged, not trimmed*), and — surfaced in the S24 local scoring — **add-citation vs. CLEAN** (an uncited-but-true claim reads as "supported → CLEAN" to a weak tier, which under-weights the missing inline citation). The gate-first prompt below (STEP 1 blocks CLEAN on any uncited claim) is the lever engineered against that third boundary; see the finding note under Metric.
 
 ### Prompt to feed your model (verbatim, per item)
 
 ```
 You are a knowledge validator. You are given ONE article claim and the CITED SOURCE
 EXCERPT it rests on (plus, when relevant, the article's frontmatter `sources:` list).
-Decide the verdict:
 
-- CLEAN — the source supports the claim as stated. Leave it.
-- CORRECTION/contradiction — the source states something different (figure, direction).
-  Give the corrected claim text.
-- CORRECTION/overstatement — the source covers the topic but the claim says MORE than it
-  states (added mechanism, rationale "because…", invented number, or a stronger
-  generalization like "consistently"/"outperforms"/"eliminates"/"any"/"zero"). Give the
-  trimmed claim text (what the source actually supports).
-- CORRECTION/add-citation — no inline citation, but a source already in the article's
-  `sources:` list states it. Output the citation to add; leave wording unchanged.
-- SOFTSPOT — the claim ties to NO source (not cited, not listed). Leave the text, flag it.
-  Do NOT invent a citation or a fix.
+Decide in TWO steps — the first gate is whether the claim carries its OWN inline
+[source-slug] citation. Do not skip it: an uncited claim is NEVER CLEAN, even when it is
+true, because a true-but-uncited claim still needs its citation added.
 
-Do NOT rewrite for wording, tone, or style — only for the four defects above.
+STEP 1 — does the claim carry an inline [source-slug] citation of its own?
+
+  IF YES (inline-cited):
+    - Source supports the claim as stated .............. CLEAN
+    - Source states something DIFFERENT (a different
+      figure, a reversed direction) ................... CORRECTION/contradiction | {corrected text}
+    - Source covers the topic but the claim says MORE
+      than it states (added mechanism, rationale
+      "because…", invented number, or a generalization
+      like "consistently"/"outperforms"/"eliminates"/
+      "any"/"zero") .................................... CORRECTION/overstatement | {trimmed text}
+
+  IF NO (no inline citation) — you may NOT return CLEAN:
+    - A source already in the article's `sources:` list
+      states it ....................................... CORRECTION/add-citation | {source-slug to add}
+    - No source (cited or listed) states it ........... SOFTSPOT (leave text, flag it;
+                                                         never invent a citation or fix)
+
+Do NOT rewrite for wording, tone, or style — only for the defects above.
 OUTPUT one line, exactly one of:
   CLEAN
   CORRECTION/contradiction | {corrected claim text}
@@ -114,6 +123,23 @@ Source files (for audit): `llm/sources/arxiv/arxiv-2306.05685-llm-as-judge-mt-be
 4. **Determinism** (report, not gated) = identical verdict set across 3 greedy passes.
 
 A model that clears floors 1–2 is a viable validation tier. The likely weak-tier signature is **either** direction: a rubber-stamp tier returns CLEAN on the planted overstatements (misses poison — floor 1 breach), or an over-eager tier trims the clean/softspot items (corrupts truth — floor 2 breach). The stage needs a model that discriminates *supported* from *overstated* without doing either — the same restraint the synthesis stage needs, applied to judging instead of writing.
+
+## Finding + lever (S24 — add-citation miss)
+
+First local scoring (S24, `results-liminal-S59.md`): all four viable tiers (qwen3.6-27b,
+gemma4-31b, qwen3-30b-a3b, gpt-oss-20b) cleared **both gated floors** (poison recall 1.00,
+false-correction 0) byte-deterministically — but **every one returned CLEAN on item 6**, the
+uncited-but-listed add-citation claim. Benign (leaves a *true* claim uncited — under-action, not
+poison, not a false trim), so it is not a floor breach, but no cheap tier caught the class solo.
+
+Root cause: with a flat 5-label list, "the source supports it" pattern-matches to CLEAN before the
+tier checks whether the claim carries its own inline citation. Lever (this revision): the prompt is
+now **gate-first** — STEP 1 asks "is the claim inline-cited?" and an uncited claim structurally
+cannot be CLEAN (it routes to add-citation or SOFTSPOT). Same five labels, no new class; only the
+decision order changed. **Re-score item 6 (or the full 7) under the revised prompt** to measure
+whether the gate closes the miss without regressing items 1–5/7. If it does, this is the add-citation
+lever for any future weak-tier deployment; the shipped `validator` agent (sonnet-pinned, already
+handles item 6) gets the same gate-first restructure only if/when a weak tier is actually promoted.
 
 ## What to send back
 
