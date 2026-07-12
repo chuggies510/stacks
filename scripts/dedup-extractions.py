@@ -25,9 +25,10 @@ from collections import Counter
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOP = {"the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "with",
          "by", "is", "are", "as", "at"}
-_BOILERPLATE_DF = 3     # a token in >= this many titles is template scaffolding, not a dup signal
-NEAR_DUP_FLOOR = 0.40   # ponytail: set-cosine floor. Report-only, so bias loose (a spurious
-                        # pair is a cheap operator skip; a miss is silent). Tune per corpus.
+_BOILERPLATE_DF = 3      # a token in >= this many titles is template scaffolding, not a dup signal
+NEAR_DUP_FLOOR = 0.40    # ponytail: set-cosine floor. Report-only, so bias loose (a spurious
+                         # pair is a cheap operator skip; a miss is silent). Tune per corpus.
+_IDENTICAL_TITLE_FLOOR = 0.85  # fallback when both titles are all-boilerplate (see below)
 
 def _title_tokens(title):
     return [t for t in _TOKEN_RE.findall(title.casefold()) if len(t) > 1 and t not in _STOP]
@@ -35,19 +36,33 @@ def _title_tokens(title):
 def near_dup_pairs_from_titles(titles):
     """titles: {slug: title}. Return [(a, b, score)] with score >= NEAR_DUP_FLOOR,
     most-similar first. Score = cosine over each title's DISTINCTIVE token set
-    (template tokens shared by >= _BOILERPLATE_DF titles removed first)."""
+    (template tokens shared by >= _BOILERPLATE_DF titles removed first).
+
+    Boundary (stacks#106 codex pass): when 3+ slugs share an *identical* title, every
+    token hits df >= _BOILERPLATE_DF and both distinctive sets empty. Falling straight
+    through would silently miss a real exact-title dup the old raw-ratio metric caught,
+    so an all-boilerplate pair falls back to the FULL-token cosine and flags only if the
+    titles are near-identical. A distinct system that merely shares a template keeps a
+    non-empty distinctive set (its system name), so it never reaches the fallback.
+    Small-n ceiling: with < 3 candidates no token can reach the cutoff, so a shared
+    template is not stripped and may score above the floor — report-only, one pair,
+    cheap to skip."""
     slugs = sorted(titles)
     df = Counter()
     for s in slugs:
         for t in set(_title_tokens(titles[s])):
             df[t] += 1
-    sets = {s: {t for t in _title_tokens(titles[s]) if df[t] < _BOILERPLATE_DF} for s in slugs}
+    full = {s: set(_title_tokens(titles[s])) for s in slugs}
+    sets = {s: {t for t in full[s] if df[t] < _BOILERPLATE_DF} for s in slugs}
     pairs = []
     for a, b in combinations(slugs, 2):
         sa, sb = sets[a], sets[b]
-        if not sa or not sb:
-            continue
-        score = len(sa & sb) / math.sqrt(len(sa) * len(sb))
+        if sa and sb:
+            score = len(sa & sb) / math.sqrt(len(sa) * len(sb))
+        else:
+            fa, fb = full[a], full[b]
+            raw = len(fa & fb) / math.sqrt(len(fa) * len(fb)) if fa and fb else 0.0
+            score = raw if raw >= _IDENTICAL_TITLE_FLOOR else 0.0
         if score >= NEAR_DUP_FLOOR:
             pairs.append((a, b, score))
     return sorted(pairs, key=lambda p: -p[2])
@@ -71,9 +86,17 @@ def _self_check():
     for a, b in combinations(["hvac", "plumbing", "electrical", "roofing"], 2):
         assert not has(a, b), f"boilerplate-template pair {a}~{b} wrongly flagged; flagged={flagged}"
     assert not has("chiller-efficiency", "hvac"), "unrelated pair flagged"
+    # 3-way EXACT-title dup: every token looks like boilerplate (df==n), but they are
+    # the same concept and must all flag via the full-token fallback (regression guard).
+    same = near_dup_pairs_from_titles(
+        {"a1": "HVAC Systems Observation", "a2": "HVAC Systems Observation",
+         "a3": "HVAC Systems Observation"})
+    sflag = {frozenset((x, y)) for x, y, _ in same}
+    assert sflag == {frozenset(("a1", "a2")), frozenset(("a1", "a3")), frozenset(("a2", "a3"))}, \
+        f"3-way exact-title dup not all flagged: {sflag}"
     print("dedup-extractions near-dup self-check: PASS", file=sys.stderr)
 
-if len(sys.argv) >= 2 and sys.argv[1] == "--self-check":
+if sys.argv[1:] == ["--self-check"]:
     _self_check()
     sys.exit(0)
 

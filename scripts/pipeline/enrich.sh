@@ -134,7 +134,7 @@ phase_prep() {
     local url
     # `|| true`: a source with no URL makes grep exit 1 → pipefail + set -e would
     # kill prep on the first URL-less filed source. Absent URL is normal, not fatal.
-    url=$(grep -m1 -oiE '(\*\*Source:\*\*|source_url:|Source:)[[:space:]]*https?://[^[:space:]]+' "$f" 2>/dev/null \
+    url=$(grep -m1 -oiE '^[[:space:]]*(\*\*Source:\*\*|source_url:|Source:)[[:space:]]*https?://[^[:space:]]+' "$f" 2>/dev/null \
           | grep -oE 'https?://[^[:space:]]+' | head -1 || true)
     [[ -n "$url" ]] && printf '%s\t%s\n' "$(basename "$f" .md)" "$url" >> "$LISTING"
   done < <(find "$STACK/sources" -type f -name '*.md' \

@@ -1,3 +1,10 @@
+## 0.60.1 — 2026-07-11
+
+**Follow-up hardening of the 0.60.0 batch after an adversarial (codex) review caught three real edge cases the first pass missed.**
+- **Near-dup missed identical titles (#106):** three or more slugs sharing an *exact* title had every token stripped as boilerplate (shared by all), so a real duplicate went unflagged — the case the old metric did catch. Added a full-token fallback for all-boilerplate pairs and a self-check guard. (`scripts/dedup-extractions.py`)
+- **Lookup miss vs partial-hit contradiction (#107):** the new anti-pattern read "needing any outside info is a miss → enrich," which collided with the existing rules (enrich only when nothing matched; a partial hit answers and states the gap). Reworded so a partial hit answers from grounded content and names the gap, and only a true miss routes to enrich — neither ever freelances a web search. (`skills/lookup/SKILL.md`)
+- **Enrich source-URL over-match (#98):** the plain `Source:` scan also matched inside `Resource:` / `Prose source:` / `UpstreamSource:`, so such a line could hijack the recorded URL and skew dedup. Anchored the label to line start. Also tightened the dedup script's `--self-check` guard so a two-argument call is not mistaken for it. (`scripts/pipeline/enrich.sh`, `scripts/dedup-extractions.py`)
+
 ## 0.60.0 — 2026-07-11
 
 **Batch bug-fix + cutover-prep pass: the catalog self-check now catches regressions instead of always-failing, near-duplicate detection stops crying wolf on shared title templates, enrich stops re-filing a source it already holds, lookup can't answer a miss with an ungrounded web search, and the pipeline skills no longer freeze the session while agents run.** Six issues from the #109 cutover-readiness sweep, each a small contained fix (parallel-agent dispatch for the independent ones).
