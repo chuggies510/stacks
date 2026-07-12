@@ -23,7 +23,7 @@ is usually not the accuracy blocker; the input context is.
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
 | Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
-| Validation | validator | `validation-benchmark.md` | Benchmark ready (S22) — 7-item labeled set, poison-recall + false-correction floors (offline layer; shadow test #95 above it). Awaiting liminal local scores. |
+| Validation | validator | `validation-benchmark.md` | **Offline layer scored (S24).** 4 local tiers (qwen3.6-27b, gemma4-31b, qwen3-30b-a3b Q4_K_M, gpt-oss-20b) clear both gated floors byte-DET; cheapest = the 30B already run for extraction. Universal non-gated miss on item 6 (add-citation). Straddle + shadow test #95 still pending. |
 | Enrichment | enrichment | `enrichment-benchmark.md` | Benchmark ready (S22) — 6-item grounding-decision set, false-CANDIDATE + tier floors (offline layer; live search-recall above it). Awaiting liminal local scores. |
 
 ## Key finding (extraction)
@@ -32,6 +32,17 @@ Over-minting was information starvation, not a weak tier. A bare 42-slug list ma
 models fragment one existing article into several new sub-topic slugs; a `slug — scope`
 map (the `index.md` `## Articles` routing lines) drops excess minting to 0 across every
 tier (gemma 7-8→0, qwen 0-19→0). Shipped as 0.57.0.
+
+## Key finding (validation)
+
+Determinism is **per-task, not per-model.** `qwen3-30b-a3b` is NONDET on extraction (its recall
+flips pass-to-pass) yet came back byte-DET on all 7 validation items — the validation items have
+wide logit margins, so nothing flips. This softens the per-agent-roster thesis: if the DET holds
+under more passes, the one fast VRAM-resident 30B could serve **both** the interactive catalog loop
+(extraction) and the batch audit (validation), instead of a slow straddle for validation. Open
+before pinning: (1) confirm the 30B validation DET under more passes; (2) the add-citation class
+(item 6) is missed by every cheap tier — a solo cheap validator would ship true-but-uncited claims;
+(3) straddle score pending as the capability ceiling / best shot at item 6.
 
 ## Files
 
