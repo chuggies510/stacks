@@ -1,0 +1,14 @@
+{
+  "slug": "agent-training-evaluation-economics",
+  "recall_total": 5,
+  "recall_present": 5,
+  "over_claims": 0,
+  "structural_pass": true,
+  "clears_floors": true,
+  "citation_fixes": 0,
+  "would_fix": [
+    "All 5 claims are scoped exactly as in the block: ART·E stays tied to the single email-research task and the $80/H100 figure (no 'small models beat frontier models' generalization); Cursor/Codex 30% degradation stays attributed to that one case (not universalized); Ramp keeps 'carefully reviewed by an internal team' (human review not dropped); GitHub's offline eval keeps 'catch regressions' (no 'prevents all' guarantee added); Cox Automotive keeps 'a separate LLM' (the safeguard is intact). None of the 6 named traps fired.",
+    "Body is a near-verbatim concatenation of the 5 block claims into 5 back-to-back sentences with a citation tag appended to each -- no connective prose, no framing/intro, no synthesis across claims (e.g. no grouping of 'training economics' vs 'evaluation methods' despite the title promising both). Reads as a citation-tagged list, not an authored article. Roughly 150 words, well under the stack's normal 300-800 word article target -- this isn't one of the graded floors but is a real thinness defect a human editor would flag.",
+    "routing: line packs two separate questions ('How do companies train...' / 'What methods are used...') into one field -- technically still 'one line' per the floor, but the two questions overlap in scope (training/fine-tuning is repeated in both) rather than being complementary phrasings."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "slug": "production-agent-autonomy-controls",
+  "recall_total": 5,
+  "recall_present": 5,
+  "over_claims": 0,
+  "structural_pass": true,
+  "clears_floors": true,
+  "citation_fixes": 0,
+  "would_fix": []
+}

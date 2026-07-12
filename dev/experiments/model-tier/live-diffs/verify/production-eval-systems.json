@@ -1,0 +1,12 @@
+{
+  "slug": "production-eval-systems",
+  "recall_total": 7,
+  "recall_present": 7,
+  "over_claims": 0,
+  "structural_pass": true,
+  "clears_floors": true,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Body is one undifferentiated run-on paragraph covering four distinct sub-topics (golden datasets, shadow mode, LLM-as-judge, red teaming); breaking into 3-4 paragraphs would improve scannability. Non-blocking, no accuracy issue."
+  ]
+}
