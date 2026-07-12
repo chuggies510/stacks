@@ -5,6 +5,9 @@ worker stages by two independent derivations (stacks S25 meta-pattern pass + lim
 per-stage measurement). Governs how each stage is wired to a local model; inherit it
 rather than re-benchmarking each stage from scratch.
 
+**Durable decision:** ADR-002 (`docs/decisions/decision-log.md`) is the indexed, long-lived
+record of this recipe; this file is its backing detail (the per-stage table and evidence).
+
 ## Aim (rebased S25): good output, not identical output
 
 The goal is a cheap tier that produces GOOD output — clears the accuracy floors — not one

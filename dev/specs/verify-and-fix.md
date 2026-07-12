@@ -1,6 +1,8 @@
 # Spec: verify-and-fix worker recipe (issue #109)
 
-**Status:** proposed (S25). Awaiting approval before implementation.
+**Status:** approved (S25) — rollout Option A (advisory-first). Advisory window shipped 0.62.0/0.62.1.
+**Durable decision:** ADR-002 (`docs/decisions/decision-log.md`); this file is the change-scoped
+rollout plan + file-flow + acceptance criteria that back it.
 **Supersedes the aim of:** the v0.61.0 shadow pilot (which logs a local-vs-cloud diff but
 keeps cloud synthesizing from scratch — cost-neutral). This makes the cheap tier authoritative
 for generation and reduces cloud to a verify pass.
