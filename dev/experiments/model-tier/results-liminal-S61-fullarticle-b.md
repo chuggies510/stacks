@@ -37,9 +37,27 @@ A clean control runs the unmodified article.
    up with S25's "intermittent, state/context-dependent" bare-CLEANs and is the mechanism worth
    chasing: not burial, but scan-instability.
 
-## Net
+## Precision re-test (real 5-class prompt WITH SOFTSPOT + both sources) — and a per-claim control
 
-Local (qwen3-30b): recall on buried contradictions is solid (5/5). The open risk is precision
-(over-correction) and scan-stability, not misses. Under live-diff both are safe (sonnet ships, diffs
-just get noisier). Recommend a proper re-test with the real validator prompt + all cited sources to
-size the false-correction rate; offered to run it.
+Ran the full-article prompt on the UNMODIFIED audited article with SOFTSPOT added and both cited
+sources. Result got WORSE, not better: **11 CORRECTION flags + 10 SOFTSPOT** on a clean article,
+several corrections whose own explanation admits the claim is supported, plus a self-contradictory
+trailing "ALL CLEAN". Two confounds inflate it: (a) still batch/whole-article mode, (b) I fed source
+EXCERPTS (a 20-line MT-bench digest + the who-drifted abstract), not the full papers the article was
+audited against — so real claims read as "not in the source."
+
+Per-claim control (the SHIPPED harness shape), matched source excerpts, gold-CLEAN items 1 & 4:
+**CLEAN 3/3 each, 0 false corrections.** Consistent with S25's S59 matrix (false-correction 0.00
+per-claim).
+
+## Net — the finding is about HARNESS SHAPE, not the model
+
+- **Per-claim (shipped design):** qwen3-30b is a solid validator — recall 1.00 (poison caught,
+  isolated AND buried 5/5), false-correction 0.00, deterministic. Viable.
+- **Full-article batch:** over-flags massively (11 on a clean article) and is scan-unstable (a
+  one-token change swung the flag set 1→6). This is the mechanism behind the intermittent bare-CLEANs
+  (S25's shadow 5/12, the fork) — non-systematic whole-article scanning, NOT burial and NOT a sonnet
+  bug (sonnet caught burial 3/3 too).
+- **So:** keep the validator per-claim. Burial doesn't hurt recall, but per-claim is still the right
+  shape for precision + stability. Under the live-diff net any residual noise is captured in the diff
+  (sonnet ships), so this is a quality-of-diff point, not a safety one.
