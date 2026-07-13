@@ -23,7 +23,7 @@ is usually not the accuracy blocker; the input context is.
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
 | Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
-| Validation | validator | `validation-benchmark.md` | **Retrieval build wired (S26, opt-in in audit Step 4.5).** `pair-claims.py` splits each article into claims and pulls each claim's OWN cited-source excerpt (token-overlap, top-K, bullets as units); the model judges one claim + one excerpt (the offline shape). **Gold-check: poison recall 3/3 (deterministic over 3 passes) — the strict-bar floor holds.** False-correction 1/4: item 7, a topical zenml passage over-accepted as grounding on the uncited add-citation-vs-softspot boundary (the known-hard precision boundary). This retracts the earlier "false-corrects heavily on real articles" read (that was the confound: source starvation + model-picked excerpt reuse). Real-article retrieval fixed (bulleted sources were merged+truncated, hiding the supporting bullet → systematic false-overstatement, now the supporting bullet surfaces). **Solo-local flip still blocked** — the cloud verifier (reads the real source) is required to adjudicate topical-vs-grounding; validation stays advisory. |
+| Validation | validator | `validation-benchmark.md` | **Retrieval build wired (S26, opt-in in audit Step 4.5); run at scale on the full `llm` stack (S27).** `pair-claims.py` splits each article into claims and pulls each claim's OWN cited-source excerpt (token-overlap, top-K, bullets as units); the model judges one claim + one excerpt (the offline shape). **At-scale run (45 articles, 1717 claims, qwen local → 6 cloud sonnet verifiers grading every claim against the real source): poison recall 63/70 (90%) by verdict LABEL but only 40/71 (56%) when the fix must actually remove the assertion — 25 poison claims got a `CORRECTION` label with a no-op/still-broken replacement that passes the label floor yet ships the poison. False-correction 543/1101 (49%): local wrongly alters ~half of genuinely-fine claims.** The 7-item gold-check (poison 3/3, FC 1/4) did NOT predict this — its short claims made flag==fix, hiding the label-vs-fix gap, and its tiny sample hid the false-correction blowout. **Solo-local flip decisively blocked**, and the label-based recall floor is itself unsafe (grade fix quality, not the verdict label); validation stays advisory, cloud verifier mandatory. Real audit payload: ~71 verifier-confirmed genuine overstatements/contradictions across the stack, worst in `agent-memory-systems` (11, several fabricated mechanisms the source never states). |
 | Enrichment | enrichment | `enrichment-benchmark.md` | **Live runner wired (S26, opt-in in enrich Step 4.5).** `shadow-enrich-run.sh` = harness owns Brave search + fetch, local model owns only the grounding judgment, `url-dedup-gate.sh` owns DUP. Proven live (2 gaps → 2 tier-1 candidates, 1 URL deduped). Verifier caught a tier mis-assignment. |
 
 ## Key finding (extraction)
@@ -43,6 +43,33 @@ under more passes, the one fast VRAM-resident 30B could serve **both** the inter
 before pinning: (1) confirm the 30B validation DET under more passes; (2) the add-citation class
 (item 6) is missed by every cheap tier — a solo cheap validator would ship true-but-uncited claims;
 (3) straddle score pending as the capability ceiling / best shot at item 6.
+
+## Key finding (validation at scale)
+
+A 7-item offline gold-check is not a proxy for a 1717-claim run — the at-scale
+pass (S27, full `llm` stack) exposed two failure modes the benchmark structurally
+could not:
+
+1. **Label-recall is a mirage.** The summary's poison recall counts a poison
+   "caught" whenever the local verdict is any `CORRECTION` label. At scale, 25 of
+   70 poison claims got a `CORRECTION` label whose replacement was byte-identical
+   to the original (or still carried the unsupported assertion) — a
+   ghost-correction that clears the ≥0.90 label floor while shipping the poison.
+   Real recall (fix actually removes the assertion) is 40/71 (56%), not 90%. The
+   floor must grade fix quality, not the verdict string. The gold-check missed
+   this because its claims were short enough that flagging == fixing.
+2. **False-correction blows out with sample size.** 1/4 on the benchmark read as
+   a narrow topical-boundary weakness; at 1101 genuinely-fine claims it is 543
+   (49%). Local over-flags clean content and, in a severe minority, corrupts it
+   while "fixing" — polarity flips, cross-tier stat swaps, cross-source
+   hallucination, and its own reasoning/meta-commentary leaking into the proposed
+   article text.
+
+Net: validation is not solo-local flippable, and running the local tier
+unsupervised would both ship ~35% of real poison and rewrite half of every clean
+claim. The cloud verifier that reads the real source is mandatory; the shadow
+stays advisory. The run also produced genuine audit value — ~71 confirmed
+overstatements now targetable for a real audit-apply pass.
 
 ## Files
 
