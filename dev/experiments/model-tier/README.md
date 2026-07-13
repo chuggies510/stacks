@@ -23,8 +23,8 @@ is usually not the accuracy blocker; the input context is.
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
 | Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
-| Validation | validator | `validation-benchmark.md` | **Offline layer scored (S24).** 4 local tiers (qwen3.6-27b, gemma4-31b, qwen3-30b-a3b Q4_K_M, gpt-oss-20b) clear both gated floors byte-DET; cheapest = the 30B already run for extraction. Universal non-gated miss on item 6 (add-citation). Straddle + shadow test #95 still pending. |
-| Enrichment | enrichment | `enrichment-benchmark.md` | Benchmark ready (S22) — 6-item grounding-decision set, false-CANDIDATE + tier floors (offline layer; live search-recall above it). Awaiting liminal local scores. |
+| Validation | validator | `validation-benchmark.md` | **Live runner wired (S26, opt-in in audit Step 4.5).** `shadow-validate-run.sh` runs the local per-claim validator over real articles; `claim-citation-gate.sh` coerces CLEAN-on-uncited. **Live finding (preliminary): NOT flippable yet** — the first live run showed heavy false-correction, but that run had a harness confound (one total `head -c` source-cap starved the later cited sources, so the model was graded on text it never received; now a per-source cap, S26 codex fix). Real false-correction number pending a re-measure. The open question — does the model retrieve each claim's own cited passage — is the tracked retrieval follow-on (harness pairs each claim to its cited source excerpt). |
+| Enrichment | enrichment | `enrichment-benchmark.md` | **Live runner wired (S26, opt-in in enrich Step 4.5).** `shadow-enrich-run.sh` = harness owns Brave search + fetch, local model owns only the grounding judgment, `url-dedup-gate.sh` owns DUP. Proven live (2 gaps → 2 tier-1 candidates, 1 URL deduped). Verifier caught a tier mis-assignment. |
 
 ## Key finding (extraction)
 

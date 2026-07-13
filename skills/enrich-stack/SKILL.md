@@ -146,6 +146,31 @@ bash "$STACKS_ROOT/scripts/pipeline/enrich.sh" gate $ARGUMENTS
 A non-zero exit means an agent did not write a well-formed findings file, or a
 gap it was assigned has no receipt row — surface the named failure and stop.
 
+## Step 4.5: Local-enrichment shadow + advisory verify (verify-and-fix rollout, opt-in — #109)
+
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set.** Default runs skip it. This is the enrichment analog of the extraction advisory (catalog Step 5.5): it grades whether the cheap local tier could run the enrichment loop behind the harness. The recipe: **the harness owns the tools** — it does the Brave web search and the page fetch (`fetch-source-text.sh`), because local models are unreliable at native tool-calling — and the **local model owns the ONE object judgment** (does this fetched passage STATE the gap's claim, at what tier). The deterministic **`url-dedup-gate`** owns the DUP decision (set membership, no model), and the cloud **`enrichment-verifier`** re-checks each candidate against the real page. **The cloud enrichment agent's staged sources from Steps 3–5 are authoritative and untouched; this only observes.** Runs after `gate` and before `finish` clears `dispatch.tsv`.
+
+First the local loop (reads the transient `dispatch.tsv`, so it must run before `finish`; needs the Brave key at `~/.config/brave-search.key`; writes a per-candidate manifest):
+
+```bash
+if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
+  STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+  bash "$STACKS_ROOT/dev/experiments/model-tier/harness/shadow-enrich-run.sh" {stack} || echo "enrichment shadow returned non-zero — non-fatal, continuing"
+fi
+```
+
+Non-fatal by design (Ollama or Brave unreachable → the gap logs a `SEARCHFAIL`/infra count, not a false `NOSOURCE`, and the run proceeds; if the runner exits before it can search, it resets the manifest to empty so nothing stale gets re-graded). Read the `SHADOW_ENRICH_SUMMARY` line for the gaps/candidate/weak/nosource/dup/search_failed/infer_failed counts, and the candidate manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/enrich/candidates.tsv` (rows: `gap_id<TAB>slug<TAB>verdict<TAB>url<TAB>tier<TAB>claim<TAB>excerpt`).
+
+Then the advisory verify: **reset the grade dir** (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/enrich-verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/enrich-verify"`), then for each `CANDIDATE`/`WEAK` row in `candidates.tsv` (skip `NOSOURCE`/`SEARCHFAIL` — no URL to grade; an empty manifest means the runner bailed, so there is simply nothing to dispatch) dispatch one **`stacks:enrichment-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent the candidate's gap/claim/url/tier/excerpt (columns), the stack's tier hierarchy from STACK.md, and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/enrich-verify/{gap_id}.json`. It `WebFetch`es the real page and grades grounding + tier; it never stages, catalogs, or edits anything, and does NOT re-check dedup (the gate already ran). After the wave returns, aggregate:
+
+```bash
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/enrichment-verify-summary.sh" \
+  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/enrich-verify" || true
+```
+
+Read the `false candidates` line — a false candidate (a source stamped CANDIDATE that does not actually state the claim) is the floor-0 blocker before enrichment could flip to a local authoritative loop; a tier mismatch is a cheap correction, not a blocker. Advisory only — the interactive/`--auto` staging below is unchanged and proceeds regardless.
+
 ## Step 5: Consolidate findings — dedup by URL (`enrich.sh finish`)
 
 `enrich.sh finish` reads every `_enrich-*.md`, dedups `CANDIDATE`/`WEAK` rows by

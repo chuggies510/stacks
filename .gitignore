@@ -12,3 +12,10 @@ __pycache__/
 .claude/.session-main-active
 .worktree-active
 .claude/.session-current
+
+# transient local-shadow runner output (reset+regenerated on every run; the
+# durable record is dev/experiments/model-tier/README.md + CHANGELOG)
+dev/experiments/model-tier/live-diffs/validate/
+dev/experiments/model-tier/live-diffs/enrich/
+dev/experiments/model-tier/live-diffs/enrich-verify/
+dev/experiments/model-tier/live-diffs/validation-verify/

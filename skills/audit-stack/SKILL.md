@@ -72,6 +72,31 @@ bash "$STACKS_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
 
 A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
 
+## Step 4.5: Local-validation shadow + advisory verify (verify-and-fix rollout, opt-in — #109)
+
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set.** Default runs skip it. This is the validation analog of the extraction advisory (catalog Step 5.5): it grades whether the cheap local tier could do the per-claim validation judgment behind the harness — the recipe is the cheap tier emits one verdict per claim, the deterministic **`claim-citation-gate`** owns citation-presence (structurally coercing a CLEAN on an uncited claim to `INVALID/uncited-clean`, closing the S24 item-6 miss), and the cloud **`validation-verifier`** owns the content judgment (does the cited source actually support the claim). **The cloud `validator`'s in-place fixes from Steps 3–4 are authoritative and untouched; this only observes.** Runs after `gate` and before `finish` clears `dispatch.tsv`.
+
+First the local per-claim pass (reads the transient `dispatch.tsv`, so it must run before `finish`; writes one per-batch claim file + a `batches.tsv` dispatch manifest):
+
+```bash
+if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
+  STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+  bash "$STACKS_ROOT/dev/experiments/model-tier/harness/shadow-validate-run.sh" {stack} || echo "validation shadow returned non-zero — non-fatal, continuing"
+fi
+```
+
+Non-fatal by design (Ollama unreachable → every article logs a failure and the run proceeds). Read the `SHADOW_VALIDATE_SUMMARY` line for the articles/claims/failed counts, and the dispatch manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validate/batches.tsv` (rows: `batch_tag<TAB>batchfile`).
+
+Then the advisory verify: **reset the grade dir** (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify"`), then for each `batches.tsv` row dispatch one **`stacks:validation-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent absolute paths, scope pinned to: the batch claim file (column 2 — each claim's text, the local-quoted excerpt, and the gated local verdict), the audited articles under `{LIBRARY}/{stack}/articles/` and the stack's real sources `{LIBRARY}/{stack}/sources/` (the agent forms its OWN authoritative verdict from the real source, since the local-quoted excerpt may be paraphrased or mis-retrieved), and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify/{batch_tag}.json`. It never edits any article or verdict. After the wave returns, aggregate:
+
+```bash
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/validation-verify-summary.sh" \
+  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify" || true
+```
+
+Read the `poison recall` and `false-correction rate` lines — a poison recall breach (a claim that overstates/contradicts its source, called CLEAN) is the dangerous class nothing downstream catches; a high false-correction rate means the local tier is trimming truthful claims (often from mis-retrieving the source passage). Both must clear before validation could flip to a local authoritative tier. Advisory only — `finish` proceeds regardless.
+
 ## Step 5: Audit report (`audit.sh finish`)
 
 `audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections + soft spots), merges `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input — carrying the skipped articles' prior soft spots forward, since an incremental run only re-checks changed articles), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=… softspots=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (carries all soft spots, re-stamps hashes, writes a 0-audited report).
