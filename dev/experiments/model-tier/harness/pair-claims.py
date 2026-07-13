@@ -31,6 +31,14 @@ CITE_RE = re.compile(r'\[([A-Za-z0-9][\w.\-]+)\](?!\()')   # [slug] not a markdo
 SENT_RE = re.compile(r'(?<=[.!?])\s+')
 MIN_WORDS = 6
 EXCERPT_CAP = 700
+# A real claim opens on a capital/digit/quote and does not end on a dangling
+# function word — the two high-precision signals that separate a whole sentence
+# from mid-sentence fragment/heading leakage the splitter would otherwise feed the
+# model as a "claim" (liminal S63: ~11% of false positives were such junk). Kept
+# conservative so it never drops a real claim; no-antecedent-pronoun and verbless
+# heading cases need coref/POS and are out of scope.
+DANGLING = set("to and or of the a an with for in on at by from as that which into "
+               "than but nor so if while over under between within".split())
 TOP_K = 3        # feed the model the K best-overlap source sentences, not just the
                  # single best — token-overlap is noisier than the offline
                  # hand-pairing, so the claim's decisive sentence may be 2nd/3rd.
@@ -93,6 +101,20 @@ def body_lines(lines):
     return out
 
 
+def well_formed_claim(s):
+    """True iff s looks like a whole factual sentence, not a fragment/heading the
+    splitter leaked. Two conservative signals (S63): opens on a capital/digit/quote
+    (a mid-sentence fragment opens on '(', ';', or a lowercase word), and does not
+    end on a dangling function word (a truncated clause ends in 'to'/'and'/...)."""
+    core = re.sub(r'\s*\[[^\]]+\]\s*$', '', s).rstrip()        # drop a trailing [cite]
+    if not core:
+        return False
+    if not re.match(r'["\'A-Z0-9]', core):                    # fragment opener
+        return False
+    last = re.sub(r'[^\w]+$', '', core.split()[-1]).lower()   # last word, depunct
+    return last not in DANGLING
+
+
 def line_to_claims(line):
     """A body line -> its factual sentences. Strips list markers and bold/italic."""
     line = re.sub(r'^\s*(?:[-*+]|\d+\.)\s+', '', line)          # list marker
@@ -104,7 +126,7 @@ def line_to_claims(line):
         # claims, and no source passage grounds a lead-in.
         if sent.endswith(':'):
             continue
-        if len(sent.split()) >= MIN_WORDS:
+        if len(sent.split()) >= MIN_WORDS and well_formed_claim(sent):
             yield sent
 
 
@@ -208,6 +230,7 @@ def self_check():
                 "## Head\n"
                 "The widget spins at 3000 rpm under sustained load [src-a].\n"
                 "- **Something**: this connective sentence has plenty of words but carries no citation.\n"
+                "(self-enhancement bias) a mid sentence fragment leaking into the body and\n"
                 "```\ncode block line that must be skipped entirely here\n```\n"
                 "| table | row | that | is | skipped |\n")
     rows = pair(art, d)
@@ -223,6 +246,14 @@ def self_check():
     chk('paint colors' not in c1[4], "claim1 excerpt wrongly grabbed the filler sentence")
     c2 = rows[1]
     chk(c2[1] == 0, f"claim2 should be uncited, got cited={c2[1]}")
+    chk(not any('self-enhancement' in r[2] for r in rows),
+        "the fragment line should be dropped by well_formed_claim, not yielded as a claim")
+    chk(well_formed_claim("The widget spins at 3000 rpm under sustained load."),
+        "a whole sentence should pass well_formed_claim")
+    chk(not well_formed_claim("(self-enhancement bias) routing generation and evaluation to"),
+        "leading-paren + dangling-'to' fragment should fail well_formed_claim")
+    chk(not well_formed_claim("and this dangling clause ends on a function word and"),
+        "lowercase-opener + dangling fragment should fail well_formed_claim")
     if fail == 0:
         print("SELF-CHECK PASS")
     sys.exit(fail)
