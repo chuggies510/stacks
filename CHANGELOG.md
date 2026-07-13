@@ -1,3 +1,9 @@
+## 0.66.1 — 2026-07-12
+
+**Fix the retrieval that hid supporting text in bulleted sources, and correct the gold-check number (#109).**
+- **`pair-claims.py` retrieval bug:** it joined all source body lines into one blob before sentence-splitting, so a bulleted list (no terminal periods) merged into one giant "sentence"; that unit scored highest but the excerpt cap truncated it to the early lines, hiding the actual supporting bullet. On real `llm` articles this made the model judge cited claims against the wrong passage and false-flag overstatement (zero CLEAN verdicts across 70 claims). Fixed: each markdown bullet is now its own retrieval unit. The supporting bullet surfaces, and CLEAN verdicts appear on real articles.
+- **Gold-check number corrected (supersedes 0.66.0's 0/4):** with the bullet fix, gold is **poison recall 3/3 (deterministic over 3 passes)** — the strict floor holds — and **false-correction 1/4**: item 7 (a "two-week window" claim no source states) gets a topical zenml passage over-accepted as add-citation grounding. That is the known-hard add-citation-vs-softspot precision boundary, and it is why validation stays advisory: the cloud verifier (reads the real source) is required to adjudicate topical-vs-grounding. The 0.66.0 "0/4" was accurate for that code but measured on the pre-fix path that silently mis-retrieved real articles.
+
 ## 0.66.0 — 2026-07-12
 
 **Validation retrieval build — the harness now pairs each claim to its own cited-source excerpt, and it reproduces the offline accuracy floors (#109).**

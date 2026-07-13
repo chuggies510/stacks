@@ -108,28 +108,33 @@ def line_to_claims(line):
             yield sent
 
 
-def clean_source(text):
-    """Drop markdown headers, fenced code, and table rows so retrieval scores
-    against source PROSE, not `# Title **Authors:**` / code / table scaffolding."""
-    fenced, out = False, []
+def source_units(text):
+    """Split a source into retrieval units: each markdown BULLET is its own unit,
+    each prose line is split into sentences. Headers/fenced-code/table rows are
+    dropped. Keeping bullets separate is load-bearing — a bulleted list has no
+    terminal periods, so joining lines first merges the whole list into one giant
+    'sentence' whose relevant tail gets truncated away by the excerpt cap."""
+    fenced, units = False, []
     for ln in text.splitlines():
         s = ln.strip()
         if s.startswith('```'):
             fenced = not fenced; continue
         if fenced or s.startswith('#') or s.startswith('|') or not s:
             continue
-        out.append(re.sub(r'\*\*([^*]+)\*\*', r'\1', s))
-    return ' '.join(out)
+        s = re.sub(r'\*\*([^*]+)\*\*', r'\1', s)
+        s = re.sub(r'^\s*(?:[-*+]|\d+\.)\s+', '', s)   # strip list marker
+        units.extend(split_sentences(s) or [s])
+    return [u for u in units if u.strip()]
 
 
 def retrieve(claim, source_text):
-    """The TOP_K token-overlap sentences of source_text vs claim, in source order,
+    """The TOP_K token-overlap units of source_text vs claim, in source order,
     joined and length-capped. Top-K (not top-1) hedges retrieval noise so the
-    claim's decisive sentence is very likely present."""
+    claim's decisive unit is very likely present."""
     ct = tokens(claim)
     if not ct:
         return ''
-    sents = split_sentences(clean_source(source_text))
+    sents = source_units(source_text)
     scored = [(len(ct & tokens(s)), i, s) for i, s in enumerate(sents)]
     scored = [x for x in scored if x[0] > 0]
     if not scored:
