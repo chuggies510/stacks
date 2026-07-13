@@ -1,3 +1,9 @@
+## 0.66.0 — 2026-07-12
+
+**Validation retrieval build — the harness now pairs each claim to its own cited-source excerpt, and it reproduces the offline accuracy floors (#109).**
+- **`pair-claims.py` (new):** splits an article into claims (sentence-level, inline `[slug]` detection), resolves each claim's cited source, and pulls the top-K token-overlap excerpt from THAT source — deterministic, no embeddings. The validation shadow now feeds the model ONE claim + ONE retrieved excerpt (the offline-benchmark shape), instead of dumping the whole article and letting the model pick its own passage (the retrieval failure the confounded first run exposed).
+- **`shadow-validate-run.sh` rewritten to the per-claim architecture** + a `--gold-check` mode that scores the 7 benchmark items end-to-end. Result on automated pairing: **poison recall 3/3, false-correction 0/4** — both gated floors clear. This retracts the earlier "qwen false-corrects heavily on real articles" read: that was the harness confound (source starvation + model-picked excerpt reuse), not the model. The uncited-CLEAN coercion now keys on pair-claims' ground-truth `cited` flag, which also closes the codex "gate runs on the model's echoed text" limitation. (`skills/audit-stack/SKILL.md` Step 4.5 prose updated.)
+
 ## 0.65.0 — 2026-07-12
 
 **Wire the last two stages' verify-and-fix machinery into their skills as opt-in advisory steps, so all four worker stages now have a working local-model path (#109).**

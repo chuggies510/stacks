@@ -1,214 +1,237 @@
 #!/usr/bin/env bash
-# shadow-validate-run.sh <stack>
+# shadow-validate-run.sh <stack> | --gold-check | --self-check
 #
-# Pilot (#109), validation stage: after audit `gate`, run the LOCAL validator
-# model on each audited article and its cited sources, emitting per-claim
-# verdicts, then run the deterministic citation-presence gate on each claim and
-# structurally coerce a CLEAN-on-uncited to INVALID. Writes one per-batch claim
-# file (claim text + source excerpt + local verdict) for the cloud
-# validation-verifier to grade. The cloud validator's in-place fixes are
-# authoritative and untouched — this only observes, to grade whether the local
-# tier is safe to make authoritative for validation.
+# Pilot (#109), validation stage — RETRIEVAL build (the follow-on to the confounded
+# article-dump version). The harness owns retrieval: `pair-claims.py` splits each
+# audited article into claims and, for each, pulls the best token-overlap excerpt
+# from that claim's OWN cited source (or, for an uncited claim, its best-matching
+# listed source). The local model then judges ONE claim + ONE excerpt with the
+# validation-benchmark gate-first prompt — the offline shape that scored 1.00.
 #
-# Mirrors shadow-extract-run.sh: reads the TRANSIENT audit run files
-# (dev/audit/dispatch.tsv), which exist after prep and are cleared by `finish`
-# — run BETWEEN `audit.sh gate` and `audit.sh finish`. Non-destructive: never
-# touches an article, a verdict, or any pipeline state file. Opt-in; the skill
-# gates this on STACKS_LOCAL_SHADOW=1.
+# Why the rewrite: the previous version dumped the whole article + all sources and
+# let the model pick its own excerpt per claim; it re-used one boilerplate passage
+# across claims (a retrieval failure) and — with a total source-cap — was fed zero
+# bytes of the later cited sources. Both are gone: retrieval is deterministic and
+# per-claim, and the uncited-CLEAN coercion now keys on pair-claims' ground-truth
+# `cited` flag, not the model's echoed claim text.
+#
+# Mirrors the run window: reads the TRANSIENT audit dispatch (dev/audit/dispatch.tsv),
+# present after `gate`, cleared by `finish`. Non-destructive, opt-in (skill gates on
+# STACKS_LOCAL_SHADOW=1). `--gold-check` scores the 7 benchmark items end-to-end
+# (ground-truthed, GPU-only) to prove automated pairing reproduces the offline floors.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STACKS_ROOT="$(cd "$HERE/../../../.." && pwd)"   # harness -> model-tier -> experiments -> dev -> repo root
+STACKS_ROOT="$(cd "$HERE/../../../.." && pwd)"
 INFER="$HERE/local-infer.sh"
-GATE="$HERE/claim-citation-gate.sh"
+PAIR="$HERE/pair-claims.py"
 MODEL="${MODEL:-qwen3-30b-a3b-instruct}"
-SRC_CAP="${SRC_CAP:-12000}"   # max chars of cited-source text fed per article (num_ctx budget)
+NUM_CTX="${NUM_CTX:-4096}"   # one claim + one excerpt is small; keep ctx tight = fast
 
-# ---------------------------------------------------------------------------
-# Pure helpers (self-checkable without a GPU): parse the local model's per-claim
-# lines and apply the citation-presence coercion.
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------- #
+# Pure helpers (GPU-free, self-checked).                                       #
+# --------------------------------------------------------------------------- #
 
-# normalize a raw verdict token to the 5-label rubric (or PARSE-ERROR)
+# normalize a model verdict line's leading token to the 5-label rubric.
 norm_verdict() {
-  local v; v=$(printf '%s' "$1" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  local v; v=$(printf '%s' "$1" | tr -d '\r' | sed -E 's/[[:space:]]+$//; s/^[[:space:]]+//')
   case "$v" in
-    CLEAN)                              echo CLEAN ;;
-    CORRECTION/contradiction)          echo "CORRECTION/contradiction" ;;
-    CORRECTION/overstatement)          echo "CORRECTION/overstatement" ;;
-    CORRECTION/add-citation)           echo "CORRECTION/add-citation" ;;
-    SOFTSPOT)                          echo SOFTSPOT ;;
-    CORRECTION*)                       echo "CORRECTION/overstatement" ;;  # bare/unknown subtype -> the safe poison bucket
-    *)                                 echo "PARSE-ERROR" ;;
+    CLEAN*)                     echo CLEAN ;;
+    CORRECTION/contradiction*)  echo "CORRECTION/contradiction" ;;
+    CORRECTION/overstatement*)  echo "CORRECTION/overstatement" ;;
+    CORRECTION/add-citation*)   echo "CORRECTION/add-citation" ;;
+    SOFTSPOT*)                  echo SOFTSPOT ;;
+    CORRECTION*)                echo "CORRECTION/overstatement" ;;  # bare/unknown -> safe poison bucket
+    *)                          echo "PARSE-ERROR" ;;
   esac
 }
 
-# coerce_verdict <verdict> <claim-text> -> gated verdict
-# The harness owns citation-presence: a CLEAN on a claim with no inline [slug]
-# citation is structurally invalid (the S24 item-6 miss), so it is coerced to
-# INVALID/uncited-clean regardless of what the model returned.
-# ponytail: the gate runs on the model's ECHOED claim text, not the source
-# article, so a model that alters a citation in its echo can dodge it. Acceptable
-# for this advisory shadow; the retrieval follow-on (harness extracts each claim
-# from the article and pairs it to its cited source) is what actually closes it.
-coerce_verdict() {
-  local verdict="$1" claim="$2" gate
-  gate=$(bash "$GATE" "$claim")
-  if [[ "$gate" == "UNCITED" && "$verdict" == "CLEAN" ]]; then
-    echo "INVALID/uncited-clean"
-  else
-    echo "$verdict"
-  fi
+# classify <model-verdict-line> <cited 0|1> -> "<verdict>\t<replacement>"
+# The uncited-CLEAN coercion (item-6 close) keys on the HARNESS's ground-truth
+# `cited` flag from pair-claims, never the model's echoed text — so it can't be
+# dodged by the model altering a citation in its output.
+classify() {
+  local line="$1" cited="$2" head repl="" v
+  head="${line%%|*}"
+  [[ "$line" == *"|"* ]] && repl=$(printf '%s' "${line#*|}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  v=$(norm_verdict "$head")
+  [[ "$cited" == "0" && "$v" == "CLEAN" ]] && v="INVALID/uncited-clean"
+  printf '%s\t%s' "$v" "$repl"
 }
 
-# parse_and_gate <model-output-file> <out-claim-file> -> emits, per claim line,
-# the gated tuple; returns the claim count on stdout. Each model line is
-# "<verdict> ||| <claim text> ||| <source excerpt or NONE>".
-parse_and_gate() {
-  local infile="$1" outfile="$2" n=0
-  while IFS= read -r line; do
-    [[ "$line" == *"|||"* ]] || continue
-    local raw_v claim excerpt v
-    raw_v="${line%%|||*}"
-    local rest="${line#*|||}"
-    claim="${rest%%|||*}"
-    excerpt="${rest#*|||}"
-    claim=$(printf '%s' "$claim" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
-    excerpt=$(printf '%s' "$excerpt" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
-    [[ -n "$claim" ]] || continue
-    v=$(norm_verdict "$raw_v")
-    v=$(coerce_verdict "$v" "$claim")
-    n=$((n+1))
-    { printf '### Claim %d\n' "$n"
-      printf 'Claim: %s\n' "$claim"
-      printf 'Source excerpt (local-quoted): %s\n' "${excerpt:-NONE}"
-      printf 'Local verdict: %s\n\n' "$v"
-    } >> "$outfile"
-  done < "$infile"
-  echo "$n"
-}
+# gate-first prompt (validation-benchmark.md, verbatim STEP 1/STEP 2) for ONE claim.
+gatefirst_prompt() { # <claim> <excerpt> <cited 0|1> <sources-csv>
+  cat <<EOF
+You are a knowledge validator. You are given ONE article claim and the CITED SOURCE
+EXCERPT it rests on (plus the article's frontmatter \`sources:\` list).
 
-# ---------------------------------------------------------------------------
-if [[ "${1:-}" == "--self-check" ]]; then
-  work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
-  cat > "$work/model.txt" <<'EOF'
-CLEAN ||| GPT-4 judges reach over 80% agreement with humans. [arxiv-2306.05685] ||| strong LLM judges like GPT-4 achieve over 80% agreement
-CORRECTION/overstatement ||| GPT-4 consistently outperforms human raters. [arxiv-2306.05685] ||| can match human preferences well
-CLEAN ||| Cox Automotive runs continuous red teaming throughout its lifecycle. ||| Continuous red teaming integrated throughout development lifecycle
-noise line with no delimiter, must be skipped
-SOFTSPOT ||| Most teams find a two-week shadow window sufficient. ||| no cited source states any window length
+Decide in TWO steps — the first gate is whether the claim carries its OWN inline
+[source-slug] citation. Do not skip it: an uncited claim is NEVER CLEAN, even when it is
+true, because a true-but-uncited claim still needs its citation added.
+
+STEP 1 — does the claim carry an inline [source-slug] citation of its own?
+
+  IF YES (inline-cited):
+    - Source supports the claim as stated .............. CLEAN
+    - Source states something DIFFERENT (a different
+      figure, a reversed direction) ................... CORRECTION/contradiction | {corrected text}
+    - Source covers the topic but the claim says MORE
+      than it states (added mechanism, rationale
+      "because…", invented number, or a generalization
+      like "consistently"/"outperforms"/"eliminates"/
+      "any"/"zero") .................................... CORRECTION/overstatement | {trimmed text}
+
+  IF NO (no inline citation) — you may NOT return CLEAN:
+    - A source already in the article's \`sources:\` list
+      states it ....................................... CORRECTION/add-citation | {source-slug to add}
+    - No source (cited or listed) states it ........... SOFTSPOT (leave text, flag it;
+                                                         never invent a citation or fix)
+
+Do NOT rewrite for wording, tone, or style — only for the defects above.
+OUTPUT one line, exactly one of:
+  CLEAN
+  CORRECTION/contradiction | {corrected claim text}
+  CORRECTION/overstatement | {trimmed claim text}
+  CORRECTION/add-citation  | {source-slug to add}
+  SOFTSPOT
+
+CLAIM: $1
+
+CITED SOURCE EXCERPT: $2
+
+ARTICLE \`sources:\` list: $4
+
+OUTPUT one line as specified. Nothing else.
 EOF
-  got=$(parse_and_gate "$work/model.txt" "$work/out.txt")
+}
+
+# judge_claim <claim> <excerpt> <cited> <sources-csv> -> "<verdict>\t<replacement>"
+# (impure: one model call). $work must be set.
+judge_claim() {
+  gatefirst_prompt "$1" "$2" "$3" "$4" > "$work/p.txt"
+  if ! NUM_CTX="$NUM_CTX" bash "$INFER" "$MODEL" "$work/p.txt" "$work/o.txt" 2>"$work/e.txt"; then
+    printf 'PARSE-ERROR\t\n'; return 0
+  fi
+  local line; line=$(grep -m1 -iE '^(CLEAN|CORRECTION|SOFTSPOT)' "$work/o.txt" || true)
+  [[ -n "$line" ]] || { printf 'PARSE-ERROR\t\n'; return 0; }
+  classify "$line" "$3"; printf '\n'   # trailing newline so the consuming `read` returns 0
+}
+
+# --------------------------------------------------------------------------- #
+if [[ "${1:-}" == "--self-check" ]]; then
   fail=0
-  [[ "$got" == "4" ]] || { echo "FAIL: expected 4 claims parsed, got $got"; fail=1; }
-  # claim 1: cited + CLEAN -> stays CLEAN
-  grep -q "Local verdict: CLEAN" "$work/out.txt" || { echo "FAIL: cited CLEAN not preserved"; fail=1; }
-  # claim 2: cited + overstatement -> stays
-  grep -q "Local verdict: CORRECTION/overstatement" "$work/out.txt" || { echo "FAIL: overstatement not preserved"; fail=1; }
-  # claim 3: UNCITED + CLEAN -> coerced to INVALID (the item-6 structural close)
-  grep -q "Local verdict: INVALID/uncited-clean" "$work/out.txt" || { echo "FAIL: uncited-CLEAN not coerced to INVALID"; fail=1; }
-  # claim 4: uncited + SOFTSPOT -> stays SOFTSPOT (not coerced; only CLEAN is)
-  grep -q "Local verdict: SOFTSPOT" "$work/out.txt" || { echo "FAIL: uncited SOFTSPOT wrongly altered"; fail=1; }
-  if [[ $fail -eq 0 ]]; then echo "SELF-CHECK PASS"; else echo "SELF-CHECK FAIL"; exit 1; fi
+  eq() { [[ "$1" == "$2" ]] || { echo "FAIL: '$3' -> '$1' want '$2'"; fail=1; }; }
+  eq "$(norm_verdict 'CORRECTION/overstatement | trimmed')" "CORRECTION/overstatement" norm1
+  eq "$(norm_verdict 'CLEAN')" "CLEAN" norm2
+  eq "$(norm_verdict 'garbage line')" "PARSE-ERROR" norm3
+  eq "$(classify 'CLEAN' 1)" $'CLEAN\t' cited-clean
+  eq "$(classify 'CLEAN' 0)" $'INVALID/uncited-clean\t' uncited-clean-coerced
+  eq "$(classify 'CORRECTION/overstatement | GPT-4 matches humans' 1)" $'CORRECTION/overstatement\tGPT-4 matches humans' repl
+  eq "$(classify 'SOFTSPOT' 0)" $'SOFTSPOT\t' softspot
+  python3 "$PAIR" --self-check >/dev/null || { echo "FAIL: pair-claims self-check"; fail=1; }
+  [[ $fail -eq 0 ]] && echo "SELF-CHECK PASS" || { echo "SELF-CHECK FAIL"; exit 1; }
   exit 0
 fi
 
-STACK="${1:?Usage: shadow-validate-run.sh <stack> | --self-check}"
+# --------------------------------------------------------------------------- #
+# --gold-check: the 7 validation-benchmark items, end-to-end, ground-truthed.  #
+# --------------------------------------------------------------------------- #
+if [[ "${1:-}" == "--gold-check" ]]; then
+  LIB="$(bash "$STACKS_ROOT/scripts/resolve-library.sh")" || { echo "ERROR: no library" >&2; exit 1; }
+  SRC="$LIB/llm/sources"
+  [[ -d "$SRC" ]] || { echo "ERROR: gold-check needs the llm stack sources at $SRC" >&2; exit 1; }
+  work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+  ARX="$SRC/arxiv/arxiv-2306.05685-llm-as-judge-mt-bench.md"
+  ZEN="$SRC/zenml/zenml-2025-12-llmops-1200-deployments.md"
+  EVI="$SRC/evidentlyai/evidentlyai-llm-as-a-judge-guide.md"
 
-# Reset the output FIRST, before any failable check below. If resolve/cd/dispatch
-# fails we exit with an EMPTY manifest, never leaving a previous run's batches for
-# the skill's verifier to re-grade as if fresh.
+  # item: gold<TAB>cited<TAB>role<TAB>sources-csv<TAB>src-files(space)<TAB>claim
+  #  role: poison{2,3,5} | clean{1,4} | addcite{6} | softspot{7}
+  items=(
+"CLEAN	1	clean	arxiv-2306.05685-llm-as-judge-mt-bench	$ARX	GPT-4 acting as judge reaches over 80% agreement with human preferences, the same level of agreement seen between two human raters. [arxiv-2306.05685-llm-as-judge-mt-bench]"
+"CORRECTION/overstatement	1	poison	arxiv-2306.05685-llm-as-judge-mt-bench	$ARX	GPT-4 acting as judge consistently outperforms human raters on open-ended evaluation. [arxiv-2306.05685-llm-as-judge-mt-bench]"
+"CORRECTION/contradiction	1	poison	arxiv-2306.05685-llm-as-judge-mt-bench	$ARX	The authors publicly released MT-bench questions, roughly 300 expert votes, and 30,000 conversations. [arxiv-2306.05685-llm-as-judge-mt-bench]"
+"CLEAN	1	clean	arxiv-2306.05685-llm-as-judge-mt-bench	$ARX	The paper documents three judge biases — position bias (favoring the first answer shown), verbosity bias (favoring longer answers), and self-enhancement bias (a judge favoring its own outputs). [arxiv-2306.05685-llm-as-judge-mt-bench]"
+"CORRECTION/overstatement	1	poison	zenml-2025-12-llmops-1200-deployments	$ZEN	Shadow mode lets a team deploy any new agent live with zero risk. [zenml-2025-12-llmops-1200-deployments]"
+"CORRECTION/add-citation	0	addcite	zenml-2025-12-llmops-1200-deployments,evidentlyai-llm-as-a-judge-guide	$ZEN $EVI	Cox Automotive runs continuous red teaming throughout its development lifecycle, not as a one-time pre-launch assessment."
+"SOFTSPOT	0	softspot	zenml-2025-12-llmops-1200-deployments,evidentlyai-llm-as-a-judge-guide	$ZEN $EVI	In practice, most teams find a two-week shadow-mode window sufficient before enabling live execution."
+  )
+  poison_total=0 poison_caught=0 fc=0 exact=0 i=0
+  printf '# Validation gold-check (model %s) — automated pairing vs offline gold\n\n' "$MODEL"
+  for row in "${items[@]}"; do
+    i=$((i+1))
+    IFS=$'\t' read -r gold cited role csv srcfiles claim <<<"$row"
+    excerpt=$(printf '%s' "$claim" | python3 "$PAIR" --retrieve $srcfiles || true)
+    IFS=$'\t' read -r verdict repl < <(judge_claim "$claim" "$excerpt" "$cited" "$csv") || true
+    [[ "$verdict" == "$gold" ]] && exact=$((exact+1))
+    local_pass="—"
+    case "$role" in
+      poison)   poison_total=$((poison_total+1)); [[ "$verdict" == CORRECTION/* ]] && { poison_caught=$((poison_caught+1)); local_pass=CAUGHT; } || local_pass="MISS(poison shipped)";;
+      clean)    [[ "$verdict" == CORRECTION/* ]] && { fc=$((fc+1)); local_pass="FALSE-CORRECTION"; } || local_pass=ok;;
+      addcite)  [[ "$verdict" == "CORRECTION/add-citation" ]] && local_pass=ok || { [[ "$verdict" == CORRECTION/overstatement || "$verdict" == CORRECTION/contradiction ]] && { fc=$((fc+1)); local_pass="FALSE-CORRECTION(trimmed)"; } || local_pass="under-action($verdict)"; };;
+      softspot) [[ "$verdict" == "SOFTSPOT" ]] && local_pass=ok || { [[ "$verdict" == CORRECTION/* ]] && { fc=$((fc+1)); local_pass="FALSE-CORRECTION"; } || local_pass="$verdict"; };;
+    esac
+    printf 'item %d [%s]  gold=%-26s got=%-26s %s\n' "$i" "$role" "$gold" "$verdict" "$local_pass"
+    [[ -n "$repl" ]] && printf '        replacement: %s\n' "$repl"
+  done
+  echo
+  printf 'POISON RECALL = %d/%d   FALSE-CORRECTIONS = %d/4   EXACT-ACTION = %d/7   (floors: recall>=0.90, fc=0)\n' \
+    "$poison_caught" "$poison_total" "$fc" "$exact"
+  exit 0
+fi
+
+# --------------------------------------------------------------------------- #
+# Live run over a stack's audit dispatch.                                      #
+# --------------------------------------------------------------------------- #
+STACK="${1:?Usage: shadow-validate-run.sh <stack> | --gold-check | --self-check}"
+
+# Reset output FIRST, before any failable check, so an early exit never leaves a
+# stale manifest for the verifier to re-grade.
 OUT="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validate"
 rm -rf "$OUT"; mkdir -p "$OUT"
-BATCHES="$OUT/batches.tsv"   # batch_tag<TAB>batchfile — the verifier dispatch manifest
+BATCHES="$OUT/batches.tsv"
 : > "$BATCHES"
 
 LIB="$(bash "$STACKS_ROOT/scripts/resolve-library.sh")" || { echo "ERROR: could not resolve library" >&2; exit 1; }
 cd "$LIB" || { echo "ERROR: cannot cd into library: $LIB" >&2; exit 1; }
-DEV="$STACK/dev/audit"
-DISPATCH="$DEV/dispatch.tsv"
+DISPATCH="$STACK/dev/audit/dispatch.tsv"
 [[ -f "$DISPATCH" ]] || { echo "ERROR: no $DISPATCH — run audit through prep+gate first (finish clears it)" >&2; exit 1; }
 
-# Resolve an article's cited source files from its `sources:` frontmatter list
-# (paths are relative to the stack root, e.g. sources/pub/slug.md) and cat them
-# into stdout under a PER-SOURCE cap. A single total `head -c` let the first
-# (often largest) source consume the whole budget, feeding the model zero bytes
-# of the later cited sources — so the model looked like it mis-retrieved a claim
-# whose source text the harness had actually withheld. Splitting SRC_CAP evenly
-# guarantees every cited source is represented. Missing source files are logged.
-cited_sources_text() {
-  local art="$1"
-  local rels=()
-  while IFS= read -r rel; do rels+=("$rel"); done < <(
-    awk '/^---$/{c++; next} c==1 && /^[[:space:]]*-[[:space:]]*sources\//{sub(/^[[:space:]]*-[[:space:]]*/,""); print} c>=2{exit}' "$art"
-  )
-  local n=${#rels[@]}
-  [[ $n -gt 0 ]] || return 0
-  local per=$(( SRC_CAP / n )); [[ $per -lt 1 ]] && per=1
-  local rel f
-  for rel in "${rels[@]}"; do
-    f="$STACK/$rel"
-    if [[ ! -f "$f" ]]; then echo "MISSING-SOURCE $rel (article $(basename "$art"))" >&2; continue; fi
-    printf '\n===== SOURCE: %s =====\n' "$(basename "$rel")"
-    head -c "$per" "$f"
-    printf '\n'
-  done
-}
-
-validate_prompt() { # <article-file> -> stdout: the local per-claim validation prompt
-  local art="$1"
-  cat <<EOF
-You validate a knowledge-wiki ARTICLE against its cited SOURCES. For every
-factual claim the article makes, judge it against the source that grounds it and
-assign ONE verdict:
-  CLEAN                      - the claim is fully supported by its cited source
-  CORRECTION/contradiction   - the source states the OPPOSITE of the claim
-  CORRECTION/overstatement   - the claim is stronger/broader than the source supports
-  CORRECTION/add-citation    - the claim is true and a listed source grounds it, but it carries no inline citation
-  SOFTSPOT                   - no cited or listed source states this claim at all
-Be CONSERVATIVE: do not invent claims, do not flag a supported claim, quote the
-exact source phrase you judged against.
-OUTPUT: one line per claim, EXACTLY this shape, nothing else:
-<verdict> ||| <claim text> ||| <source phrase you judged against, or NONE>
-
-ARTICLE:
-$(cat "$art")
-
-CITED SOURCES:
-$(cited_sources_text "$art")
-
-OUTPUT: one line per claim as specified. Nothing else.
-EOF
-}
-
-n=0 skipped=0 failed=0 total_claims=0 unparsed=0
+n=0 skipped=0 total_claims=0 unparsed=0 corrections=0
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
-# group articles by batch_tag so each batch file feeds one verifier agent
 while IFS=$'\t' read -r batch_tag slug art; do
   [[ -n "${art:-}" ]] || continue
   batchfile="$OUT/batch-${batch_tag}.md"
   if [[ ! -f "$batchfile" ]]; then
-    printf '# Validation shadow batch %s — stack %s (model %s)\n\n' "$batch_tag" "$STACK" "$MODEL" > "$batchfile"
+    printf '# Validation shadow batch %s — stack %s (model %s, retrieval build)\n\n' "$batch_tag" "$STACK" "$MODEL" > "$batchfile"
     printf '%s\t%s\n' "$batch_tag" "$batchfile" >> "$BATCHES"
   fi
   if [[ ! -f "$art" ]]; then echo "SKIP $batch_tag/$slug: no article ($art)" >&2; skipped=$((skipped+1)); continue; fi
   printf '## Article: %s\n\n' "$slug" >> "$batchfile"
-  validate_prompt "$art" > "$work/prompt.txt"
-  if ! NUM_CTX="${NUM_CTX:-16384}" bash "$INFER" "$MODEL" "$work/prompt.txt" "$work/out.txt" 2>"$work/err"; then
-    echo "VALIDATE-FAIL $batch_tag/$slug ($(tail -1 "$work/err" 2>/dev/null))" >&2; failed=$((failed+1)); continue
-  fi
-  claims=$(parse_and_gate "$work/out.txt" "$batchfile")
-  # A 0-claim article is NOT clean coverage — the model emitted nothing parseable
-  # (or silently dropped every claim). Flag it so the verifier metrics are not
-  # inflated by articles the local model simply skipped.
+
+  claims=0
+  while IFS=$'\t' read -r idx cited claim cand_slug excerpt; do
+    [[ -n "${claim:-}" ]] || continue
+    claims=$((claims+1))
+    IFS=$'\t' read -r verdict repl < <(judge_claim "$claim" "$excerpt" "$cited" "$cand_slug") || true
+    [[ "$verdict" == CORRECTION/* || "$verdict" == INVALID/* ]] && corrections=$((corrections+1))
+    { printf '### Claim %d (%s)\n' "$claims" "$([[ "$cited" == 1 ]] && echo "cited:$cand_slug" || echo uncited)"
+      printf 'Claim: %s\n' "$claim"
+      printf 'Source excerpt (harness-retrieved from %s): %s\n' "$cand_slug" "${excerpt:-NONE}"
+      printf 'Local verdict: %s\n' "$verdict"
+      [[ -n "$repl" ]] && printf 'Proposed replacement: %s\n' "$repl"
+      printf '\n'
+    } >> "$batchfile"
+  done < <(python3 "$PAIR" "$art" "$STACK")
+
   if [[ "$claims" -eq 0 ]]; then
-    echo "UNPARSED $batch_tag/$slug: local model emitted 0 parseable claim lines" >&2
-    printf 'Local verdict: UNPARSED (0 claim lines emitted)\n\n' >> "$batchfile"
+    echo "UNPARSED $batch_tag/$slug: pair-claims extracted 0 claims" >&2
+    printf 'Local verdict: UNPARSED (0 claims extracted)\n\n' >> "$batchfile"
     unparsed=$((unparsed+1))
   fi
   total_claims=$((total_claims+claims))
   n=$((n+1))
 done < "$DISPATCH"
 
-echo "SHADOW_VALIDATE_SUMMARY: stack=$STACK model=$MODEL articles=$n skipped=$skipped failed=$failed unparsed=$unparsed claims=$total_claims batches=$(wc -l < "$BATCHES" | tr -d ' ') -> $OUT" >&2
+echo "SHADOW_VALIDATE_SUMMARY: stack=$STACK model=$MODEL articles=$n skipped=$skipped unparsed=$unparsed claims=$total_claims corrections=$corrections batches=$(wc -l < "$BATCHES" | tr -d ' ') -> $OUT" >&2
