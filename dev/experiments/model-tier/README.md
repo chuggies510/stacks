@@ -23,7 +23,7 @@ is usually not the accuracy blocker; the input context is.
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |
 | Synthesis | article-synthesizer | `synthesis-benchmark.md` | Benchmark ready (S22) — 3 items, faithfulness/over-claim + refusal floors. Awaiting liminal local scores. |
-| Validation | validator | `validation-benchmark.md` | **CLOSED (S63): validation stays cloud-owned — solo-local refuted across 5 levers.** Retrieval build wired (S26, opt-in in audit Step 4.5); run at scale on the full `llm` stack (S27); precision-lever search S63. `pair-claims.py` splits each article into claims and pulls each claim's OWN cited-source excerpt (token-overlap, top-K, bullets as units); the model judges one claim + one excerpt (the offline shape). **At-scale run (45 articles, 1717 claims, qwen local → 6 cloud sonnet verifiers grading every claim against the real source): poison recall 63/70 (90%) by verdict LABEL but only 40/71 (56%) when the fix must actually remove the assertion — 25 poison claims got a `CORRECTION` label with a no-op/still-broken replacement that passes the label floor yet ships the poison. False-correction 543/1101 (49%): local wrongly alters ~half of genuinely-fine claims.** The 7-item gold-check (poison 3/3, FC 1/4) did NOT predict this — its short claims made flag==fix, hiding the label-vs-fix gap, and its tiny sample hid the false-correction blowout. **Solo-local flip decisively blocked**, and the label-based recall floor is itself unsafe (grade fix quality, not the verdict label); validation stays advisory, cloud verifier mandatory. Real audit payload: ~71 verifier-confirmed genuine overstatements/contradictions across the stack, worst in `agent-memory-systems` (11, several fabricated mechanisms the source never states). **S63 precision-lever search (removes the S27 confounds — two-stage gate, calibration anchor, full cited section): 5 levers, none clears the gate (recall ≥0.90 ∧ precision ≥0.50). qwen3-30b-a3b 0.38/0.22, dense qwen3-32b 0.32/0.18 (capacity walled), thinking 0.59/0.51 (helps both axes, plateaus), atomic-decompose 0.70/~0.35, Bespoke-MiniCheck-7B specialist 0.69/0.17. Convergence closes it: a task-trained specialist and a decompose-harness hit the SAME ~0.69 recall wall from opposite directions → the ceiling is in the data (a ~15-claim gist-preserving-overstatement core), not the substrate. Ensemble (specialist OR atomic) → recall 0.773: a documented safety-net, not a gate. Validation cloud-owned; the shadow is advisory-only and does NOT shrink the cloud pass (local misses ~23%, so cloud is a full independent pass, not a spot-check of local flags — the cost-saving hybrid is dead).** |
+| Validation | validator | `validation-benchmark.md` | **CLOSED (S63): validation stays cloud-owned — solo-local refuted across 5 levers.** Retrieval build wired (S26, opt-in in audit Step 4.5); run at scale on the full `llm` stack (S27); precision-lever search S63. `pair-claims.py` splits each article into claims and pulls each claim's OWN cited-source excerpt (token-overlap, top-K, bullets as units); the model judges one claim + one excerpt (the offline shape). **At-scale run (45 articles, 1717 claims, qwen local → 6 cloud sonnet verifiers grading every claim against the real source): poison recall 63/70 (90%) by verdict LABEL but only 40/71 (56%) when the fix must actually remove the assertion — 25 poison claims got a `CORRECTION` label with a no-op/still-broken replacement that passes the label floor yet ships the poison. False-correction 543/1101 (49%): local wrongly alters ~half of genuinely-fine claims.** The 7-item gold-check (poison 3/3, FC 1/4) did NOT predict this — its short claims made flag==fix, hiding the label-vs-fix gap, and its tiny sample hid the false-correction blowout. **Solo-local flip decisively blocked**, and the label-based recall floor is itself unsafe (grade fix quality, not the verdict label); validation stays advisory, cloud verifier mandatory. Real audit payload: ~71 verifier-confirmed genuine overstatements/contradictions across the stack, worst in `agent-memory-systems` (11, several fabricated mechanisms the source never states). **S63 precision-lever search (removes the S27 confounds — two-stage gate, calibration anchor, full cited section): 6 levers filling all four quadrants of the {specialist,general}×{whole,atomic} 2×2, none clears the gate (recall ≥0.90 ∧ precision ≥0.50). qwen3-30b-a3b 0.38/0.22, dense qwen3-32b 0.32/0.18 (capacity walled), thinking 0.59/0.51 (helps both axes, plateaus), atomic-decompose 0.70/~0.35, Bespoke-MiniCheck-7B specialist 0.69/0.17, specialist×atomic 0.79/0.15. The trade-off is mechanical: decomposition buys recall and pays it back double in precision. Recall ceiling 0.788 (specialist×atomic), precision ceiling 0.51 (thinking-general), and no operating point holds both → the ceiling is in the data (a ~15-claim gist-preserving-overstatement core), not the substrate. Validation cloud-owned; the shadow is advisory-only and does NOT shrink the cloud pass (best local recall 0.788 misses ~21%, so cloud is a full independent pass, not a spot-check of local flags — the cost-saving hybrid is dead).** |
 | Enrichment | enrichment | `enrichment-benchmark.md` | **Live runner wired (S26, opt-in in enrich Step 4.5).** `shadow-enrich-run.sh` = harness owns Brave search + fetch, local model owns only the grounding judgment, `url-dedup-gate.sh` owns DUP. Proven live (2 gaps → 2 tier-1 candidates, 1 URL deduped). Verifier caught a tier mis-assignment. |
 
 ## Key finding (extraction)
@@ -73,20 +73,30 @@ overstatements now targetable for a real audit-apply pass.
 
 ## Key finding (validation — closed, S63)
 
-Five levers, none clears the viability gate (recall ≥0.90 ∧ precision ≥0.50):
-no-think MoE, thinking-mode, dense 32B, atomic-claim decomposition, and a
-purpose-built fact-check specialist (Bespoke-MiniCheck-7B). Two independent
-closes fell out of it:
+Six levers filling all four quadrants of the {specialist,general}×{whole,atomic}
+2×2, none clears the viability gate (recall ≥0.90 ∧ precision ≥0.50): no-think
+MoE, thinking-mode, dense 32B, atomic-claim decomposition, a purpose-built
+fact-check specialist (Bespoke-MiniCheck-7B), and specialist×atomic. Two
+independent closes fell out of it:
 
 - **Capacity is walled.** 3B-active MoE and 32B-dense land at the same poor
   point — 10× the active parameters bought nothing. The limit is not model size.
-- **The wall is in the data, not the substrate.** The specialist checker and the
-  decompose harness — two orthogonal attacks — converge on the *same* ~0.69 recall
-  ceiling. ~15 overstatements are gist-preserving ("a 15-point gap *confirms* X":
-  the gap is real, "confirms" is the overclaim); they read as consistent to every
-  approach. Reasoning-mode lifted precision (0.22→0.51) but not recall past the
-  gate; diversity (specialist OR atomic) lifts recall to 0.773 but no further and
-  at a precision cost.
+- **The wall is in the data, and the two axes trade against each other.** ~15
+  overstatements are gist-preserving ("a 15-point gap *confirms* X": the gap is
+  real, "confirms" is the overclaim) and read as consistent to every approach.
+  Decomposition buys recall and pays it back double in precision: the strongest
+  recall lever (specialist×atomic) hits 0.788 at 0.145 precision — worst of all;
+  the strongest precision lever (thinking-general) hits 0.51 at 0.59 recall. No
+  operating point holds both. Diversity (specialist OR atomic) lifts recall to
+  0.773 but no further and at a precision cost.
+
+**Forward lead (untried, real mechanism).** The precision axis is where every
+single model fails; the one direction with a mechanism against it is a *diverse
+small-model fleet* — MiniCheck-Flan-T5-Large (770M), nli-deberta (435M), HHEM
+(110M), different lineages — voted 2-of-3-to-auto-block (or single-dissent as an
+advisory hint). Different lineages is the non-overlapping-blind-spot bet that
+already lifted recall to 0.773; applied to precision with a vote threshold it may
+be the only thing that moves it. See `results-liminal-S63-minicheck-atomic.md`.
 
 Operational consequence: **validation is cloud-owned, and the local shadow cannot
 shrink the cloud pass.** Because the best local recall (0.773) still misses ~23% of
