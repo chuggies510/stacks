@@ -1,3 +1,7 @@
+## 0.68.3 — 2026-07-18
+
+**The self-test's "wait for the agents" barriers are now explicitly bounded, so one stuck agent can't hang the run.** The A/B waves run after every article is already committed (advisory only); the wait instructions now say to proceed without a straggler past a reasonable window — its output is simply absent and the delta records that arm as a failure, never a silent drop and never an indefinite hang. (`skills/catalog-sources/SKILL.md`)
+
 ## 0.68.2 — 2026-07-18
 
 **Final confirmation pass closed the last isolation gap: the haiku drafts are now frozen read-only before grading too.** 0.68.1 froze the concept and sonnet-article snapshots but left the haiku bodies writable while the graders (which hold Write) ran, so a stray verifier write could have corrupted a draft mid-grading. The bodies are now `chmod -R a-w` at the challenger barrier, so all three graded inputs are immutable during grading. (`skills/catalog-sources/SKILL.md`, spec `dev/specs/production-self-test-ab.md`)
