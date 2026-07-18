@@ -35,13 +35,17 @@ with the per-stage differences documented below.
 No env flag. The shadow runs on every catalog run. Two consequences:
 
 1. **Critical-path isolation is mandatory** — and the ONLY way to get it is to run the
-   whole A/B (challenger + both grading waves) **AFTER `finish`**, once the sonnet
-   articles are filed and committed. A barrier of agents *before* `finish` (an earlier
-   draft's mistake, caught by codex) can hang and block filing indefinitely. So: a cheap
-   deterministic **snapshot** of the concept blocks runs before `finish` (Step 8.7, no
-   agents, can't hang); `finish` commits the sonnet articles; then the agent-driven A/B
-   runs post-commit against the snapshot (Step 9.5). Every A/B step is non-fatal, and the
-   committed run cannot be undone by anything in it.
+   whole A/B (challenger + both grading waves) **AFTER the entire catalog run**, once
+   every stack's sonnet articles are filed and committed. A barrier of agents *before*
+   `finish` (an earlier draft's mistake, caught by codex) can hang and block filing
+   indefinitely; and 9.5 *inside* the per-stack loop lets a hung challenger block a LATER
+   stack's catalog (second codex pass). So: a cheap deterministic **snapshot** of the
+   concept blocks AND the shipped sonnet articles runs before each `finish` (Step 8.7, no
+   agents, can't hang); `finish` commits the sonnet articles; then, after the whole run,
+   the agent-driven A/B (Step 9.5) grades those snapshots. Both arms grade snapshot copies,
+   so no A/B agent touches a live `articles/` file — the isolation is structural, not a
+   post-hoc restore. Every A/B step is non-fatal, and the committed run cannot be undone by
+   anything in it.
 2. **Runs until the decision is made, then retires.** Always-on is the measurement
    phase. When the accumulated delta conclusively says "flip synthesis to haiku" (or
    "never"), the authoritative tier is re-pinned and this shadow is dropped (or flips
@@ -50,10 +54,12 @@ No env flag. The shadow runs on every catalog run. Two consequences:
 ## Design (synthesis stage)
 
 Seam: **Step 8.7 (pre-`finish`, cheap)** snapshots each concept block `_dedup-{slug}.md`
-to `live-diffs/ab/{RUN_ID_W2}/concepts/` (namespaced per run so concurrent catalog runs
-don't collide) — no agents, so it can't hang. `finish` (Step 9) commits the sonnet
-articles and clears the originals. **Step 9.5 (post-`finish`)** runs the agent-driven A/B
-against the snapshot.
+AND the shipped article `articles/{slug}.md` to `live-diffs/ab/{LIBNAME}__{stack}__{RUN_ID_W2}/`
+(`concepts/` + `sonnet/`; namespaced by library+stack+run so concurrent runs — even same
+second, same checkout, different stacks — never collide) — no agents, so it can't hang.
+`finish` (Step 9) commits the sonnet articles and clears the originals. **Step 9.5, run
+ONCE after the whole catalog run**, grades both snapshot arms — nothing in it reads or
+writes a live `articles/` file.
 
 1. **Challenger dispatch (new, in Step 9.5).** For each concept snapshot, one `Agent`
    call, `subagent_type: stacks:article-synthesizer`, **`model: "haiku"` explicit
@@ -62,16 +68,18 @@ against the snapshot.
    is the model. Haiku reads the **snapshot** concept block and is dispatched as a **first
    write** (no `target_article`, even for updated slugs) so it never reads a sonnet
    article — this closes the update-contamination codex found. Output goes to
-   `live-diffs/ab/{RUN_ID_W2}/bodies/{slug}__haiku.md`. The clobber guarantee is NOT the
-   output-path arg (the agent keeps `Write`/`Edit`, so that is a prompt instruction it
-   could disobey — codex was right, my earlier "mechanical guarantee" claim was wrong):
-   it is a post-wave `git checkout -- {stack}/articles/` that restores any stray write
-   from HEAD, which is authoritative because `finish` already committed. `run_in_background`.
+   `live-diffs/ab/{...}/bodies/{slug}__haiku.md`. The clobber guarantee is **structural**:
+   both grading arms read only snapshot copies (`concepts/`, `sonnet/`, `bodies/`), so no
+   A/B agent ever needs to touch a live `articles/` file, and the graded truth cannot be
+   corrupted no matter how a challenger or verifier misbehaves. A stray write into the live
+   tree is therefore cosmetic; a final `git checkout -- {stack}/ && git clean -fdq {stack}/`
+   (failure surfaced, not swallowed) sweeps it as hygiene. Dispatch `run_in_background`, then
+   **barrier on completion before grading** (background is parallel dispatch, not detachment).
 2. **Paired grading (partly new).** Reuse `stacks:article-verifier` (draft-path-agnostic
    — confirmed, "local" is only prose in its definition). Two dispatches per slug,
    both against the same concept block `_dedup-{slug}.md`:
-   - haiku arm → grades `live-diffs/ab/bodies/{slug}__haiku.md` → `live-diffs/ab/grade-haiku/{slug}.json`
-   - sonnet arm → grades the shipped `articles/{slug}.md` → `live-diffs/ab/grade-sonnet/{slug}.json`
+   - haiku arm → grades `.../bodies/{slug}__haiku.md` → `.../grade-haiku/{slug}.json`
+   - sonnet arm → grades the **snapshotted** shipped article `.../sonnet/{slug}.md` → `.../grade-sonnet/{slug}.json`
      (grading the authoritative output is the genuinely new measurement — today nothing
      grades it; the `synthesis.jsonl` `cloud` field is structural counts, not a verdict.)
    Reset both grade dirs (`rm -rf && mkdir -p`) before dispatch, like the existing verify step.
@@ -148,16 +156,17 @@ directive; a one-sided grade is not an A/B. Revisit grading cadence only if the 
 
 **ALWAYS**
 - Sonnet is authoritative: it synthesizes `articles/{slug}.md`, gates, and is filed by `finish` — unchanged from today.
-- Step 8.7 (snapshot, no agents) runs **before `finish`**; the agent-driven A/B (Step 9.5) runs **after `finish`** commits — that ordering is what makes it critical-path-isolated.
+- Step 8.7 (snapshot, no agents) runs **before each `finish`**; the agent-driven A/B (Step 9.5) runs **once after the whole catalog run** — that ordering keeps it off the critical path AND stops a hung challenger from blocking a later stack.
 - Every shadow/grade sub-step is **non-fatal**: a haiku or grader failure logs a record and the run proceeds to `finish`.
 - `ab-synth-delta.sh` **appends** to `ab-synthesis.jsonl` (accumulation) and **derives** floor clearance from component fields.
 - Dispatch the haiku challenger with an **explicit `model: "haiku"`** override (the agent frontmatter pins sonnet).
 
 **NEVER**
 - Never write haiku output into `articles/` or file it into `sources/` — advisory only, shadow paths only.
-- Never let the A/B corrupt, block, or fail the sonnet articles. It runs entirely AFTER `finish` commits them, so
-  it cannot delay filing; a stray haiku write to `articles/` is reverted from HEAD (`git checkout`); and haiku is
-  dispatched first-write from the snapshot so it never reads/merges a sonnet article.
+- Never let the A/B corrupt, block, or fail the sonnet articles. It runs entirely after every `finish` commits, so
+  it cannot delay filing; both arms grade snapshot copies so no agent touches a live `articles/` file (a stray write
+  is cosmetic, swept by a final `git checkout`+`git clean` with failure surfaced); and haiku is dispatched first-write
+  from the snapshot so it never reads/merges a sonnet article.
 - Never truncate/reset `ab-synthesis.jsonl` (the running log is the evidence); only per-run grade dirs reset.
 - Never re-pin the authoritative tier as part of this work — that is a separate decision the accumulated data informs.
 
@@ -168,9 +177,9 @@ directive; a one-sided grade is not an A/B. Revisit grading cadence only if the 
 ## Commands / artifacts
 
 - `dev/experiments/model-tier/harness/ab-synth-delta.sh <concepts-snapshot-dir> <sonnet-grade-dir> <haiku-grade-dir> <out-jsonl> [run_id] [stack]` — iterates the concept-snapshot slug set (the manifest), validates each arm independently (missing/invalid → `status`≠`ok`, never a silent drop or false-clear), derives clearance, appends. Self-check green.
-- Per-run scratch (namespaced by `RUN_ID_W2`): `live-diffs/ab/{RUN_ID_W2}/{concepts,bodies,grade-sonnet,grade-haiku}/`.
+- Per-run scratch (namespaced by library+stack+run): `live-diffs/ab/{LIBNAME}__{stack}__{RUN_ID_W2}/{concepts,sonnet,bodies,grade-sonnet,grade-haiku}/`.
 - Accumulating log: `live-diffs/ab-synthesis.jsonl`.
-- Skill steps: catalog-sources **Step 8.7** (pre-`finish` snapshot) + **Step 9.5** (post-`finish` A/B).
+- Skill steps: catalog-sources **Step 8.7** (pre-`finish` snapshot of concepts + sonnet articles) + **Step 9.5** (A/B, once after the whole run).
 
 ## Open question (one knob)
 
