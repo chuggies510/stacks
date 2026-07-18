@@ -1,3 +1,7 @@
+## 0.68.2 — 2026-07-18
+
+**Final confirmation pass closed the last isolation gap: the haiku drafts are now frozen read-only before grading too.** 0.68.1 froze the concept and sonnet-article snapshots but left the haiku bodies writable while the graders (which hold Write) ran, so a stray verifier write could have corrupted a draft mid-grading. The bodies are now `chmod -R a-w` at the challenger barrier, so all three graded inputs are immutable during grading. (`skills/catalog-sources/SKILL.md`, spec `dev/specs/production-self-test-ab.md`)
+
 ## 0.68.1 — 2026-07-18
 
 **A re-review of 0.68.0 caught three follow-on defects in the hardening itself; this closes them.** One would have made the self-test silently record nothing; the other two tightened the isolation.

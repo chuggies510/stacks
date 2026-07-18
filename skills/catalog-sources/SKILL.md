@@ -231,6 +231,13 @@ Run this **once per stack cataloged this run**, using the `$AB` snapshot path th
 
 **(a) Dispatch the haiku challenger** — for each `{slug}.md` in `$AB/concepts/`, one `Agent` call, `subagent_type: stacks:article-synthesizer`, **`model: "haiku"` explicit** (the frontmatter pins sonnet; the model swap is the A/B's whole point). Same inputs as the Step 7 sonnet dispatch EXCEPT: read the SNAPSHOT concept block `$AB/concepts/{slug}.md`; treat **every** slug as a first write (no `target_article`) so haiku synthesizes from the concept block, never from a sonnet article; and write ONLY to `$AB/bodies/{slug}__haiku.md` (scratch, outside any stack). `run_in_background: true`, its own wave, ≤ the W2 wave cap per message. **Barrier: wait for every haiku agent to finish before grading** — `run_in_background` is parallel dispatch, not detachment or a timeout. A haiku agent that writes nothing is fine (the delta records `haiku:null`); one that ignores its path and writes into `articles/` grades nothing real (that arm's body is missing) and is flagged by the stray-write check in (d) — it cannot corrupt the grading truth, which is chmod'd read-only in Step 8.7.
 
+Once the barrier clears (all challengers done, bodies final), **freeze the haiku bodies read-only too** so a grader (verifiers keep `Write`) cannot corrupt a body mid-grading — now all three graded inputs are immutable:
+
+```bash
+AB="<the same $AB path this stack's Step 8.7 echoed>"
+chmod -R a-w "$AB/bodies" 2>/dev/null || true
+```
+
 **(b) Grade BOTH arms** against the SNAPSHOT concept blocks — reuse `stacks:article-verifier` (draft-path-agnostic), two dispatches per slug (cloud sonnet, ≤25 per message). Both arms read only snapshot files, so grading is hermetic:
 - **sonnet arm** — grade the snapshotted shipped article `$AB/sonnet/{slug}.md` vs `$AB/concepts/{slug}.md` → `$AB/grade-sonnet/{slug}.json`
 - **haiku arm** — grade `$AB/bodies/{slug}__haiku.md` vs `$AB/concepts/{slug}.md` → `$AB/grade-haiku/{slug}.json`

@@ -71,8 +71,9 @@ writes a live `articles/` file.
    `live-diffs/ab/{...}/bodies/{slug}__haiku.md`. The clobber guarantee is **structural**:
    both grading arms read only snapshot copies (`concepts/`, `sonnet/`, `bodies/`), so no
    A/B agent ever needs to touch a live `articles/` file. The truth copies (`concepts/`,
-   `sonnet/`) are `chmod -R a-w` after the snapshot, so a misbehaving challenger/verifier
-   cannot corrupt what it is graded against either — only `bodies/` is writable. A stray
+   `sonnet/`) are `chmod -R a-w` at snapshot time and `bodies/` is frozen the same way after
+   the challenger barrier (before graders dispatch), so all three graded inputs are read-only
+   during grading and a misbehaving challenger/verifier cannot corrupt what it grades. A stray
    write into the live `articles/` tree is therefore cosmetic and advisory-only; a final step
    **detects and reports** it (`git status --porcelain`) rather than blanket-resetting the
    stack (which would erase a concurrent operator edit or a legitimately-new untracked file).
