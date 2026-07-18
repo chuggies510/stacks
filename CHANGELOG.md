@@ -1,3 +1,8 @@
+## 0.66.2 — 2026-07-17
+
+**`sources/incoming/` is now documented as gitignored staging, so a source dropped there is no longer silently mistaken for a saved one.** `incoming/` is gitignored by design (transient staging before catalog), but nothing said so: `git add` ignores it, `git status` reads clean, and a hand-authored source staged there looks committed while it lives only on local disk — invisible to the other machines a git-synced library spans, and gone if that disk dies. It confused a session mid-flow that had staged a subagent-generated voice profile and hand-written exemplars, assumed the stack commit covered them, and found git reporting nothing to commit.
+- **`using-stacks` behavior #6 and the `new-stack` closing report now state that `incoming/` is untracked staging and that `catalog-sources` is what makes a source durable — filing the raw source into the tracked `sources/{publisher}/` as it extracts the concepts.** Doc-only; no pipeline behavior changed. (`skills/using-stacks/SKILL.md`, `skills/new-stack/SKILL.md`)
+
 ## 0.66.1 — 2026-07-12
 
 **Fix the retrieval that hid supporting text in bulleted sources, and correct the gold-check number (#109).**

@@ -101,4 +101,4 @@ git add "$STACK_NAME/" catalog.md
 git commit -m "feat: create $STACK_NAME stack"
 ```
 
-Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:catalog-sources $STACK_NAME to build article-per-concept wiki entries."
+Report: "Stack '$STACK_NAME' created. Drop sources in $STACK_NAME/sources/incoming/ and run /stacks:catalog-sources $STACK_NAME to build article-per-concept wiki entries. Note: sources/incoming/ is gitignored staging — those files are not tracked and don't sync across machines; cataloging is what makes them durable."

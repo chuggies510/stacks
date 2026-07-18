@@ -104,3 +104,11 @@ review). Querying the library is also how you discover what to grow next.
 what it found and stages only approved sources into `sources/incoming/` (the
 `--auto` fast path excepted). The human decides what the library is allowed to
 believe.
+
+`sources/incoming/` is **gitignored staging** — files there are untracked, so
+they do not sync across machines and are gone if the disk is lost. `git add`
+silently ignores them and `git status` reads clean, which looks like they are
+safe when they are not. `catalog-sources` is what makes a staged source durable:
+it extracts the concepts into articles and files the raw source into the tracked
+`sources/{publisher}/`. Catalog promptly rather than leaving hand-authored
+sources staged across a session or a machine switch.
