@@ -1,3 +1,10 @@
+## 0.68.1 — 2026-07-18
+
+**A re-review of 0.68.0 caught three follow-on defects in the hardening itself; this closes them.** One would have made the self-test silently record nothing; the other two tightened the isolation.
+- **The Step 9.5 delta command referenced shell variables from an earlier block, which don't survive between skill bash calls — so it would have run with empty paths and appended no evidence while still paying for every agent.** The delta and stray-write blocks are now self-contained: each re-declares the snapshot path and re-derives the plugin root. (`skills/catalog-sources/SKILL.md`)
+- **The final cleanup no longer blanket-resets the stack.** 0.68.0 ran `git checkout` + `git clean -fdq` over the whole stack dir, which would also erase a concurrent operator edit or a legitimately-new untracked file during the long grading wave. Since grading is now hermetic (both arms read snapshots), a stray live-tree write is cosmetic — so this step now DETECTS and reports a dirty `articles/` for the operator to inspect, instead of destroying to clean it. (`skills/catalog-sources/SKILL.md`)
+- **The snapshot's grading truth is now read-only.** The concept and sonnet-article snapshots are `chmod -R a-w` after copying, so a misbehaving challenger/verifier (which keeps Write/Edit) cannot corrupt the truth it is graded against; only the haiku-body scratch dir stays writable. (`skills/catalog-sources/SKILL.md`, spec `dev/specs/production-self-test-ab.md`)
+
 ## 0.68.0 — 2026-07-18
 
 **A second codex pass on 0.67.0 (the pre-first-run gate) found the self-test could still overwrite a shipped article and, in multi-stack runs, stall a later stack — this hardens it so neither can happen.** The fix makes the A/B never touch the live articles at all: it now compares throwaway copies of both the cheap (haiku) and strong (sonnet) versions, and it runs once at the very end of a catalog job instead of in the middle of each stack. What ships is unchanged; the evidence log it builds is unchanged (advances #95/#109).

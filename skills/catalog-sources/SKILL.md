@@ -188,6 +188,10 @@ while IFS=$'\t' read -r _wave slug; do
   # so Step 9.5 grades a scratch copy, never the live articles/ file — the A/B stays hermetic.
   cp "{LIBRARY}/{stack}/articles/${slug}.md" "$AB/sonnet/${slug}.md" || { echo "AB_SNAPSHOT_MISS=sonnet:$slug"; MISS=$((MISS+1)); }
 done < "{LIBRARY}/{stack}/dev/extractions/dispatch-w2.tsv"
+# Freeze the grading truth read-only: only $AB/bodies/ is writable by the challenger.
+# A misbehaving haiku/verifier agent then CANNOT edit the concept or sonnet-article
+# truth it is graded against (mechanical, not a prompt instruction).
+chmod -R a-w "$AB/concepts" "$AB/sonnet" 2>/dev/null || true
 echo "AB_SNAPSHOT=$AB ($(ls "$AB/concepts" 2>/dev/null | wc -l | tr -d ' ') concepts, $(ls "$AB/sonnet" 2>/dev/null | wc -l | tr -d ' ') sonnet, ${MISS} copy failures)"
 ```
 
@@ -221,16 +225,11 @@ Report to the user: sources processed, articles created vs updated, any sources 
 
 ## Step 9.5: Production self-test A/B — haiku challenger (always on — #95/#109)
 
-**Runs ONCE after the entire catalog run is complete** — after Step 9 has committed the sonnet articles for the LAST stack (queue mode: after every stack; single-stack mode: right after Step 9). Deferring the whole A/B past all catalog commits is what makes it isolated: it is off the critical path, a hung challenger cannot block a later stack's catalog+commit (already done), and **both arms grade only Step 8.7 snapshots — no A/B agent reads or writes the live `articles/` tree, so the shipped articles cannot be contaminated**. That structural property, not a post-hoc restore, is the anti-clobber guarantee. **Sonnet is authoritative; haiku is advisory-only.** Spec: `dev/specs/production-self-test-ab.md`.
+**Runs ONCE after the entire catalog run is complete** — after Step 9 has committed the sonnet articles for the LAST stack (queue mode: after every stack; single-stack mode: right after Step 9). Deferring the whole A/B past all catalog commits is what makes it isolated: it is off the critical path, a hung challenger cannot block a later stack's catalog+commit (already done), and **both arms grade only Step 8.7 snapshots — no A/B agent reads or writes the live `articles/` tree, so the shipped articles cannot be contaminated**. That structural property (grade snapshots, and the snapshot truth is chmod'd read-only), not a post-hoc restore, is the anti-clobber guarantee. **Sonnet is authoritative; haiku is advisory-only.** Spec: `dev/specs/production-self-test-ab.md`.
 
-Run the following **once per stack cataloged this run**, using the `$AB` snapshot path that stack's Step 8.7 echoed (carry each one forward; `run.env` is gone after `finish`):
+Run this **once per stack cataloged this run**, using the `$AB` snapshot path that stack's Step 8.7 echoed (carry each forward; `run.env` is gone after `finish`). Shell state does NOT persist between skill bash blocks, so **substitute the literal `$AB` path into the Agent dispatch paths below AND re-declare `AB=` (and re-derive `STACKS_ROOT`) inside every bash block that uses them** — a var set in one block is empty in the next.
 
-```bash
-AB="<the $AB path echoed by this stack's Step 8.7>"
-STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
-```
-
-**(a) Dispatch the haiku challenger** — for each `{slug}.md` in `$AB/concepts/`, one `Agent` call, `subagent_type: stacks:article-synthesizer`, **`model: "haiku"` explicit** (the frontmatter pins sonnet; the model swap is the A/B's whole point). Same inputs as the Step 7 sonnet dispatch EXCEPT: read the SNAPSHOT concept block `$AB/concepts/{slug}.md`; treat **every** slug as a first write (no `target_article`) so haiku synthesizes from the concept block, never from a sonnet article; and write ONLY to `$AB/bodies/{slug}__haiku.md` (scratch, outside any stack). `run_in_background: true`, its own wave, ≤ the W2 wave cap per message. **Barrier: wait for every haiku agent to finish before grading** — `run_in_background` is parallel dispatch, not detachment or a timeout. A haiku agent that writes nothing is fine (the delta records `haiku:null`); one that ignores its path and writes into `articles/` grades nothing real (that arm's body is missing) and is swept by the restore in (d).
+**(a) Dispatch the haiku challenger** — for each `{slug}.md` in `$AB/concepts/`, one `Agent` call, `subagent_type: stacks:article-synthesizer`, **`model: "haiku"` explicit** (the frontmatter pins sonnet; the model swap is the A/B's whole point). Same inputs as the Step 7 sonnet dispatch EXCEPT: read the SNAPSHOT concept block `$AB/concepts/{slug}.md`; treat **every** slug as a first write (no `target_article`) so haiku synthesizes from the concept block, never from a sonnet article; and write ONLY to `$AB/bodies/{slug}__haiku.md` (scratch, outside any stack). `run_in_background: true`, its own wave, ≤ the W2 wave cap per message. **Barrier: wait for every haiku agent to finish before grading** — `run_in_background` is parallel dispatch, not detachment or a timeout. A haiku agent that writes nothing is fine (the delta records `haiku:null`); one that ignores its path and writes into `articles/` grades nothing real (that arm's body is missing) and is flagged by the stray-write check in (d) — it cannot corrupt the grading truth, which is chmod'd read-only in Step 8.7.
 
 **(b) Grade BOTH arms** against the SNAPSHOT concept blocks — reuse `stacks:article-verifier` (draft-path-agnostic), two dispatches per slug (cloud sonnet, ≤25 per message). Both arms read only snapshot files, so grading is hermetic:
 - **sonnet arm** — grade the snapshotted shipped article `$AB/sonnet/{slug}.md` vs `$AB/concepts/{slug}.md` → `$AB/grade-sonnet/{slug}.json`
@@ -238,9 +237,11 @@ STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.sourc
 
 A slug whose snapshot article or haiku body is missing still gets a line — the delta records that arm as a grader failure (`status` ≠ `ok`), never a silent drop. **Wait for all graders before the delta.**
 
-**(c) Delta + append:**
+**(c) Delta + append.** Self-contained block — re-declare `AB` (the carried literal) and re-derive `STACKS_ROOT`; neither survives from block (a):
 
 ```bash
+AB="<the same $AB path this stack's Step 8.7 echoed>"
+STACKS_ROOT="${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null)}"
 bash "$STACKS_ROOT/dev/experiments/model-tier/harness/ab-synth-delta.sh" \
   "$AB/concepts" "$AB/grade-sonnet" "$AB/grade-haiku" \
   "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/ab-synthesis.jsonl" \
@@ -249,16 +250,14 @@ bash "$STACKS_ROOT/dev/experiments/model-tier/harness/ab-synth-delta.sh" \
 
 Read the summary (`N slugs · haiku clears floors X/ok · sonnet Y/ok · haiku regressions Z · …`). Advisory only. `haiku_regressed` (sonnet cleared the floors, haiku did not) trending toward zero across accumulated runs is the signal that would justify flipping synthesis to haiku — a separate decision, never made here.
 
-**(d) Final hygiene restore (mechanical).** The A/B graded only snapshots, so the shipped articles were never at risk — this is a belt-and-suspenders sweep for any stray write a misbehaving challenger/verifier made into the live tree despite its scratch-path instruction. HEAD holds the authoritative committed state, so restoring the whole stack dir is lossless. **Surface a failure — do not swallow it** (a non-clean tree after this is real signal, not noise):
+**(d) Stray-write check (detect, don't destroy).** The A/B graded only snapshots, so the shipped articles were never at risk; the challenger and verifiers are told to write only under `$AB` (outside every stack). This just confirms nothing strayed into the live tree. It **detects and reports** — it does NOT blanket-reset, because a blind `git checkout`/`git clean` of the stack would also erase a concurrent operator edit or a legitimately-new untracked file. If it flags a path, inspect it: a stray A/B write you `git checkout`/`rm`, your own edit you keep.
 
 ```bash
 cd "{LIBRARY}" || exit 1
-git checkout -- "{stack}/" && git clean -fdq "{stack}/" \
-  || echo "AB_RESTORE_FAILED for {stack}/ — inspect the working tree before any further commit"
-git status --porcelain -- "{stack}/" | grep -q . \
-  && echo "WARN: {stack}/ still dirty after A/B restore — a stray agent write survived; do NOT git add it" || true
+DIRTY=$(git status --porcelain -- "{stack}/articles/")
+[ -n "$DIRTY" ] \
+  && printf 'WARN: {stack}/articles/ is dirty after the A/B — likely a stray challenger/verifier write (they write only under the $AB snapshot). Inspect and revert the stray paths yourself; do NOT blanket-reset:\n%s\n' "$DIRTY" \
+  || echo "A/B left {stack}/articles/ clean — no stray writes."
 ```
-
-(`git clean -fdq` removes untracked A/B damage like a mis-slugged article; gitignored staging such as `sources/incoming/` is untouched, needing `-x` to clear.)
 
 **Known limitations (tracked, not blocking).** The A/B grades synthesis quality (recall / over-claims / structure), not the mechanical tag-vocabulary gate `finish` enforces, so a haiku draft with out-of-vocab tags can still clear the A/B floors. For updated slugs the sonnet arm is update-mode output while the haiku arm is first-write — a minor asymmetry.

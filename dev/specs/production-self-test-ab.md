@@ -70,11 +70,14 @@ writes a live `articles/` file.
    article — this closes the update-contamination codex found. Output goes to
    `live-diffs/ab/{...}/bodies/{slug}__haiku.md`. The clobber guarantee is **structural**:
    both grading arms read only snapshot copies (`concepts/`, `sonnet/`, `bodies/`), so no
-   A/B agent ever needs to touch a live `articles/` file, and the graded truth cannot be
-   corrupted no matter how a challenger or verifier misbehaves. A stray write into the live
-   tree is therefore cosmetic; a final `git checkout -- {stack}/ && git clean -fdq {stack}/`
-   (failure surfaced, not swallowed) sweeps it as hygiene. Dispatch `run_in_background`, then
-   **barrier on completion before grading** (background is parallel dispatch, not detachment).
+   A/B agent ever needs to touch a live `articles/` file. The truth copies (`concepts/`,
+   `sonnet/`) are `chmod -R a-w` after the snapshot, so a misbehaving challenger/verifier
+   cannot corrupt what it is graded against either — only `bodies/` is writable. A stray
+   write into the live `articles/` tree is therefore cosmetic and advisory-only; a final step
+   **detects and reports** it (`git status --porcelain`) rather than blanket-resetting the
+   stack (which would erase a concurrent operator edit or a legitimately-new untracked file).
+   Dispatch `run_in_background`, then **barrier on completion before grading** (background is
+   parallel dispatch, not detachment).
 2. **Paired grading (partly new).** Reuse `stacks:article-verifier` (draft-path-agnostic
    — confirmed, "local" is only prose in its definition). Two dispatches per slug,
    both against the same concept block `_dedup-{slug}.md`:
@@ -164,9 +167,9 @@ directive; a one-sided grade is not an A/B. Revisit grading cadence only if the 
 **NEVER**
 - Never write haiku output into `articles/` or file it into `sources/` — advisory only, shadow paths only.
 - Never let the A/B corrupt, block, or fail the sonnet articles. It runs entirely after every `finish` commits, so
-  it cannot delay filing; both arms grade snapshot copies so no agent touches a live `articles/` file (a stray write
-  is cosmetic, swept by a final `git checkout`+`git clean` with failure surfaced); and haiku is dispatched first-write
-  from the snapshot so it never reads/merges a sonnet article.
+  it cannot delay filing; both arms grade snapshot copies (truth dirs `chmod`'d read-only) so no agent touches a live
+  `articles/` file — a stray write is cosmetic and only DETECTED/reported, never blanket-reset (which would erase
+  concurrent work); and haiku is dispatched first-write from the snapshot so it never reads/merges a sonnet article.
 - Never truncate/reset `ab-synthesis.jsonl` (the running log is the evidence); only per-run grade dirs reset.
 - Never re-pin the authoritative tier as part of this work — that is a separate decision the accumulated data informs.
 
