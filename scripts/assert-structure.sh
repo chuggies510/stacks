@@ -47,6 +47,7 @@ case "$type" in
   article-md)
     grep -qE '^title:'           "$path" || fail "missing title field"
     grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
+    grep -qE '^routing:'         "$path" || fail "missing routing field"
     ;;
   audit-findings)
     # Per-batch validator output (#87 T7). The success signal is no longer a

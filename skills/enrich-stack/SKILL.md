@@ -45,6 +45,16 @@ in the same session and reports which gaps cleared. A batch run derives its work
 from the latest audit artifact plus mined lookup misses; a `--query` run derives
 exactly one gap. There is no persistent enrichment ledger.
 
+**Scope the invocation to the reason you're enriching (#114).** If you are
+invoking this skill because a prior `/stacks:lookup` in this session flagged a
+specific miss, or because an article's own "Gaps requiring Tier 1/Tier 2
+sources" note named a specific claim, that is a single-gap job: pass
+`--query "<that gap>"` explicitly. Do not invoke bare — a bare invocation pulls
+the FULL stack backlog (every live soft spot, sharded into many batches, many
+parallel web-search agents), a much larger and more expensive run than the one
+gap actually in scope. Reserve a bare invocation for when you actually mean
+"work the whole backlog."
+
 **Cold-start (#86):** an empty but scaffolded stack (STACK.md present, zero
 articles, no soft spots, no lookup misses) is one giant soft spot — there is
 nothing to audit and nothing has been queried, so the normal gap sources are
@@ -87,6 +97,17 @@ per area). If it prints **"Nothing to enrich"** (no live gaps, and either the
 stack already has articles or its scope has no bullets to seed from), stop here.
 Otherwise note the printed `AUTO=` value (it drives Step 6) and the
 manifest/listing/stack-root paths (they feed the dispatch).
+
+**Full-backlog confirmation gate (#114).** If this run has no `--query` (a bare
+invocation, full stack backlog — not the cold-start seed path above) AND prep's
+summary shows more than one batch, this is never silent: before dispatching
+any agent in Step 3, state to the operator the soft-spot count and batch count
+prep printed, that this is the FULL stack backlog and not a single gap, and ask
+them to confirm before proceeding. This is a defined step, not a courtesy — the
+#114 incident (a bare `enrich-stack plumbing` fanning out to 41 soft spots / 9
+batches when one HPWH-sizing gap was intended) was only caught because the
+operator happened to be asked. A single-batch bare run (small stack, one or two
+live gaps) needs no confirmation; a `--query` run never does.
 
 ## Step 2: Read STACK.md
 

@@ -1,3 +1,11 @@
+## 0.69.0 — 2026-07-22
+
+**Catalog can no longer ship an article the library can't find, a one-gap enrich no longer balloons into the whole backlog, and audits can now check just the articles you changed.**
+
+- **The routing line is now enforced at the gate, not merely requested (#117).** Synthesized articles were shipping without the `routing:` frontmatter (the one-line scope text `/stacks:lookup` matches against to pick the right article), and nothing checked for it — so an article silently became unfindable until an audit happened to sweep it (a ~$545 operation on the largest stack). The article-shape gate now fails any batch whose article lacks `routing:`, catching it the instant it is written. Also backfilled the 14 already-live unroutable articles and regenerated the affected stack indexes. (`scripts/assert-structure.sh`, `tests/assert-structure.bats`)
+- **A single flagged gap no longer silently expands to the full stack backlog (#114).** Running `enrich-stack {stack}` bare right after a lookup that flagged one gap pulled the ENTIRE backlog (dozens of soft spots, many parallel web-search agents) instead of the one gap. The skill now directs the agent to pass `--query` for a single gap, and adds a confirm-before-fan-out step on any bare multi-batch run. (`skills/enrich-stack/SKILL.md`)
+- **Audits can now scope to named articles instead of re-checking the whole stack (#100).** Adding a few articles to an already-audited stack forced a full re-audit — silently, whenever the `verified.tsv` hash baseline was absent. Added an `--only <slug,slug,...>` scoped audit, a warning when the incremental-skip baseline is missing, and a fix so a scoped run never stamps an article it did not actually check as verified. (`scripts/pipeline/audit.sh`, `skills/audit-stack/SKILL.md`)
+
 ## 0.68.3 — 2026-07-18
 
 **The self-test's "wait for the agents" barriers are now explicitly bounded, so one stuck agent can't hang the run.** The A/B waves run after every article is already committed (advisory only); the wait instructions now say to proceed without a straggler past a reasonable window — its output is simply absent and the delta records that arm as a failure, never a silent drop and never an indefinite hang. (`skills/catalog-sources/SKILL.md`)

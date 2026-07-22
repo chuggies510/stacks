@@ -5,7 +5,8 @@ description: |
   cited sources. Dispatches the validator agent to fix source-contradictions in
   place and list soft spots (claims not tied to a source), then writes a fresh
   audit report. Incremental by default: re-validates only articles changed since
-  their last audit (pass --full to re-check all). Runs from any repo; targets the library configured in
+  their last audit (pass --full to re-check all, or --only {slug,...} to scope to
+  named articles). Runs from any repo; targets the library configured in
   ~/.config/stacks/config.json, or the current directory when it is itself a library.
 ---
 
@@ -32,6 +33,10 @@ bash "$STACKS_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
 ```
 
 **Incremental skip.** prep compares each article's current content hash (`git hash-object`) against `dev/audit/verified.tsv` (the hash finish recorded at its last successful audit). An unchanged article re-validates to the same result, so it is skipped to save the validator's per-article token cost. A first run (no verified.tsv) audits everything; the stack self-migrates on that pass. Pass **`--full`** (`/stacks:audit-stack {stack} --full`) to ignore verified.tsv and re-check every article — do this after the validator's own logic changes, or after editing a cited **source** in place (the hash keys on the article, not its sources, so a source edited without re-cataloging the article is the one change the skip cannot see; the "sources are immutable" convention normally rules this out, and re-cataloging a source rewrites the article anyway → its hash moves → re-audited). Against article changes the skip is safe by construction: any hash miss falls through to auditing, so it never serves a changed article as still-valid.
+
+**Missing-baseline warning.** A stack with a prior audit history but no `verified.tsv` (e.g. last audited by a pre-incremental `audit.sh`) skips nothing — every article hash-misses and a full-stack sweep runs. prep prints a `WARNING:` to stderr when this happens so the defeated optimization is visible rather than silent; finish then writes the baseline, so the *next* run skips the unchanged ones. To audit just the newly cataloged articles instead of paying the full sweep, use `--only` below.
+
+**Scoped audit (`--only`).** Pass **`--only <slug,slug,...>`** (`/stacks:audit-stack {stack} --only ts-a,ts-b`) to audit exactly the named articles (bare slugs, no `.md`), bypassing the incremental skip — an explicitly named article is always re-audited even if unchanged. This is the escape hatch for verifying a small catalog addition without a whole-stack manifest: prep's dispatch covers only the named slugs, so Step 4's gate reconciles that scoped subset (not all articles) and a validator dispatched on just those passes instead of false-failing against the full manifest. finish stamps the audited slugs' fresh hashes into `verified.tsv` and carries every other article's prior baseline row forward — it never marks an un-audited article as verified. An unknown slug fails fast, naming it. Pass the SAME `$ARGUMENTS` (including `--only …`) to the `gate` and `finish` calls below; they read the scoped run-state prep persisted, so no extra flag is needed there.
 
 **If prep prints `NOTHING_TO_AUDIT`** (every article unchanged): skip Steps 2–4 entirely and jump to Step 5 (`audit.sh finish`) — finish refreshes the report, carries the skipped articles' soft spots forward, and re-stamps verified.tsv. There is nothing to dispatch or gate.
 

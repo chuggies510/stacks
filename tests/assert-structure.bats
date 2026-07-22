@@ -133,14 +133,14 @@ run_script() {
 
 @test "article-md: valid file passes" {
   local f="$TEST_TMP/article.md"
-  printf 'title: Heat Exchanger Types\nlast_verified: ""\n' > "$f"
+  printf 'title: Heat Exchanger Types\nrouting: Heat exchanger types — plate vs shell-and-tube, when to use each\nlast_verified: ""\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 0 ]
 }
 
 @test "article-md: missing title fails" {
   local f="$TEST_TMP/article.md"
-  printf 'last_verified: ""\n' > "$f"
+  printf 'routing: Heat exchanger types — plate vs shell-and-tube, when to use each\nlast_verified: ""\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
@@ -148,10 +148,19 @@ run_script() {
 
 @test "article-md: missing last_verified fails" {
   local f="$TEST_TMP/article.md"
-  printf 'title: Heat Exchanger Types\n' > "$f"
+  printf 'title: Heat Exchanger Types\nrouting: Heat exchanger types — plate vs shell-and-tube, when to use each\n' > "$f"
   run_script "$f" article-md
   [ "$status" -eq 1 ]
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+}
+
+@test "article-md: missing routing fails" {
+  local f="$TEST_TMP/article.md"
+  printf 'title: Heat Exchanger Types\nlast_verified: ""\n' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"STRUCTURE_FAILURE"* ]]
+  [[ "$output" == *"missing routing field"* ]]
 }
 
 # ── audit-findings ─────────────────────────────────────────────────────────────

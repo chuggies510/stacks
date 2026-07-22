@@ -9,6 +9,7 @@ set -euo pipefail
 #
 # Usage:
 #   bash audit.sh prep   <stack>   # Step 1+3-setup: enum, shard, run-state
+#                                  # [--full] re-audit all; [--only a,b] scope to named slugs
 #   bash audit.sh gate   <stack>   # Step 3-gate: gate-batch + check-coverage
 #   bash audit.sh finish <stack>   # Step 4: report.md + soft-spots.tsv + counts
 #   bash audit.sh --self-check
@@ -74,15 +75,19 @@ stack_arg() {
 
 # --- prep -------------------------------------------------------------------
 phase_prep() {
-  local STACK="" FULL=0 arg
+  local STACK="" FULL=0 ONLY="" arg expect_only=0
   for arg in "$@"; do
+    if [[ "$expect_only" -eq 1 ]]; then ONLY="$arg"; expect_only=0; continue; fi
     case "$arg" in
-      --full) FULL=1 ;;
-      -*)     die "unknown flag: $arg (usage: audit.sh prep <stack> [--full])" ;;
-      *)      [[ -z "$STACK" ]] && STACK="$arg" || die "unexpected extra argument: $arg" ;;
+      --full)   FULL=1 ;;
+      --only)   expect_only=1 ;;
+      --only=*) ONLY="${arg#--only=}"; [[ -n "$ONLY" ]] || die "--only needs a comma-separated slug list (e.g. --only ts-a,ts-b)." ;;
+      -*)       die "unknown flag: $arg (usage: audit.sh prep <stack> [--full] [--only <slug,slug,...>])" ;;
+      *)        [[ -z "$STACK" ]] && STACK="$arg" || die "unexpected extra argument: $arg" ;;
     esac
   done
-  [[ -n "$STACK" ]] || die "Specify a stack name. Usage: audit.sh prep <stack> [--full]"
+  [[ "$expect_only" -eq 0 ]] || die "--only needs a comma-separated slug list (e.g. --only ts-a,ts-b)."
+  [[ -n "$STACK" ]] || die "Specify a stack name. Usage: audit.sh prep <stack> [--full] [--only <slug,slug,...>]"
 
   local LIB; LIB=$(enter_library) || die "could not resolve the library (no config, and cwd is not a library)."
   cd "$LIB" || die "could not cd into library: $LIB"
@@ -99,6 +104,25 @@ phase_prep() {
   local N_TOTAL=${#ARTICLES[@]}
   [[ "$N_TOTAL" -ge 1 ]] || die "No articles found in $STACK/articles/. Run /stacks:catalog-sources $STACK first."
 
+  # Scoped audit (--only): restrict the article set to the named slugs, bypassing
+  # the incremental skip (an explicitly named article is always re-audited). The
+  # manifest below then covers ONLY these, so gate/finish reconcile the scoped
+  # subset — a validator dispatched on just the named articles passes the gate
+  # instead of false-failing against a whole-stack manifest (#100).
+  if [[ -n "$ONLY" ]]; then
+    local -a want; IFS=',' read -ra want <<< "$ONLY"
+    local -a sel=(); local w aa
+    for w in "${want[@]}"; do
+      [[ -n "$w" ]] || continue
+      [[ -f "$STACK/articles/$w.md" ]] || die "--only: no such article '$w' in $STACK/articles/ (expected $w.md)."
+    done
+    for aa in "${ARTICLES[@]}"; do
+      for w in "${want[@]}"; do [[ "$(basename "$aa" .md)" == "$w" ]] && { sel+=("$aa"); break; }; done
+    done
+    [[ ${#sel[@]} -ge 1 ]] || die "--only: no valid slugs given."
+    ARTICLES=("${sel[@]}"); N_TOTAL=${#ARTICLES[@]}
+  fi
+
   # Incremental skip. An article whose current content hash matches its row in
   # verified.tsv (written by the last finish) is byte-for-byte unchanged since it
   # was validated, so re-checking it would reproduce the same result at full token
@@ -112,7 +136,7 @@ phase_prep() {
   local VERIFIED="$DEV/verified.tsv"
   local ARTICLES_TA=() slug hash N_SKIP=0
   for a in "${ARTICLES[@]}"; do
-    if [[ "$FULL" -eq 0 && -f "$VERIFIED" ]]; then
+    if [[ "$FULL" -eq 0 && -z "$ONLY" && -f "$VERIFIED" ]]; then
       slug=$(basename "$a" .md)
       # `|| true`: a hash failure must fall through to auditing (safe direction),
       # not abort prep under set -e. Empty hash never matches, so it re-audits.
@@ -124,6 +148,14 @@ phase_prep() {
     ARTICLES_TA+=("$a")
   done
   local N=${#ARTICLES_TA[@]}
+
+  # Inert-optimization warning: a stack with a prior audit history but no
+  # verified.tsv (e.g. last audited by a pre-incremental audit.sh) skips nothing
+  # and silently pays a full-stack sweep. Surface the defeated optimization;
+  # finish writes the baseline, so the NEXT run skips the unchanged articles.
+  if [[ "$FULL" -eq 0 && -z "$ONLY" && ! -f "$VERIFIED" ]]; then
+    echo "WARNING: no baseline at $DEV/verified.tsv — incremental skip inert; auditing all $N_TOTAL article(s). finish writes the baseline so the next run skips unchanged ones. Scope to specific articles with: --only <slug,slug,...>" >&2
+  fi
 
   # Dispatch manifest over the to-audit set only: batch_tag<TAB>slug<TAB>path, CAP per batch.
   local DISPATCH="$DEV/dispatch.tsv"
@@ -309,18 +341,31 @@ phase_finish() {
   # block above — it carries skipped articles' soft spots forward, which a per-run
   # overwrite would lose.
 
-  # Refresh verified.tsv: hash every current article so the next prep can skip the
-  # unchanged ones. Re-audited articles get their post-validation hash (validator
-  # bumped last_verified → new content), skipped articles keep their hash, deleted
-  # articles fall out. Runs after the validator's edits (finish is post-gate).
-  local VOUT="$DEV/verified.tsv" af h
+  # Refresh verified.tsv: the baseline the next prep skips against. Re-audited
+  # articles (this run's dispatch slugs, in AUDITED) get their post-validation hash.
+  # Articles NOT audited this run keep their PRIOR baseline row if they had one, and
+  # get NO row if they didn't — a scoped --only run must never stamp an article it
+  # never checked as verified (that would make the next full run skip a
+  # never-audited article). For a full/incremental run every non-audited article is
+  # a skipped one that already had a matching row, so carry-forward reproduces the
+  # old hash-everything behavior. Deleted articles fall out (not re-enumerated).
+  # Runs after the validator's edits (finish is post-gate).
+  local VOUT="$DEV/verified.tsv" af h slug2 prior
+  local VPRIOR; VPRIOR=$(mktemp); [[ -f "$VOUT" ]] && cp "$VOUT" "$VPRIOR"
   : > "$VOUT"
   while IFS= read -r af; do
-    h=$(git hash-object "$af" 2>/dev/null || true)
-    # Skip a row we couldn't hash rather than write `slug<TAB>` (empty hash) as bad
-    # metadata — a missing row just re-audits that article next run (safe direction).
-    if [[ -n "$h" ]]; then printf '%s\t%s\n' "$(basename "$af" .md)" "$h" >> "$VOUT"; fi
+    slug2=$(basename "$af" .md)
+    if grep -qxF "$slug2" <<<"$AUDITED"; then
+      h=$(git hash-object "$af" 2>/dev/null || true)
+      # Skip a row we couldn't hash rather than write `slug<TAB>` (empty hash) as bad
+      # metadata — a missing row just re-audits that article next run (safe direction).
+      [[ -n "$h" ]] && printf '%s\t%s\n' "$slug2" "$h" >> "$VOUT"
+    else
+      prior=$(awk -F'\t' -v s="$slug2" '$1==s{print; exit}' "$VPRIOR")
+      [[ -n "$prior" ]] && printf '%s\n' "$prior" >> "$VOUT"
+    fi
   done < <(find "$STACK/articles" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
+  rm -f "$VPRIOR"
 
   # Cleanup: transient per-batch inputs + run-state. report.md, soft-spots.tsv, and
   # verified.tsv are the durable artifacts the skill commits.
@@ -355,6 +400,14 @@ self_check() {
 
   # prep
   bash "$0" prep mep >/dev/null 2>&1 || bad "prep-runs" "prep exited nonzero"
+  # no verified.tsv yet (finish never ran) → prep must WARN the skip is inert (#100),
+  # not silently proceed as though everything is a fresh cold-start.
+  local prepout; prepout=$(bash "$0" prep mep 2>&1)
+  if grep -q 'WARNING' <<<"$prepout" && grep -q 'verified.tsv' <<<"$prepout"; then
+    ok "prep-warns-no-baseline"
+  else
+    bad "prep-warns-no-baseline" "expected WARNING naming verified.tsv, out=$prepout"
+  fi
   local DISP="$d/mep/dev/audit/dispatch.tsv" ENV="$d/mep/dev/audit/run.env"
   [[ -f "$DISP" && -f "$ENV" ]] && ok "prep-writes-run-state" || bad "prep-writes-run-state" "missing dispatch.tsv/run.env"
   # 6 rows, batch 0 = first 5 slugs, batch 1 = the 6th.
@@ -496,6 +549,38 @@ self_check() {
     ok "gate-dies-on-truncated-dispatch"
   else
     bad "gate-dies-on-truncated-dispatch" "expected nonzero + 'corrupted', rc=$rc out=$out"
+  fi
+
+  # (v) --only scopes prep to exactly the named slugs, bypassing the skip even when
+  #     unchanged. The manifest is just those slugs, so gate reconciles the scoped
+  #     subset (not the whole stack) — a validator dispatched on only the named
+  #     articles passes, instead of false-failing against a 6-article manifest (#100).
+  bash "$0" prep mep --only chiller,ahu >/dev/null 2>&1
+  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "2" ]] \
+     && grep -q $'\tchiller\t' "$DISP" && grep -q $'\tahu\t' "$DISP"; then
+    ok "prep-only-scopes-named"
+  else
+    bad "prep-only-scopes-named" "expected 2 rows chiller+ahu, got: $(cat "$DISP")"
+  fi
+  # gate the scoped run: receipts for exactly the 2 named slugs pass the 2-row
+  # manifest (both slugs fall in batch 0 → _audit-0.md).
+  RUN_ID=$(grep -m1 '^RUN_ID=' "$ENV" | cut -d= -f2)
+  { printf 'VALIDATED\tahu\t%s\n' "$RUN_ID"; printf 'VALIDATED\tchiller\t%s\n' "$RUN_ID"; } > "$F0"
+  if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-passes-scoped-manifest"; else bad "gate-passes-scoped-manifest" "scoped gate false-failed"; fi
+  # finish stamps only the 2 audited slugs fresh but carries the other 4 verified.tsv
+  # rows forward — a scoped run must not shrink the baseline to just the named slugs.
+  out=$(bash "$0" finish mep 2>&1) || bad "finish-only-runs" "finish nonzero: $out"
+  if grep -q 'articles=2' <<<"$out" && [[ "$(wc -l < "$VER" | tr -d ' ')" == "6" ]]; then
+    ok "finish-only-carries-verified"
+  else
+    bad "finish-only-carries-verified" "expected articles=2 + 6 verified rows, out=$out ver=$(cat "$VER" 2>/dev/null)"
+  fi
+  # an unknown --only slug fails fast, naming it (never silently audits nothing).
+  out=$(bash "$0" prep mep --only nonesuch 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'nonesuch' <<<"$out"; then
+    ok "prep-only-rejects-unknown"
+  else
+    bad "prep-only-rejects-unknown" "expected nonzero + 'nonesuch', rc=$rc out=$out"
   fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"
