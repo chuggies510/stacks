@@ -61,10 +61,32 @@ is usually not the accuracy blocker; the input context is.
 > arm run against a menu that did not fit its context (two prodindex arms at num_ctx
 > 8192/16384, scoring 0.435 and 0.480) measured apparatus failure, not model capability.
 
-Over-minting was information starvation, not a weak tier. A bare 42-slug list makes
+Over-minting is largely information starvation, not a weak tier. A bare 42-slug list makes
 models fragment one existing article into several new sub-topic slugs; a `slug — scope`
-map (the `index.md` `## Articles` routing lines) drops excess minting to 0 across every
-tier (gemma 7-8→0, qwen 0-19→0). Shipped as 0.57.0.
+map (the `index.md` `## Articles` routing lines) cuts excess minting sharply (gemma 7-8→0,
+qwen-instruct 0-19→0). Shipped as 0.57.0.
+
+> **CORRECTION (2026-07-27).** This paragraph read "drops excess minting to 0 across every
+> tier" from 0.57.0 until now. That is FALSE, and it was falsified by a row of its own source
+> table: `results-liminal-S59.md:412` records `qwen3-14b-claude-distill` still minting **3-78
+> WITH the scope map**. The source's own section heading ("over-minting eliminated across the
+> board") contradicts its table; this README copied the heading. Liminal authored that result
+> and raised the correction. Two further limits on the finding: **n=1 source**, and a 42-slug
+> single-stack menu against today's 63-663. The MECHANISM is sound and has a direct receipt —
+> the models minted the scope line's own contents verbatim because they could not see the
+> scope line. Trust the direction, do not carry "every tier" or a zero.
+>
+> **Name which lever you mean.** Liminal has a SEPARATE "over-mint = 0" result from the
+> LoRA-tuning thread, walked back by its own author as an n=13 artifact (6-17 mints at n=139).
+> Two different levers produce the same sentence. Always say menu-shape or tuning.
+
+**Menu shape is a three-way choice, not two (liminal, 2026-07-27).** Between the bare slug
+list and the full scope map sits `slug - Title` from article frontmatter. Liminal's ~139 arms
+used titles in 126 of them; no arm ever ran a bare slug list, so #139 does not reach their
+numbers. Titles → scope is **+0.065 F1** (0.7029 → 0.7677) by direct pin diff, menu text the
+only variable — but the gain is **zero on primary gold** (all of it in contributory buckets)
+and costs **4.3x wall clock**. Their published R@50 0.821 is a titles number; on scope it is
+0.928. Forensics: `liminal:dev/extraction-menu-forensics.md`.
 
 ## Key finding (validation)
 

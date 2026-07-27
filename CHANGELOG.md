@@ -1,3 +1,15 @@
+## 0.77.1 — 2026-07-27
+
+**A headline this repo has repeated since 0.57.0 is wrong, and the table it came from says so.** Correcting a published number: the 0.57.0 entry below is left as the dated original.
+
+- **"Dropped excess new-article minting to 0 across every tier tested" is false.** The claim shipped in the 0.57.0 entry below and in `dev/experiments/model-tier/README.md`. Its own source table (`results-liminal-S59.md:412`) records one model, `qwen3-14b-claude-distill`, still minting 3-78 new article names **with** the scope map in place. The source's section heading said "eliminated across the board" and contradicted its own table; this repo copied the heading. Liminal, who authored and handed over that result at S59, raised the correction.
+
+- **What still stands.** The mechanism is sound and has a direct receipt: the models minted the scope line's own contents word-for-word, because they could not see the scope line. Two other models did go to 0 (gemma 7-8→0, qwen-instruct 0-19→0). Trust the direction; do not carry "every tier" or a zero. Two further limits now recorded: the result is **n=1 source**, on a 42-name single-stack menu against today's 63-663.
+
+- **Two different levers produce the same sentence, so name which one you mean.** Liminal has a separate "over-mint = 0" result from its LoRA-tuning work, which its own author walked back as an n=13 artifact (6-17 mints once n reached 139). That one is about *tuning the model*; this one is about *what the menu shows it*. Say which.
+
+- **The menu is a three-way choice, not two.** Between the bare name list and the full scope map sits `name - Title`, pulled from article frontmatter. Liminal's ~139 measurement runs used titles in 126 of them and a bare name list in none, so the extraction-harness defect filed as #139 does not reach their numbers. Titles → scope is worth **+0.065 F1** (0.7029 → 0.7677) measured with the menu text as the only variable, but the entire gain sits in secondary buckets (**zero** on primary gold) and costs **4.3x** wall clock.
+
 ## 0.77.0 — 2026-07-27
 
 **Every benchmark in this repo was grading a typed-out copy of the real instructions, not the real instructions. Now three of them read the real thing.**
