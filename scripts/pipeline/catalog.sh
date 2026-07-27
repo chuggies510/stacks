@@ -146,7 +146,15 @@ phase_prep() {
   # stacks scaffolded AFTER that release — 0 of 12 existing stacks in the reference
   # library had it. Heal here instead of in the template only: prep runs before every
   # catalog, so an old stack fixes itself on next use. Idempotent (grep -q first).
-  if ! grep -qs '^dev/extractions/\*$' "$STACK/.gitignore"; then
+  # Ask git whether the path is ignored, do NOT grep a file for a pattern: the rule
+  # can legitimately live in the LIBRARY-ROOT .gitignore as `*/dev/extractions/`,
+  # which covers every stack, and a per-stack grep cannot see it — it would append a
+  # redundant rule to every stack in a library that was already correct.
+  # (`check-ignore` needs a path that git can classify; the dir itself is enough.)
+  # Non-zero also covers "not a git repo", where appending is harmless and correct
+  # for a later `git init`.
+  if ! git -C "$LIB" check-ignore -q "$DEV" 2>/dev/null \
+     && ! grep -qs '^dev/extractions/\*$' "$STACK/.gitignore"; then
     printf '%s\n' \
       '# Catalog run working files: retained by `finish` as the run audit trail,' \
       '# cleared by the next `prep`. Local-only by design (see stacks#130).' \
@@ -502,6 +510,21 @@ EOF
   bash "$0" prep mep >/dev/null 2>&1 || true
   n=$(grep -cs '^dev/extractions/\*$' "$ST/.gitignore")
   [[ "$n" -eq 1 ]] && ok "prep-gitignore-heal-idempotent" || bad "prep-gitignore-heal-idempotent" "rule appears $n times after a second prep"
+
+  # A LIBRARY-ROOT `*/dev/extractions/` covers every stack, so prep must append
+  # nothing. Keying on a per-stack grep instead of asking git would write a
+  # redundant rule into every stack of an already-correct library (reported by the
+  # reference library, whose root .gitignore carries exactly that pattern).
+  local g="$d/_gitlib"
+  mkdir -p "$g/mep/sources/incoming" "$g/mep/articles"
+  cp "$ST/STACK.md" "$g/mep/STACK.md"; touch "$g/catalog.md"
+  printf 'x\n' > "$g/mep/sources/incoming/a.md"
+  printf '*/dev/extractions/\n' > "$g/.gitignore"
+  git -C "$g" init -q 2>/dev/null && git -C "$g" add -A 2>/dev/null
+  STACKS_CONFIG="$d/gitconfig.json"; printf '{"library":"%s"}\n' "$g" > "$d/gitconfig.json"
+  STACKS_CONFIG="$d/gitconfig.json" bash "$0" prep mep >/dev/null 2>&1 || true
+  if [[ ! -f "$g/mep/.gitignore" ]]; then ok "prep-respects-root-gitignore"; else bad "prep-respects-root-gitignore" "appended a redundant per-stack rule: $(cat "$g/mep/.gitignore")"; fi
+  export STACKS_CONFIG="$d/config.json"
 
   # paren gate: a '(' filename fails prep.
   local out rc

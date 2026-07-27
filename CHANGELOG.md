@@ -1,3 +1,13 @@
+## 0.74.1 — 2026-07-26
+
+**The repair added in 0.74.0 asked the wrong question, so it would have written a redundant rule into every stack of a library that was already correct.**
+
+- **It now asks version control whether the files are ignored, instead of searching one file for a line.** The rule can legitimately live in the library's top-level ignore file as a single pattern covering every stack — and the reference library does exactly that. 0.74.0 checked only the per-stack file, so it saw the rule "missing" on all twelve stacks and would have appended a duplicate to each. Harmless, but wrong, and it would have looked like the repair was doing its job. (`scripts/pipeline/catalog.sh`)
+
+  This is the same error the day's other fixes were about, landing on the fix itself: searching a file for a pattern answers a question about the file's *shape*, when the question was whether git actually ignores the path. Asking git is one command and cannot be fooled by a rule written correctly somewhere else. A test now sets up a library with the top-level pattern and fails if anything gets appended — verified red against the 0.74.0 logic.
+
+Self-check 29 of 29.
+
 ## 0.74.0 — 2026-07-26
 
 **Yesterday's fix for "new stacks would commit their working files" only helped stacks that don't exist yet. Every real one still would.**
