@@ -1,3 +1,17 @@
+## 0.73.0 — 2026-07-26
+
+**A source whose reader died before writing anything was being filed as if it had been read. Reproduced, fixed, and guarded.**
+
+- **The last step now refuses to file a source that produced no extraction (#132).** Cataloging reads each source with a separate agent that writes one findings file per source. If that agent died before writing anything — a session limit, a crash — nothing downstream noticed: the merge step only complains about *unexpected* findings files, never missing ones, and the final step files every source it was handed regardless. The document then sits in the library's filed tree, indistinguishable from one that was actually read, and its content never reached any article. The final step already re-checked the *second* stage's outputs for exactly this reason, with a comment saying it must not trust that the gate ran. The first stage had no such backstop. It does now, and it fires before anything is moved, because a move is not undone.
+
+  This was found in a real 1,482-source campaign by a peer session: 42 reader runs ended on a session-limit banner, 18 of those wrote no file at all, and all 18 of those sources are filed today with none left queued. Reproduced against current code before fixing — the run reported success, emptied the queue, and filed both sources with only one of them ever read.
+
+  A source the reader correctly *declines* (a pure-reference document with no knowledge to extract) writes a short "no concepts, here's why" note. That is a completed reading and still passes. The check treats missing and empty as the same thing, and a separate test confirms the decline case is still allowed through — so the two cases can't silently collapse into one.
+
+- **Correcting yesterday's assessment of this issue.** It was filed, then judged dissolved on the grounds that current code fails a killed reader by path and leaves its sources queued. The first half is true and the second half is not: that check lives in a separate step which can be skipped, and nothing downstream re-asserts it. The reproduction above is against current code, not the old pipeline. Treat the earlier "dissolved" note as wrong.
+
+Self-check 26 of 26.
+
 ## 0.72.0 — 2026-07-26
 
 **Closes three holes an outside review found in yesterday's fix, one of which the fix itself opened.**

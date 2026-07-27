@@ -346,6 +346,21 @@ phase_finish() {
     die "this run already finished — its retained manifests are an audit trail, not a replayable run. Run 'catalog.sh prep $STACK' to start a new one."
   fi
 
+  # Same for gate-w1: a prep->dedup->finish path (gate-w1 skipped, or failed and
+  # overridden) would file a source whose extractor died before writing anything —
+  # nothing ever read it, yet W3 below moves it out of incoming/ as if cataloged.
+  # dedup only rejects UNEXPECTED batch files, never missing ones. Non-empty, not
+  # just present: a `# no-concepts: <reason>` sentinel IS a completed extraction
+  # (assert-structure's concept-batch kind) and must still pass; a zero-byte file
+  # is the same nothing as a missing one.
+  local tag W1MISS=()
+  while IFS= read -r tag; do
+    [[ -s "$DEV/batch-$tag-concepts.md" ]] || W1MISS+=("batch-$tag-concepts.md")
+  done < <(cut -f1 "$DEV/dispatch-w1.tsv" | sort -un)
+  if [[ ${#W1MISS[@]} -gt 0 ]]; then
+    die "finish: concept batch file(s) missing/empty (run gate-w1 first — those sources were never extracted): ${W1MISS[*]}"
+  fi
+
   # finish must NOT trust that gate-w2 ran — it can be invoked standalone, and a
   # prep->dedup->finish path would otherwise file sources against an empty
   # articles/. Re-assert every dispatched slug has its article BEFORE moving any
@@ -615,6 +630,17 @@ EOF
   reset_prefinish; rm -f "$ST/articles/airside-economizer.md"
   out=$(bash "$0" finish mep 2>&1) && rc=0 || rc=$?
   if [[ "$rc" -ne 0 ]] && grep -q 'airside-economizer' <<<"$out" && [[ -f "$ST/sources/incoming/vav-basics.md" ]]; then ok "finish-fails-on-missing-article"; else bad "finish-fails-on-missing-article" "rc=$rc out=$out"; fi
+
+  # A dispatched source with no concept batch file → finish FAILS (does not trust
+  # that gate-w1 ran) and does NOT file that source out of incoming/. W2 is intact
+  # here, so only the W1 re-assertion can catch it. A valid `# no-concepts:`
+  # sentinel is a completed extraction and must still pass.
+  reset_prefinish; rm -f "$DEV/batch-2-concepts.md"
+  out=$(bash "$0" finish mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'batch-2-concepts.md' <<<"$out" && [[ -f "$ST/sources/incoming/vav-basics.md" ]]; then ok "finish-fails-on-missing-concept-batch"; else bad "finish-fails-on-missing-concept-batch" "rc=$rc out=$out"; fi
+  reset_prefinish; printf '# no-concepts: pure CLI flag reference, no behavior knowledge\n' > "$DEV/batch-2-concepts.md"
+  out=$(bash "$0" finish mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -eq 0 ]] && [[ ! -f "$ST/sources/incoming/vav-basics.md" ]]; then ok "finish-allows-no-concepts-sentinel"; else bad "finish-allows-no-concepts-sentinel" "rc=$rc out=$out"; fi
 
   # finish without a W2 manifest (prep->finish, no dedup) fails cleanly, not a
   # cryptic pipefail crash; sources untouched.
