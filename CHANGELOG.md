@@ -1,3 +1,31 @@
+## 0.78.0 — 2026-07-27
+
+**The local extraction test was showing the model bare filenames, which is the exact thing this repo blames for splitting one article into several duplicates. It now shows names plus what each article is about, read through the same code that builds the stack index.**
+
+- **Three menu shapes, picked with `MENU_SHAPE`, defaulting to the middle one.** The list of existing articles shown to the model was `context-engineering-production` and nothing more. It can now be `bare` (names only, the old behaviour, kept solely as a measurement baseline), `title` (`name - Title`, the new default), or `scope` (`name - what it covers`). (#139)
+
+  Three and not two, because the peer session that produced the original finding measured a middle rung this repo never enumerated: `name - Title` was what 126 of their ~139 runs used. Going from titles to full scope bought them +0.065 F1, but **none** of that gain landed on primary gold and it cost 4.3x wall clock. So `title` is the default and `scope` is a flag to be measured, not an assumption. On the `llm` stack the menu costs roughly 390 / 1,200 / 4,200 tokens across the three shapes.
+
+- **New `scripts/article-field.sh`, the single definition of how an article's frontmatter field is read.** There were two readers. `regenerate-moc.sh` built `index.md` with a one-line `awk`, and this harness grew a second, stricter one that refused frontmatter the pipeline renders happily. Two readers of one format will diverge; the only question is when you notice. Both now call the shared script, and each decides its own policy when a field cannot be read: the index falls back to a bare link, a measurement run refuses to start. Verified by regenerating all 12 stack indexes byte-for-byte identical, and by covering `regenerate-moc.sh` itself in the harness self-check — without that, deleting its calls to the shared reader left every assertion green while `index.md` silently lost every title.
+
+  It is **not** a bug-for-bug clone of the old inline `awk`. It is identical on all 1,174 corpus articles and deliberately stricter on shapes the corpus does not contain, each of which used to yield wrong text rather than no text. Byte-identity proves equivalence on this corpus, not in general, and the difference is intentional.
+
+  Getting here took four review rounds. The first three hardened a parser that read the descriptions back out of `index.md` — the wrong layer, since the index is *generated from* the frontmatter. The fourth round established why every version kept failing: **article frontmatter is not YAML.** 27 of the library's 1,174 articles fail a real YAML parse. It is a line-oriented format whose actual definition was that one-line `awk` in the index generator, so any reader written to YAML semantics was guaranteed to disagree with the corpus.
+
+- **The reader trusts nothing until it has seen the whole frontmatter block, which closes the one dangerous failure.** Unbounded, the first `title:` anywhere in a file wins — so an article missing that field in its frontmatter picked up a matching line from its **body** and presented it as the title. That is text that is *wrong* rather than absent, and a wrong description gets believed where a missing one just refuses. Three shapes reach that same hole and all three now refuse: no opening delimiter on line 1 (which is also what a byte-order mark produces), **no closing delimiter at all** (with none, there is no way to tell frontmatter from body), and a key with no space after the colon (the old reader sliced mid-word and turned `title:NoSpace` into `oSpace`). A block-scalar marker is refused too, since it would have shown `>-` as an article's scope.
+
+  The missing-closing-delimiter case was found by the fifth review round, after the previous four had all called this closed. Every fixture happened to include a closing delimiter, so the whole suite stayed green while the reader did exactly what it was documented not to do.
+
+- **A menu where only SOME articles lost their description is refused too, and this was review round one's catch.** The first version of that guard asked whether *any* description existed. A menu with 54 of 55 articles described therefore passed and ran labelled `title`, judging that one article under exactly the starvation the shape removes. Asking about the record's shape when the question is about its content is the same instrument error the 0.77.0 self-check made. It now counts the gap, names the articles, and refuses; `MENU_ALLOW_UNDESCRIBED=1` proceeds knowingly and warns.
+
+- **The list the model reads and the list the matcher reads are now separate.** `slug-prematch.sh` needs one bare name per line and would break on menu text, so the menu is built into its own file. The guard against writing one over the other compares by inode, not by spelling, since `/tmp/x`, `/tmp/./x` and a symlink are three spellings of one file.
+
+- **The prompt now describes the menu the model actually got.** The sentence explaining the list was hardcoded to say "this is a bare list of names". It is now written per shape, so it cannot go false when the shape changes.
+
+- **`--self-check` with 54 assertions, every one mutation-tested.** Each was verified to go red when the logic it covers is deleted or inverted, and several were rewritten until they did. Three findings came out of the test harness rather than the code: one assertion counted a single failure as both a pass and a fail, so the "N passed" total lied while the exit code stayed correct; another would have passed with only one of two broken articles reported; a third tested a missing file but not an empty or unreadable one.
+
+- **Verified against all 12 stacks**, 1,174 articles, both shapes, zero missing descriptions, and the library working tree unchanged.
+
 ## 0.77.1 — 2026-07-27
 
 **A headline this repo has repeated since 0.57.0 is wrong, and the table it came from says so.** Correcting a published number: the 0.57.0 entry below is left as the dated original.

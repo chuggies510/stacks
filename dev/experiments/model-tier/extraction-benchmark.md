@@ -40,6 +40,19 @@ Higher tiers win conflicts.
 
 ### EXISTING_SLUGS (paste into the prompt — the llm stack's current articles)
 
+> **MENU-SHAPE CAVEAT (2026-07-27, #139).** The list below is a BARE NAME LIST, which is
+> the configuration this repo's own extraction finding blames for splitting one article
+> into duplicate sub-topic articles. As of 0.78.0 the live harness
+> (`harness/shadow-extract-run.sh`) defaults to `MENU_SHAPE=title` and this benchmark is
+> the only place the bare shape still ships. So any score from this benchmark measures the
+> model under **information starvation**, and is a floor, not the model's capability.
+>
+> It is deliberately NOT switched here yet. The gold reuse-vs-mint answers were decided
+> against THIS menu — an item whose gold says "mint" may be a correct reuse once the model
+> can see the target article's scope. Changing the menu without re-deriving the gold would
+> silently convert right answers into recorded failures. Re-deriving that gold is the work;
+> until then, do not compare a number from this file against a `title`/`scope` harness run.
+
 ```
 agent-harness-engineering, agent-memory-systems, apple-silicon-unified-memory-llm-serving, compiled-ai-pattern,
 constrained-decoding-structured-output, context-engineering, context-engineering-production,
