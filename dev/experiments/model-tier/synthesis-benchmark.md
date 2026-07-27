@@ -28,6 +28,21 @@ toward any word count. If the merged claims are too thin for a substantive artic
 (roughly under ~150 words of grounded content), do NOT write the article — instead
 report: "Concept {slug}: insufficient claims — article not written."
 
+Write an ARTICLE a practitioner reads, not a restatement of the claim list. Use this
+stack's section template as the article's skeleton, in this order, each a `## ` heading:
+
+  ## Overview        - what this is, when/why you'd use it, scope boundaries
+  ## Key Concepts    - core principles, mechanisms, configurations, trade-offs
+  ## Patterns        - tested approaches with concrete examples
+  ## Pitfalls        - production failure modes that surprise an experienced practitioner
+  ## Cost & Latency  - token economics, cache implications, latency/throughput
+  ## Eval Strategy   - how to measure that the pattern works
+  ## Field Notes     - practitioner experience, production lessons, what actually breaks
+
+Group the claims under the sections they belong to and write connected prose. Omit any
+section the grounded claims do not support - the no-padding rule above wins; never add
+an empty or invented section to match the skeleton.
+
 OUTPUT (when you write): the article file, starting with YAML frontmatter:
   ---
   last_verified: ""
@@ -37,7 +52,8 @@ OUTPUT (when you write): the article file, starting with YAML frontmatter:
   routing: {one plain-text line, an asker's words, what it covers + questions answered}
   tags: [{from the allowed list below}]
   ---
-  {body — inline [source-slug] citation on every claim, no [VERIFIED]/[DRIFT] marks}
+  {body — the ## sections above, inline [source-slug] citation on every claim,
+   no [VERIFIED]/[DRIFT] marks}
 ```
 
 ### Tag vocabulary (paste as the allowed_tags list — the llm stack's)

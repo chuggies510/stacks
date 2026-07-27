@@ -73,9 +73,13 @@ json_for() { # <words> <cites> <tt> <to> <ht> <hlv> <hs> <hr> <rel-path>
       body_path:$body_path}'
 }
 
-# Assemble prompt: verbatim synth rubric (benchmark lines 17-41) + allowed tags
-# ($VOCAB — the stack's allowed_tags via TAG_VOCAB, or the llm default) + block
-sed -n '17,41p' "$BENCH" > "$work/prompt.txt"
+# Assemble prompt: verbatim synth rubric (the benchmark's FIRST fenced block, under
+# "### Prompt to feed your model") + allowed tags ($VOCAB — the stack's allowed_tags
+# via TAG_VOCAB, or the llm default) + block.
+# Sliced by fence, not by line number: the old `sed -n '17,41p'` silently truncates
+# whenever the rubric's length changes (#127 added the section skeleton to it).
+awk '/^```$/{n++; next} n==1' "$BENCH" > "$work/prompt.txt"
+[[ -s "$work/prompt.txt" ]] || { echo "ERROR: empty rubric sliced from $BENCH" >&2; exit 1; }
 { echo; echo "Allowed tags: $VOCAB"; echo; cat "$concept_file"; } >> "$work/prompt.txt"
 
 # Deterministic refusal gate (liminal S61): the weak tier's refuse-or-write call
