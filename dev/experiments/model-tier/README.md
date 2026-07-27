@@ -28,6 +28,28 @@ is usually not the accuracy blocker; the input context is.
 
 ## Key finding (extraction)
 
+> **POPULATION CAVEAT (2026-07-26) — every absolute number in the peer's 13-arm restraint
+> ladder is PESSIMISTIC. Do not quote one as "extraction scores X" without this note.**
+> The ladder ran under `MIN_SLUGS=2`, which excluded 547 of 726 eligible sources (75.3%).
+> The excluded sources are the EASY ones: fan-out-1 (one concept → one article) has less
+> to miss per source. Measured on the same model, prompt, seed, and D=100, with only the
+> population filter moved:
+>
+> | arm | F1 | P | R | population |
+> |---|---|---|---|---|
+> | `restraint-am-qwen36-27b-d100` | 0.7029 | 0.7770 | 0.6417 | 181 (fan-out 2+, 25%) |
+> | `fanout1-am-qwen36-27b-d100` | 0.7512 | 0.7736 | 0.7302 | 726 (all, 100%) |
+>
+> Precision is flat (inside noise); the entire move is recall, 0.642 → 0.730. The relative
+> ordering BETWEEN arms is probably intact — the filter is identical across them — so the
+> ladder still ranks. The absolute figures do not transfer to a production estimate.
+
+> **CONTEXT-COST CAVEAT (2026-07-26, #133).** The scope map these findings depend on is
+> ~69k tokens on hvac (250,745 chars, 663 lines), not the ~15.9k the earlier note priced.
+> That earlier figure is the slug+title shape, 4.5x under the real surface. Any local-tier
+> arm run against a menu that did not fit its context (two prodindex arms at num_ctx
+> 8192/16384, scoring 0.435 and 0.480) measured apparatus failure, not model capability.
+
 Over-minting was information starvation, not a weak tier. A bare 42-slug list makes
 models fragment one existing article into several new sub-topic slugs; a `slug — scope`
 map (the `index.md` `## Articles` routing lines) drops excess minting to 0 across every
