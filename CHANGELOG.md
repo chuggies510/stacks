@@ -1,3 +1,13 @@
+## 0.74.0 — 2026-07-26
+
+**Yesterday's fix for "new stacks would commit their working files" only helped stacks that don't exist yet. Every real one still would.**
+
+- **A catalog run now repairs the ignore rule on the stack it is about to process.** Since 0.71.0 a finished run keeps its working files so it can be audited afterwards, which is only safe if version control ignores them. 0.72.0 added that rule to the template new stacks are built from — and stopped there. Templates apply at creation, so nothing reached a stack that already existed: **0 of the 12 stacks in the reference library had the rule**, including the largest. Since the catalog step stages the whole stack directory, every one of them would have committed those files on the next run. The repair now happens at the start of a run, so an old stack fixes itself the next time it is used. Writing it once and skipping if already present, so repeated runs do not pile up duplicate lines — and a test proves that, since an ignore rule appended on every run is its own bug. (`scripts/pipeline/catalog.sh`)
+
+  Worth naming, because it is the same shape twice in one day: the earlier fix was verified against a fresh scaffold, which is exactly the case that was never broken. The broken case was every stack that predates the change, and nothing checked it.
+
+Self-check 28 of 28.
+
 ## 0.73.0 — 2026-07-26
 
 **A source whose reader died before writing anything was being filed as if it had been read. Reproduced, fixed, and guarded.**

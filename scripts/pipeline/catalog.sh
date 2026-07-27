@@ -139,6 +139,22 @@ phase_prep() {
   local ADEV="$LIB/$DEV"
   mkdir -p "$INCOMING" "$DEV"
 
+  # Self-heal the working-file ignore rule. Since 0.71.0 `finish` RETAINS the run's
+  # manifests and concept batches as its audit trail, and catalog-sources stages the
+  # whole stack (`git add "<stack>/"`), so without this rule every catalog commit
+  # carries them. 0.72.0 added it to templates/stack/.gitignore, which only reaches
+  # stacks scaffolded AFTER that release — 0 of 12 existing stacks in the reference
+  # library had it. Heal here instead of in the template only: prep runs before every
+  # catalog, so an old stack fixes itself on next use. Idempotent (grep -q first).
+  if ! grep -qs '^dev/extractions/\*$' "$STACK/.gitignore"; then
+    printf '%s\n' \
+      '# Catalog run working files: retained by `finish` as the run audit trail,' \
+      '# cleared by the next `prep`. Local-only by design (see stacks#130).' \
+      'dev/extractions/*' \
+      '!dev/extractions/.gitkeep' >> "$STACK/.gitignore"
+    echo "prep: added dev/extractions ignore rule to $STACK/.gitignore"
+  fi
+
   # --- Stage from --from (collision-safe copy of the supported types) ---------
   if [[ -n "$FROM" ]]; then
     FROM="${FROM/#\~/$HOME}"
@@ -477,6 +493,15 @@ EOF
   fi
   local RUN_ID_W1; RUN_ID_W1=$(grep -m1 '^RUN_ID_W1=' "$DEV/run.env" | cut -d= -f2)
   [[ "$RUN_ID_W1" =~ ^[0-9]+$ ]] && ok "prep-run-env-has-runid" || bad "prep-run-env-has-runid" "no RUN_ID_W1"
+
+  # prep self-heals the working-file ignore rule on a stack scaffolded before it
+  # existed (0 of 12 stacks in the reference library had it). The fixture stack has
+  # no .gitignore at all, which is the worst case, so a rule present here was
+  # written by prep. Idempotent: a second prep must not append a duplicate.
+  if grep -qs '^dev/extractions/\*$' "$ST/.gitignore"; then ok "prep-heals-extractions-gitignore"; else bad "prep-heals-extractions-gitignore" "no rule in $ST/.gitignore: $(cat "$ST/.gitignore" 2>&1)"; fi
+  bash "$0" prep mep >/dev/null 2>&1 || true
+  n=$(grep -cs '^dev/extractions/\*$' "$ST/.gitignore")
+  [[ "$n" -eq 1 ]] && ok "prep-gitignore-heal-idempotent" || bad "prep-gitignore-heal-idempotent" "rule appears $n times after a second prep"
 
   # paren gate: a '(' filename fails prep.
   local out rc
