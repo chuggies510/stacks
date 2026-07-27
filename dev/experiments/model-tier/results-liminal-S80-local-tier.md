@@ -4,9 +4,9 @@ Run on breathless (RTX 3090, 24GB), local ollama, `TEMP=0`, via this repo's own
 `harness/local-infer.sh` so every substrate call matches the other stages' measurements.
 Graded by this repo's own `article-verifier` (cloud sonnet) where a grade was needed.
 
-Session 80. (Artifacts written into `live-diffs/` this session are tagged
-`liminal-s81-*` — that tag is wrong, the session is 80. Ids left stable rather than
-renamed under a peer that may already reference them.)
+Session 80. Artifacts were originally written tagged `liminal-s81-*`, a confabulated
+session number; the stacks session renamed the bodies to `liminal-s80-q36-*`. The grade
+directory is still `verify/liminal-s81-q36/` — left as-is so the ids stay stable.
 
 ---
 
@@ -23,8 +23,15 @@ Post-#127 prompt (the section skeleton, `df289cd`). Five blocks, `MODEL=qwen3.6-
 | `production-agent-autonomy-controls` | zenml case studies | 5 | 4 | 5/5 | 0 | false |
 | `judge-verbosity-monitoring` | 1 claim | — | — | — | — | correct refusal |
 
-Drafts: `live-diffs/bodies/liminal-s81-q36-*__local.md`.
+Drafts: `live-diffs/bodies/liminal-s80-q36-*__local.md`.
 Grades: `live-diffs/verify/liminal-s81-q36/*.json`.
+
+**Scope caveat on every row in this section.** `synth-shadow.sh` slices its prompt from
+the first fenced block of `synthesis-benchmark.md`, which is a condensed hand-copy of the
+shipping `agents/article-synthesizer.md` and has drifted from it: it lacks the long-form
+GROUNDED-ONLY wording, the KEEP-THE-SUBJECT-NARROW clause, and the #110 scope-map
+cross-linking rule. So these numbers measure an approximation of the shipping prompt, not
+the shipping prompt — as does every prior synthesis result in this directory.
 
 ### Every over-claim widens the subject and preserves the predicate
 
