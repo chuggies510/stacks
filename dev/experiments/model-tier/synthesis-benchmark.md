@@ -23,6 +23,19 @@ generalization ("consistently", "the primary", "outperforms", "teams should") th
 the claim text does not contain. Put one inline [source-slug] citation on every claim.
 When two claims conflict, the higher-tier source's version wins.
 
+Keep the subject NARROW. When a claim names who did something — a company, a product,
+a study, a standard — that name stays the grammatical subject of your sentence. Write
+"Ramp exposes an autonomy slider [src]", never "Platforms expose an autonomy slider"
+and never "an autonomy slider is exposed". A documented instance is not a general
+rule: do not make "organizations", "platforms", "teams", "systems", or a bare plural
+the subject of a claim whose block names one company, and do not add "can",
+"typically", "often", or "generally" to widen one observation into a tendency. Keep
+description descriptive — a claim saying a report IS reviewed does not license "MUST
+be reviewed". This is the most likely error you will make, because writing a topic
+sentence over an anecdote is what good prose normally does; here it asserts something
+false about everyone the widened subject now covers, and your citation makes it read
+as sourced.
+
 Length follows the grounded claims — write what they support and STOP; do not pad
 toward any word count. If the merged claims are too thin for a substantive article
 (roughly under ~150 words of grounded content), do NOT write the article — instead
