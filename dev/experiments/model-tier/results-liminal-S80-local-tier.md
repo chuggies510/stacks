@@ -189,6 +189,28 @@ Tracked as #133.
 Compounded arm (retrieval loss × model loss, gold deliberately **not** trimmed to what the
 retriever kept) is queued in liminal as `shortlist-k150-am-qwen36-27b`; pin ceiling 0.9836.
 
+**What K=150 rests on, and what it does not.** The two inputs are the per-K retrieval
+ceiling (measured by `retrieval_gate.py` against the pin — no model, no prompt) and the
+context budget (arithmetic on char counts). Both are prompt-free, so #133 can ship on
+evidence rather than on a ranking.
+
+**Scope caveat on any extraction F1 from liminal, including the compounded arm.** The
+liminal widen/extract harness does not read `agents/source-extractor.md` and never has. It
+feeds an 892-character system prompt that lives in liminal
+(`podly/scripts/build_extract_lora.py`, `SYS_TMPL` + a 335-char tier rubric), written there
+for the LoRA training set and reused for the bench. This is not drift from the shipping
+prompt; it is a different prompt. Every liminal extraction number — the restraint ladder,
+the fan-out arms, the scope-menu comparison, the compounded arm — is a **substrate ranking
+on stacks data**, not a measurement of this stage. Comparisons between arms are clean
+because the prompt is held constant across them. Adoption of the shipping prompt is
+sequenced behind #136 so the ladder is re-run once against a prompt that will not move
+again.
+
+A related defect in that harness, worth recording because nothing checks for its class:
+the prompt's final line reads `EXISTING_ARTICLES (slug — scope):` while the pin filled
+`{sluglist}` with `slug — Title` for the harness's entire life. The template's placeholder
+label asserted a property of its input that nothing verified.
+
 ---
 
 ## Stage status on this substrate
