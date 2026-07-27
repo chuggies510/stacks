@@ -1,3 +1,10 @@
+## 0.70.0 — 2026-07-26
+
+**Articles should stop explaining things the source never said.**
+
+- **The synthesizer's anti-over-claim rule is now stated in strong words with the cost named (#123).** The article writer was adding its own mechanism, rationale, and normative conclusions (sentences like "this exception reflects the priority given to engineered smoke control", where the source states the rule but never says why) and stamping a citation on them, so invented content read as sourced fact. Two of three articles in one real run shipped this way at the top model tier, and only an after-the-fact grader caught it. The instruction that forbids it was already there and already in the right place; it was simply worded too mildly to bind. It is now rewritten in place (same position, stronger wording): an explicit rule name, a hard "only when a block claim states it" condition, an explicit expectation that almost every sentence is a plain restatement, and the cost of breaking it spelled out. Peer-measured on the sibling task (extraction), the same rewrite cut invented output from 119 to 13 while moving the sentence elsewhere made it worse, so position was deliberately left alone. (`agents/article-synthesizer.md`)
+- **Watch recall on the next catalog batch, not just over-claims.** In the measured sibling run this wording bought precision and paid part of it back in wrong picks, so the article to watch for is the thin-but-clean one: a short article that invents nothing and also drops claims the block did state passes every gate the pipeline currently has. If over-claims fall and recall falls with them, revert this entry in one edit.
+
 ## 0.69.0 — 2026-07-22
 
 **Catalog can no longer ship an article the library can't find, a one-gap enrich no longer balloons into the whole backlog, and audits can now check just the articles you changed.**
