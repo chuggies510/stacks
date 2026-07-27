@@ -1,0 +1,15 @@
+{
+  "slug": "production-agent-autonomy-controls",
+  "recall_total": 5,
+  "recall_present": 5,
+  "over_claims": 4,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Overview sentence 'These mechanisms establish scope boundaries for autonomous action and determine when deterministic fallbacks apply' is an invented general mechanism the block does not state anywhere; the block's five claims are all specific company examples (Ramp, Cox, Cursor, Dropbox), never a general 'autonomy controls establish X and determine Y' framing. Trim: cut this sentence or replace it with one of the actual claims.",
+    "Key Concepts sentence 'Platforms expose an \"autonomy slider\" that lets users specify where and when agents may act autonomously, combined with deterministic rules' generalizes a single-vendor example into an industry pattern. The block attributes this specifically to Ramp ('Ramp exposes an \"autonomy slider\"...'), not to 'Platforms' plural, and no other vendor's autonomy slider is in the block. Fix: restore 'Ramp exposes...' as the subject.",
+    "Key Concepts sentence 'These controls rely on explainable reasoning and uncertainty handling to manage independent decision-making' detaches 'explainable reasoning and uncertainty handling' from Ramp's policy agent (where the block ties it directly to the >65%-autonomous claim) and reattributes it to autonomy-slider controls in general, plus adds an unsupported purpose clause ('to manage independent decision-making') the block never states. Fix: fold this phrase back into the Ramp/65% sentence in Patterns, drop the generalized 'these controls' framing and the added purpose clause.",
+    "Pitfalls sentence 'Exposing too many tools to an agent can trigger \"analysis paralysis,\" as observed when Dropbox deployed its Dash agent' turns a single reported incident into a general causal rule about agents ('can trigger... to an agent'). The block states only that Dropbox hit analysis paralysis when it exposed too many tools to its Dash agent, not a general tendency. Fix: state it as the Dropbox-specific fact ('Dropbox hit \"analysis paralysis\" when it exposed too many tools to its Dash agent'), drop the generalized 'can trigger... an agent' framing."
+  ]
+}

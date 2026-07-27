@@ -1,0 +1,12 @@
+{
+  "slug": "llm-evaluation-frameworks",
+  "recall_total": 6,
+  "recall_present": 6,
+  "over_claims": 0,
+  "structural_pass": true,
+  "clears_floors": true,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Cost & Latency section says 'System-level evaluation incorporates resource-efficiency measurement to track token consumption, latency, and cost per correct answer' — the block ties that specific triad (tokens, latency, cost per correct answer) to the 'Emerging paradigms' claim (alongside interactive evaluation environments and long-horizon task assessment), not to System-level evaluation's generic 'resource efficiency' from the two-levels claim. The content is present so this is not a recall drop, but the sentence reads as an already-standard System-level practice when the block frames it as an emerging, not-yet-standard direction — move the tokens/latency/cost-per-answer detail into the Overview's 'Emerging paradigms' sentence (or cross-reference both) so the emerging status isn't lost."
+  ]
+}

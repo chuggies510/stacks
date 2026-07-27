@@ -1,0 +1,19 @@
+{
+  "slug": "agent-training-evaluation-economics",
+  "recall_total": 5,
+  "recall_present": 5,
+  "over_claims": 4,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Overview 2nd sentence 'Practitioners apply these practices to validate agent capabilities, prevent performance regressions, and manage training budgets across iterative development cycles.' invents a rationale for why practitioners use these three practices -- the block states what OpenPipe/Cursor/Ramp/GitHub/Cox Automotive each did, never a purpose-of-the-practice generalization. Cut the sentence.",
+    "Cost & Latency opening sentence 'Fine-tuning agents can operate within constrained compute budgets while still achieving competitive results.' generalizes ONE data point -- OpenPipe's single $80-on-one-H100 ART-E run -- into an unqualified claim about fine-tuning agents broadly ('can operate... while still achieving competitive results'). The block supports the one instance, not a pattern. Cut the sentence and open directly with the ART-E claim.",
+    "Eval Strategy opening sentence 'Organizations implement structured evaluation pipelines to catch issues before agents reach users.' generalizes three named companies (Ramp, GitHub, Cox Automotive) into an unqualified claim about 'organizations' in general. The block never makes an industry-wide assertion, only three separate company practices. Cut the sentence.",
+    "Pitfalls opening sentence 'Modifying agent tooling or removing intermediate reasoning steps can introduce significant performance drops.' does two things the block doesn't support: it generalizes the single Cursor/Codex incident into a general rule, and it misattributes the mechanism -- the block ties the 30% degradation specifically to dropping reasoning traces, not to renaming tools ('modifying agent tooling'). Cut the sentence and let the Cursor/Codex claim (already stated correctly below it) stand alone."
+  ],
+  "notes": [
+    "Non-blocking: draft title 'Agent Training and Evaluation Economics' truncates the block's fuller title 'Agent Training and Evaluation Economics: RL Fine-Tuning, Regression Datasets, Offline Eval'. Not a structural failure (title: line is present) but worth restoring on the flip.",
+    "All 5 claims are present near-verbatim with correct inline citations to [zenml-2025-12-llmops-1200-deployments] -- no citation normalization needed, citation_fixes=0."
+  ]
+}

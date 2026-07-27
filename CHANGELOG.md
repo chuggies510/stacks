@@ -1,3 +1,17 @@
+## 0.75.0 — 2026-07-26
+
+**Articles were quietly turning "Ramp does X" into "platforms do X". The facts were right; the "who" was disappearing.**
+
+- **The article writer is now told to keep the subject narrow (#126).** A graded run found nine over-claims across four drafts, and every single one was the same operation: keep the statement exactly as the source had it, and enlarge who it is about. A named company becomes "organizations". One documented case becomes "this can happen". A description of what a company does becomes what one "must" do. Nothing was invented — the facts arrived intact and correctly cited every time — but a sentence sourced to one company's experience was being served as a general rule, with a citation on it that makes it read as verified. The instruction now requires the named actor to stay the subject of the sentence, forbids widening one instance into a tendency, and forbids turning "is" into "must". (`agents/article-synthesizer.md`)
+
+  It sits beside the existing rule rather than replacing it, because the two failures are different: one is *adding* something the source never said, the other is *keeping* what it said and widening who it applies to. The first was already at zero on the tested model; the second was at nine.
+
+- **This also settles a question that was blocking four issues.** The open worry was that a zero-tolerance over-claim rule might forbid article-writing altogether — if every connective sentence counts as an over-claim, then a perfect score would only ever mean "didn't write an article". It doesn't. One draft in the same run cleared every floor with four sections and real prose, because its source was an academic survey whose claims are already general: there was no named actor to widen. So the rule is about *attribution*, not about *addition*, and a written article can satisfy it.
+
+  Prediction worth checking on the next batch, from the session that ran it: articles built from surveys and documentation should pass unchanged, while articles built from company case studies should have been failing all along. If that split doesn't appear, the explanation above is wrong.
+
+- **Added an offline test runner for the source-acquisition stage.** Three of the four pipeline stages had one; this stage had a benchmark document and a by-hand run, which is why its results rest on six items. Contributed by the peer session that built it, with two properties that matter kept as hard assertions rather than conventions: the expected answer is stripped before anything reaches the model and it errors if any survives, and the parsed item set must equal the expected set, so a renamed or dropped item fails loudly instead of silently shrinking the denominator. (`dev/experiments/model-tier/harness/enrich_bench.py`)
+
 ## 0.74.1 — 2026-07-26
 
 **The repair added in 0.74.0 asked the wrong question, so it would have written a redundant rule into every stack of a library that was already correct.**

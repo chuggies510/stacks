@@ -1,0 +1,14 @@
+{
+  "slug": "production-eval-systems",
+  "recall_total": 7,
+  "recall_present": 6,
+  "over_claims": 1,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Claim 'LLM-as-judge uses a separate model to score outputs; routing generation and evaluation to different providers is a documented practice that prevents a model grading its own test' is only half-stated: the Key Concepts section carries just the routing/self-grading clause ('Routing generation and evaluation to different providers is a documented practice that prevents a model from grading its own test'). The definitional clause -- that LLM-as-judge means using a SEPARATE model to score outputs, as opposed to the generating model scoring itself -- is never asserted anywhere in the draft. A reader never gets the base definition, only the downstream provider-routing practice. Add a sentence stating the definitional half before or alongside the routing sentence.",
+    "Over-claim: Key Concepts writes 'the raw report must be reviewed and canonicalized under human oversight first.' The block states this descriptively as what Ramp's pipeline does ('the raw report is reviewed and canonicalized under human oversight first'), not as a general requirement. Swapping 'is' for 'must be' turns one company's documented workflow into a prescriptive rule the block does not make. Trim 'must be' back to 'is'.",
+    "Fidelity loss (not counted as a hard over-claim, but worth fixing): both Ramp-sourced claims drop the 'Ramp' attribution and go unattributed/passive -- Key Concepts: 'User-reported failures are converted into regression test cases...' (block: 'Ramp converts each user-reported failure...') and Eval Strategy: 'Live execution of a shadow agent is enabled only once...' (block: 'Ramp enables live execution of a shadow agent only once...'). Both read as general industry practice rather than the single documented case study the block actually supports. Restore 'Ramp' as the subject in both sentences."
+  ]
+}
