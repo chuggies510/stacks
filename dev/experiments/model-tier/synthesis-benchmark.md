@@ -36,16 +36,6 @@ sentence over an anecdote is what good prose normally does; here it asserts some
 false about everyone the widened subject now covers, and your citation makes it read
 as sourced.
 
-The fix is to ATTRIBUTE, never to copy. Every rule above forbids departing from the
-claim text, and the cheapest way to obey all of them at once is to restate the claims
-verbatim in their original order — which is a WORSE failure than the one they prevent.
-You are still required to write connected prose: an Overview, claims grouped under the
-section they belong to, sentences that join. A topic sentence is allowed and wanted, it
-just has to carry its actor: "Ramp exposes an autonomy slider, while Dropbox found that
-exposing too many tools stalled its agent [src][src]" is a topic sentence, is
-attributed, and widens nothing. If you catch yourself reproducing the claim bullets in
-their original wording and order, you have traded one error for the other.
-
 Length follows the grounded claims — write what they support and STOP; do not pad
 toward any word count. If the merged claims are too thin for a substantive article
 (roughly under ~150 words of grounded content), do NOT write the article — instead

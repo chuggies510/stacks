@@ -1,3 +1,15 @@
+## 0.76.1 — 2026-07-26
+
+**Reverting 0.76.0. It was measured within the hour and it made the thing it was paired with worse.**
+
+- **The "attribute, don't copy" counterweight is removed.** It was added to stop the previous rule from being satisfiable by copying the source. Measured on the same drafts, same model, the rule as the only variable: on one draft the invented-generalization count went **4 → 0 → 6** across the three prompt versions. 0.76.0 is worse than 0.75.0 on the exact axis 0.75.0 was written to fix, and it did not buy anything — both drafts still read as sorted claim lists to a human grader. (`agents/article-synthesizer.md`, and the benchmark copy)
+
+  What it actually did, per the grader: every section got a generic uncited topic sentence prepended, with the source's claim dropped underneath almost unchanged. Six of those topic sentences turned one named company's fact into a claim about a whole category — which is precisely what the rule beside it forbids. Told to write connective prose and forbidden from the only kind this model knows how to write, it produced the forbidden kind and kept the copying underneath.
+
+- **Why revert rather than reword.** Both states fail, so the choice is which failure to ship. Copying produces a boring article; the counterweight produces a boring article *plus* six sentences asserting things no source said, each with a citation on it. A quality failure is preferable to a correctness failure. No rewording is justified without a measurement, and the measurement now says prompt changes are not the lever here.
+
+- **Three prompt-level attempts in one day, each correct on its own axis, none producing a real article from a case-study source.** The model appears to have two behaviours available on that material — copy the claim, or write a generic sentence about it — and each rule we wrote selected between them rather than producing a third. Articles built from survey sources are unaffected and pass throughout. This is now the evidence for building the check at the pipeline level rather than continuing to rewrite instructions. (#127)
+
 ## 0.76.0 — 2026-07-26
 
 **Yesterday's rule was all "don't", and the cheapest way to obey a pile of don'ts is to copy the input. Fixed before it shipped a result.**
