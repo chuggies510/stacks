@@ -340,6 +340,11 @@ phase_finish() {
   [[ -f "$DEV/run.env" ]]         || die "no run.env at $DEV — run the earlier phases first."
   [[ -f "$DEV/dispatch-w1.tsv" ]] || die "no dispatch-w1.tsv at $DEV — run 'catalog.sh prep' first."
   [[ -f "$DEV/dispatch-w2.tsv" ]] || die "no dispatch-w2.tsv at $DEV — run 'catalog.sh dedup' (then W2 + gate-w2) before finish."
+  # A finished run's manifests are an audit trail, not a replayable run — see the
+  # FINISHED stamp at the foot of this function.
+  if grep -q '^FINISHED=' "$DEV/run.env"; then
+    die "this run already finished — its retained manifests are an audit trail, not a replayable run. Run 'catalog.sh prep $STACK' to start a new one."
+  fi
 
   # finish must NOT trust that gate-w2 ran — it can be invoked standalone, and a
   # prep->dedup->finish path would otherwise file sources against an empty
@@ -403,6 +408,13 @@ phase_finish() {
   # clears them (line ~180, `rm -f "$DEV"/batch-*...`) to start its own manifest
   # clean, so the retention window is "until this stack's next catalog run,"
   # not indefinite — a real limit, not this fix's job to extend.
+  #
+  # Retention costs a guard: deleting the manifests used to make finish
+  # un-repeatable by accident. Now they survive, so a second `finish` without an
+  # intervening `prep` would re-file whatever currently sits at the OLD manifest's
+  # incoming paths — a source that never entered W1/W2, filed as if cataloged
+  # (the #129 failure this pipeline exists to prevent). Stamp the run consumed.
+  echo "FINISHED=$(date +%s)" >> "$DEV/run.env"
   echo "CATALOG_SUMMARY: sources=$N_SOURCES new=$N_NEW updated=$N_UPDATED unfiled=$UNFILED"
   [[ "$UNFILED" -eq 0 ]] || echo "Note: $UNFILED source(s) had no publisher field — filed under sources/unknown/; re-file if needed."
 }
@@ -651,6 +663,21 @@ EOF
     ok "finish-retains-audit-trail"
   else
     bad "finish-retains-audit-trail" "run-state/audit files missing after finish: $(ls "$DEV" 2>/dev/null)"
+  fi
+
+  # Retention's cost: the manifests now outlive the run, so a repeat `finish`
+  # without an intervening `prep` would re-file whatever sits at the old
+  # manifest's incoming paths — a source that never entered W1/W2, filed as if
+  # cataloged. The FINISHED stamp must make the second call die. Drop a fresh
+  # source at a filed source's old incoming path to prove it is not moved.
+  printf -- '---\ntitle: Replay Bait\npublisher: ashrae\n---\nnever cataloged\n' \
+    > "$ST/sources/incoming/vav-basics.md"
+  out=$(bash "$0" finish mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'already finished' <<<"$out" \
+     && [[ -f "$ST/sources/incoming/vav-basics.md" ]]; then
+    ok "finish-refuses-replay"
+  else
+    bad "finish-refuses-replay" "rc=$rc out=$out still-queued=$([[ -f "$ST/sources/incoming/vav-basics.md" ]] && echo y || echo N)"
   fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"

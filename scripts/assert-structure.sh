@@ -46,7 +46,15 @@ case "$type" in
     ;;
   article-md)
     grep -qE '^title:'           "$path" || fail "missing title field"
-    grep -qE '^last_verified: *""[[:space:]]*$' "$path" || fail "last_verified must be empty at synthesis (validator sets it)"
+    # Anchored to the frontmatter block AND unique. A bare grep over the whole
+    # file passes a dated key in frontmatter as long as an empty `last_verified: ""`
+    # appears anywhere below (a body line, a fenced example) — and passes the
+    # duplicate-key case (#128) outright, which is the very defect this guards.
+    awk '/^---[[:space:]]*$/{f++; next}
+         f>=2{exit}
+         f==1 && /^last_verified:/{n++; empty = ($0 ~ /^last_verified: *""[[:space:]]*$/)}
+         END{exit !(n==1 && empty)}' "$path" \
+      || fail "frontmatter needs exactly one last_verified, empty at synthesis (validator sets it)"
     grep -qE '^routing:'         "$path" || fail "missing routing field"
     ;;
   audit-findings)

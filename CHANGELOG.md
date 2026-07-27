@@ -1,3 +1,16 @@
+## 0.72.0 — 2026-07-26
+
+**Closes three holes an outside review found in yesterday's fix, one of which the fix itself opened.**
+
+An independent review (codex, reading the actual diff) checked 0.71.0 and found three real defects. All three are fixed here, each with a test that goes red if the fix is removed.
+
+- **A repeated `finish` could file a source that was never cataloged — a hole 0.71.0 opened.** Keeping the run's working files (so a finished run can be audited) also made the last step repeatable, because deleting those files is what used to stop it. Running it twice without starting a new run would file whatever now sits where the old run's sources sat, treating a document nothing had read as cataloged. That is the exact failure the pipeline exists to prevent. A finished run is now stamped as consumed and the second call refuses, telling the operator to start a new run. The self-check drops a never-cataloged file into the old path and proves it stays put. (`scripts/pipeline/catalog.sh`)
+- **The "was this article fact-checked" gate could be fooled two ways.** 0.71.0 made the check require the stamp be blank at drafting, but it searched the whole file for a blank one, so an article with a real date in its header still passed if the words `last_verified: ""` appeared anywhere below, even inside an example. It also passed an article carrying the field twice, once dated and once blank, which is precisely the duplicate-key defect the same release was fixing elsewhere. The check now reads only the header block and requires exactly one such field. (`scripts/assert-structure.sh`)
+- **New stacks would have committed their working files.** Keeping those files is only safe because the library keeps them out of version control, and the existing library does. The template a *new* stack is built from did not, and the catalog step stages the whole stack directory, so every catalog commit in a new stack would have carried them. Added to the template, using the pattern that does not shadow its own placeholder file. (`templates/stack/.gitignore`)
+- **Documentation that described the old behavior, corrected in one sweep.** Four places in the catalog skill still said the last step deletes the run's files, both worked examples in the extractor still told it to check the folder listing the release had just demoted, and the synthesis benchmark still described the stamp check as presence-only. Verified that the audit and enrich pipelines' near-identical cleanup prose is still accurate — those two genuinely do still delete — so they were left alone. (`skills/catalog-sources/SKILL.md`, `agents/source-extractor.md`, `dev/experiments/model-tier/synthesis-benchmark.md`)
+
+Self-check 24 of 24.
+
 ## 0.71.0 — 2026-07-26
 
 **An article can no longer claim it was fact-checked when nothing checked it, and a catalog run stops shredding its own paper trail on the way out.**

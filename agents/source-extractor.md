@@ -65,7 +65,7 @@ carry through merge and consumption downstream.
 
 Source: `sources/ashrae-guideline-36.md`. Concept identified: Primary-secondary chilled water pumping.
 
-Check `articles/` listing: no existing article matches this topic.
+Check `index.md`'s `## Articles` map: no existing article's scope matches this topic.
 
 Output in `dev/extractions/batch-1-concepts.md` (this source's block, among other concepts from the batch):
 
@@ -91,7 +91,7 @@ New slug assigned because no existing article covers this concept.
 
 Source: `sources/taylor-primary-pumping.md`. Concept identified: Chilled water primary-secondary pumping (same topic as above).
 
-Check `articles/` listing: `articles/chilled-water-primary-secondary.md` exists. Read its frontmatter and first two paragraphs — confirmed overlap on common pipe and flow decoupling.
+Check `index.md`'s `## Articles` map: `chilled-water-primary-secondary` is listed with a scope line covering common pipe and flow decoupling. Read the article's frontmatter and first two paragraphs — confirmed overlap.
 
 Output: slug is `chilled-water-primary-secondary`, `target_article` is `chilled-water-primary-secondary`.
 
@@ -119,9 +119,9 @@ Source: `sources/epa-energy-star-guide.md`. The source covers both refrigeration
 
 Process: Skip all refrigeration sections. Extract only the HVAC sections (chiller efficiency, variable air volume, economizer controls).
 
-For the economizer section: check `articles/` listing. `articles/economizer-controls.md` exists. Claims match. Use existing slug.
+For the economizer section: check `index.md`'s `## Articles` map. `economizer-controls` is listed with a matching scope line. Claims match. Use existing slug.
 
-For the chiller efficiency section: check `articles/` listing. `articles/chiller-efficiency-metrics.md` exists. Claims partially overlap — target_article set to `chiller-efficiency-metrics`, slug immutability honored.
+For the chiller efficiency section: check `index.md`'s `## Articles` map. `chiller-efficiency-metrics` is listed. Claims partially overlap — target_article set to `chiller-efficiency-metrics`, slug immutability honored.
 
 A third concept in the source (demand-controlled ventilation) has no matching article. New slug `demand-controlled-ventilation` assigned, `target_article` left empty.
 
