@@ -1,0 +1,14 @@
+{
+  "slug": "incomplete-relevance-judgments-pooling-bias",
+  "recall_total": 10,
+  "recall_present": 10,
+  "over_claims": 3,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Overview's last sentence says the article is 'distinct from [[production-eval-systems]]'s golden regression datasets and from [[llm-evaluation-frameworks]]'s benchmark-vs-production coverage.' The block's Notes section names the two distinct articles as `llm-as-judge` (judging LLM-generated output quality) and `production-eval-systems` (golden-dataset regression testing) — the draft substitutes a different, unsupported article (llm-evaluation-frameworks) and invents a description of its scope ('benchmark-vs-production coverage') that appears nowhere in the block. Trim to match the block: distinct from llm-as-judge and production-eval-systems, using the block's own parenthetical descriptions.",
+    "Patterns section adds: 'This is a specific application of the general LLM-as-judge approach to patching missing relevance judgments; see [[llm-as-judge]] for judge biases and mitigation techniques in general, and [[factscore-atomic-fact-decomposition]] for a different sub-claim-level scoring approach.' None of this — the LLM-as-judge framing, 'judge biases and mitigation techniques,' or the FActScore sub-claim-scoring comparison — is asserted anywhere in the concept block; it's invented cross-referencing. Cut the sentence.",
+    "Practitioner Implication section appends: 'For measuring retrieval quality more broadly, see [[retrieval-augmented-generation]].' The block's practitioner-implication claim (line 20) ends after the LLM-assessor validation point and never mentions RAG or broader retrieval-quality measurement. Cut this sentence — it's an unsupported added pointer."
+  ]
+}

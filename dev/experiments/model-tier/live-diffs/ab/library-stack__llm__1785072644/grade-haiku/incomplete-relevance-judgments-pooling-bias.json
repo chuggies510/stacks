@@ -1,0 +1,13 @@
+{
+  "slug": "incomplete-relevance-judgments-pooling-bias",
+  "recall_total": 10,
+  "recall_present": 10,
+  "over_claims": 2,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Line 26 'This reduces annotation cost dramatically' — the block's pooling claim only says pooling selects top results for manual judgment rather than the whole corpus; it never quantifies or characterizes the cost reduction as 'dramatic'. Trim to remove this added rationale/generalization, or cite a specific block statement if one exists (none does).",
+    "Line 44 'Fine-grained labels preserve nuance that binary judgments lose and enable more sophisticated evaluation' — the block states the fine-grained TREC label scheme (0-3) that the paper uses instead of binary labels, but does not offer this justifying rationale for why fine-grained is better. This is an invented mechanism/rationale sentence not present in the block; cut it or attribute it explicitly as the drafter's own framing rather than a sourced claim."
+  ]
+}

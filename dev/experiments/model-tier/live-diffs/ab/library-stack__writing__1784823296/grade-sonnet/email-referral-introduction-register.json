@@ -1,0 +1,12 @@
+{
+  "slug": "email-referral-introduction-register",
+  "recall_total": 7,
+  "recall_present": 7,
+  "over_claims": 1,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Patterns bullet 2 appends 'This is the same concrete-next-step move used in [[email-internal-work-request-register|internal work-request emails]].' to the block's claim about tying the next step to the offered mechanism. The concept block does not state this cross-register equivalence anywhere — its own scoping comment actually marks email-referral-introduction-register as a DISTINCT register from email-internal-work-request-register, not one sharing a documented mechanism. This is an invented generalization linking two separate source exemplars; drop the sentence (or drop just the equivalence clause, since the wikilink target itself isn't wrong, only the claim that the moves are 'the same')."
+  ]
+}
