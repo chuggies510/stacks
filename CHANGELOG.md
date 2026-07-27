@@ -1,3 +1,15 @@
+## 0.76.0 — 2026-07-26
+
+**Yesterday's rule was all "don't", and the cheapest way to obey a pile of don'ts is to copy the input. Fixed before it shipped a result.**
+
+- **The subject-narrowing rule now says what to DO, not only what to avoid (#126, #127).** Every constraint added in 0.75.0 forbids departing from the source text: don't widen the subject, don't add "can" or "typically", don't turn "is" into "must". A model can satisfy all of them at once by reproducing the claims verbatim — which is the failure the whole synthesis investigation started from, and which the scoring cannot see, because a verbatim copy earns full recall and zero over-claims by construction.
+
+  Measured before any grade came back: on the two drafts the rule was written for, similarity to the source jumped from 0.23 to 0.70 and from 0.42 to 0.61. The upper figure is most of the way back into copying territory. The rule now states the tension outright — the fix for a claim you cannot generalize is to name who it belongs to and keep writing, not to stop writing — and gives a worked topic sentence that carries its actor. (`agents/article-synthesizer.md`, and the benchmark copy of the same prompt)
+
+  Caught by the session running the measurement, who flagged it *before* sending the grades, on the grounds that a clean score on those two drafts would be the ambiguous outcome rather than the good one. The unambiguous good outcome is the third draft: it passed before, still passes, and its similarity stayed low — so the rule costs a well-behaved article nothing.
+
+  Same trade in the opposite direction as the section-skeleton fix earlier today: a rule that only restrains produces copying, a rule that only demands structure produces invention. Both need their counterweight in the same breath.
+
 ## 0.75.0 — 2026-07-26
 
 **Articles were quietly turning "Ramp does X" into "platforms do X". The facts were right; the "who" was disappearing.**
