@@ -1,3 +1,9 @@
+## 0.70.1 — 2026-07-26
+
+**The "no tier ratings in an article" rule now says which part of the article it means, so nobody reads 936 healthy articles as broken.**
+
+- **Scoped the bare-sources rule to the frontmatter, where it always applied (found while grading a draft with a peer session).** The article contract said tier "lives only in the extraction block, never in the article", which reads as covering the whole file. It only ever governed the `sources:` frontmatter key (the machine-read list of file paths). A library's own `STACK.md` can require tier ratings in the Sources section at the foot of the article, and library-stack's does: 936 articles across 8 stacks correctly carry them. A structural check reading the rule the broad way would have flagged all 936 as failures, which reads as a corpus-wide catastrophe and is a wording disagreement. The rule now names the frontmatter key explicitly and says the body belongs to the library's schema. No code, no behavior change. (`references/article-contract.md`)
+
 ## 0.70.0 — 2026-07-26
 
 **Articles should stop explaining things the source never said.**

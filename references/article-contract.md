@@ -60,7 +60,14 @@ What each stage does (stacks#89 closed the F6 collapse):
   source keeps both distinctions (`slug_source_tier`, first-seen per source path).
 - `article-synthesizer` reads each source's inline tier for hierarchy weighting, then
   writes the **bare** path (suffix stripped) into the article's `sources:` frontmatter —
-  tier lives only in the extraction block, never in the article.
+  the `(tier N)` suffix never appears in that frontmatter list.
+  **Scope: this rule governs the `sources:` FRONTMATTER KEY only.** It says nothing about
+  an article's body, including a rendered Sources section at the foot of the article. A
+  library's own `STACK.md` may require tier ratings there (library-stack's does, and 936
+  articles across 8 stacks conform); that is the library's schema and this contract does
+  not override it. A structural check that applies the bare-sources rule to the body
+  would report those conformant articles as failures — a spec disagreement rendered as a
+  corpus-wide catastrophe. Check the frontmatter key, never the body.
 - `validator` recovers per-source tier at audit time from the STACK.md source hierarchy
   (it reads articles + sources + STACK.md, not the extraction block), so it needs no
   change from this seam.
