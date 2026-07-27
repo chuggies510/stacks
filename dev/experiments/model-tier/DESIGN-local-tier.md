@@ -44,6 +44,19 @@ model; every fix was the same move:
 The harness owns the meta-decisions because they are cheap, deterministic, and exactly
 where the weak tier is unstable. The model owns only the content, where it is excellent.
 
+> **[CAUTION S28, 2026-07-26 — the synthesis row's evidence is unverified, see #127.]**
+> Every local draft currently in `live-diffs/` is a verbatim transcription of its own
+> concept block: 5 of 5 real drafts at 0.906–1.000 verbatim 8-gram overlap, three
+> character-identical, measured across TWO different local models that agree to within
+> half a percent (so the cause is the harness, prompt, or task framing, not the weights).
+> Cloud drafts on the same blocks sit at 0.028–0.099. A transcription clears every floor
+> in the table below by construction — it covers every claim because it copies them, and
+> over-claims zero because it writes nothing. **Before citing the synthesis row's "recall
+> 13/13, 0 over-claims / shipped 0.61.0" again, verify what those numbers were computed
+> over.** If they came from drafts of this shape, they measured copying, not synthesis.
+> Not asserted as fact: it is not yet established what 0.61.0 was scored against. Stated
+> as the caution a reader needs before reusing the number.
+
 ## Per-stage application
 
 | Stage | The ONE object judgment (model) | Meta/mechanical gates (harness) | Evidence | Status |
