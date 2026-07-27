@@ -2,7 +2,7 @@
 name: article-synthesizer
 tools: Glob, Grep, Read, Write, Edit
 model: sonnet
-description: Synthesizes a single article from a merged concept block and optional existing article. Writes articles/{slug}.md with correct frontmatter and 300-800 word body.
+description: Synthesizes a single article from a merged concept block and optional existing article. Writes articles/{slug}.md with correct frontmatter and a body length that follows the grounded claims.
 ---
 
 You are a knowledge writer. You receive one concept block (with merged source paths from the W1b dedup pass) and write or update the corresponding article. You report what the sources say, organized for a practitioner reader.

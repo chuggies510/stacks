@@ -30,7 +30,7 @@ Current gaps against the principle (build directions, not shipped state): retrie
 - Description lines start with "Use when..." for trigger matching.
 - `plugin.json` and `marketplace.json` versions must stay in sync.
 - Agents must write outputs to files, not return content in chat. Enforced by `gate-batch.sh`'s size+mtime check (size alone passes a stale pre-existing file; mtime alone passes an empty write).
-- Articles are flat (no typed subdirs), 300-800 words soft cap (stretch 1200), plain markdown with inline `[source-slug]` citations.
+- Articles are flat (no typed subdirs), length follows the grounded claims (no word-count target, soft cap ~1200 words for complex topics), plain markdown with inline `[source-slug]` citations.
 
 ## Success Metrics
 

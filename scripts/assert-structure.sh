@@ -46,7 +46,7 @@ case "$type" in
     ;;
   article-md)
     grep -qE '^title:'           "$path" || fail "missing title field"
-    grep -qE '^last_verified:'   "$path" || fail "missing last_verified field"
+    grep -qE '^last_verified: *""[[:space:]]*$' "$path" || fail "last_verified must be empty at synthesis (validator sets it)"
     grep -qE '^routing:'         "$path" || fail "missing routing field"
     ;;
   audit-findings)

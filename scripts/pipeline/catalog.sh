@@ -54,7 +54,10 @@ set -euo pipefail
 #            drifted article's source stays in incoming/ for the next run), file
 #            each incoming/ source to its publisher dir (W3) rewriting the now-moved
 #            citations, regenerate the MoC (W4), print CATALOG_SUMMARY counts for
-#            the skill's log+commit, then remove the transient run/working files.
+#            the skill's log+commit. Does NOT clean up the run/working files
+#            (stacks#129/#130/#132) — they are this run's audit trail (which
+#            sources were dispatched, what the extractor found, reuse vs mint);
+#            the next `prep` on this stack clears them to start its own manifest.
 #            Only reached after gate-w2 passes, so every synthesized article is
 #            present — all incoming sources file. A missing publisher field files
 #            the source under sources/unknown/ and is reported (unfiled=N), never
@@ -391,11 +394,15 @@ phase_finish() {
   # at scaffold time (a cataloged stack reads "0 articles, 0 sources").
   bash "$HELPERS/regenerate-catalog.sh" "$LIB" || true
 
-  # Cleanup: transient W1/W2 working + run-state files. articles/, sources/, and
-  # index.md are the durable artifacts the skill commits.
-  rm -f "$DEV"/batch-*-concepts.md "$DEV"/_dedup*.md "$DEV"/_dedup-meta.txt \
-        "$DEV/dispatch-w1.tsv" "$DEV/dispatch-w2.tsv" "$DEV/run.env"
-
+  # No cleanup here (stacks#129/#130/#132): batch-*-concepts.md, _dedup*.md,
+  # dispatch-w1.tsv/dispatch-w2.tsv, and run.env ARE this run's audit trail —
+  # which sources were dispatched, what each extractor found (including
+  # `# no-concepts:` sentinels), and which slugs were reuse vs mint. Deleting
+  # them at finish made a completed run unauditable. They are left on disk for
+  # the operator/auditor to read after finish; the NEXT `prep` on this stack
+  # clears them (line ~180, `rm -f "$DEV"/batch-*...`) to start its own manifest
+  # clean, so the retention window is "until this stack's next catalog run,"
+  # not indefinite — a real limit, not this fix's job to extend.
   echo "CATALOG_SUMMARY: sources=$N_SOURCES new=$N_NEW updated=$N_UPDATED unfiled=$UNFILED"
   [[ "$UNFILED" -eq 0 ]] || echo "Note: $UNFILED source(s) had no publisher field — filed under sources/unknown/; re-file if needed."
 }
@@ -545,6 +552,7 @@ EOF
 ---
 title: VAV Airflow Modulation
 last_verified: ""
+routing: how VAV boxes modulate airflow to meet zone load
 tags: [hvac]
 ---
 VAV boxes modulate airflow to meet zone load.
@@ -553,6 +561,7 @@ EOF
 ---
 title: Airside Economizer
 last_verified: ""
+routing: when an economizer uses outside air for free cooling
 tags: [controls]
 ---
 Economizers use outside air for free cooling below a setpoint.
@@ -634,7 +643,15 @@ EOF
     bad "finish-files-sources-and-moc" "out=$out; ashrae=$([[ -f "$ST/sources/ashrae/vav-basics.md" ]] && echo y || echo N) unknown=$([[ -f "$ST/sources/unknown/economizer.md" ]] && echo y || echo N) moc=$([[ -f "$ST/index.md" ]] && echo y || echo N)"
   fi
   grep -q 'unfiled=1' <<<"$out" && ok "finish-reports-unfiled" || bad "finish-reports-unfiled" "out=$out"
-  [[ ! -f "$DEV/run.env" && ! -f "$DEV/dispatch-w2.tsv" ]] && ok "finish-cleans-run-state" || bad "finish-cleans-run-state" "run-state survived"
+  # stacks#129/#130/#132: finish must NOT wipe the run's audit trail — dispatch
+  # manifests, concept batches, and dedup output are the only record of which
+  # sources were dispatched and which slugs were reuse vs mint.
+  if [[ -f "$DEV/run.env" && -f "$DEV/dispatch-w1.tsv" && -f "$DEV/dispatch-w2.tsv" \
+        && -f "$DEV/batch-1-concepts.md" && -f "$DEV/_dedup-meta.txt" ]]; then
+    ok "finish-retains-audit-trail"
+  else
+    bad "finish-retains-audit-trail" "run-state/audit files missing after finish: $(ls "$DEV" 2>/dev/null)"
+  fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"
   [[ "$fail" -eq 0 ]]
