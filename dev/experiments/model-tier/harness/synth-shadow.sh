@@ -73,13 +73,58 @@ json_for() { # <words> <cites> <tt> <to> <ht> <hlv> <hs> <hr> <rel-path>
       body_path:$body_path}'
 }
 
-# Assemble prompt: verbatim synth rubric (the benchmark's FIRST fenced block, under
-# "### Prompt to feed your model") + allowed tags ($VOCAB — the stack's allowed_tags
-# via TAG_VOCAB, or the llm default) + block.
-# Sliced by fence, not by line number: the old `sed -n '17,41p'` silently truncates
-# whenever the rubric's length changes (#127 added the section skeleton to it).
-awk '/^```$/{n++; next} n==1' "$BENCH" > "$work/prompt.txt"
-[[ -s "$work/prompt.txt" ]] || { echo "ERROR: empty rubric sliced from $BENCH" >&2; exit 1; }
+# Assemble prompt: the SHIPPING agent's model-facing region (#136) + the output
+# contract this harness owns + allowed tags ($VOCAB — the stack's allowed_tags via
+# TAG_VOCAB, or the llm default) + block.
+#
+# The rubric is sliced from `agents/article-synthesizer.md`, NOT from the benchmark.
+# It used to be a hand-copy inside synthesis-benchmark.md that drifted from the agent
+# it stood for, so every synthesis number measured an approximation of the stage
+# (#136). The agent def owns the judgment; the harness owns only the I/O contract
+# below, because the agent's own I/O instruction (dispatch paths, the Write tool) is
+# wrong for a raw prompt that returns on stdout.
+bash "$HERE/agent-prompt.sh" "$HERE/../../../../agents/article-synthesizer.md" > "$work/prompt.txt"
+
+# The harness supplies what the agent def points at but a raw prompt cannot reach: the
+# stack's Topic Template skeleton (normally read from STACK.md) and the frontmatter
+# field list (normally read from references/article-contract.md). The agent slice above
+# says "use the Topic Template" and "the contract is not restated here" — true in
+# production, useless to a model with no file access, so those two files are inlined
+# here. This is the harness's job under #136, not the agent's.
+cat >> "$work/prompt.txt" <<'CONTRACT'
+
+STACK.md TOPIC TEMPLATE (the section skeleton referred to above), in this order, each
+a `## ` heading:
+
+  ## Overview        - what this is, when/why you'd use it, scope boundaries
+  ## Key Concepts    - core principles, mechanisms, configurations, trade-offs
+  ## Patterns        - tested approaches with concrete examples
+  ## Pitfalls        - production failure modes that surprise an experienced practitioner
+  ## Cost & Latency  - token economics, cache implications, latency/throughput
+  ## Eval Strategy   - how to measure that the pattern works
+  ## Field Notes     - practitioner experience, production lessons, what actually breaks
+
+Group the claims under the sections they belong to and write connected prose. Omit any
+section the grounded claims do not support - the no-padding rule above wins; never add
+an empty or invented section to match the skeleton.
+
+OUTPUT CONTRACT: return everything on stdout. Write no files.
+
+  WHEN YOU WRITE the article, return YAML frontmatter then the body:
+  ---
+  last_verified: ""
+  sources:            # bare paths, one per source, NO tier suffix
+    - sources/{publisher}/{file}.md
+  title: {human-readable title}
+  routing: {one plain-text line, an asker's words, what it covers + questions answered}
+  tags: [{from the allowed list below}]
+  ---
+  {body - the ## sections above, inline [source-slug] citation on every claim}
+
+  WHEN THE CLAIMS ARE TOO THIN to support an article (the judgment described above),
+  do NOT invent one. Return only the one-line shortfall report:
+  Concept {slug}: insufficient claims - article not written.
+CONTRACT
 { echo; echo "Allowed tags: $VOCAB"; echo; cat "$concept_file"; } >> "$work/prompt.txt"
 
 # Deterministic refusal gate (liminal S61): the weak tier's refuse-or-write call

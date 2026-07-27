@@ -25,11 +25,43 @@ GOLD = {1: ("CANDIDATE", 2), 2: ("NOSOURCE", None), 3: ("NOSOURCE", None),
 TRAPS, GROUNDING, TIERED = {2, 3}, {1, 4, 6}, {1, 4, 5}
 
 
+AGENT = "/home/chris/chungus/dev/stacks/agents/enrichment.md"
+SLICE = "/home/chris/chungus/dev/stacks/dev/experiments/model-tier/harness/agent-prompt.sh"
+
+# This harness owns the I/O contract, the agent def owns the judgment (#136). The
+# agent's own output section describes a tab-separated findings FILE written with the
+# Write tool, which is wrong here — offline, the model returns one line on stdout and
+# does no searching or fetching of its own.
+CONTRACT = """
+OUTPUT CONTRACT (overrides the input and output shapes described above):
+
+This is an offline bench. You do NOT search, fetch, or write a file. The gap, the
+candidate source's identity, and the relevant passage from it are all given to you
+inline below. Treat that supplied passage as if you had fetched and read the page
+yourself — the "never fabricate, only cite a page you actually read" rule above is
+satisfied by the passage you are given, and it still forbids you from asserting
+anything the supplied passage does not say. Your one remaining judgment is the one
+the rule is really about: does that passage state this specific claim, and what tier
+is the publisher.
+
+OUTPUT one line, exactly:  <VERDICT> | tier:<N|->
+  VERDICT  one of CANDIDATE, WEAK, DUP, NOSOURCE
+  tier     the digit 1-4 when you assign one, or a bare - when you do not
+Nothing else.
+"""
+
+
 def load():
     txt = open(BENCH).read()
-    head = txt.split("### Prompt to feed your model", 1)[1]
-    prompt = head.split("```")[1].strip()              # first fenced block, not a line range
+    # The prompt is sliced from the SHIPPING agent, not from a hand-copy in the
+    # benchmark. The copy this replaced was 14 non-blank lines standing in for a
+    # 70-line agent and carried ZERO of its six procedure steps, so the six identical
+    # perfect scores behind #137 were scored against a restatement of the stage rather
+    # than the stage (#136). The benchmark keeps only the items and the gold.
+    prompt = subprocess.run(["bash", SLICE, AGENT], capture_output=True, text=True,
+                            check=True).stdout.strip() + "\n" + CONTRACT
     assert "OUTPUT one line" in prompt, "prompt slice missed the output contract"
+    assert "NOSOURCE" in prompt, "prompt slice missed the verdict vocabulary"
 
     items = {}
     for m in re.finditer(r"^\*\*Item (\d+)[^\n]*\*\*\n(.*?)(?=^\*\*Item |\n## )",

@@ -15,9 +15,16 @@ INFER="$HERE/local-infer.sh"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# Verbatim rubric: the fenced block is lines 26-59 of validation-benchmark.md
-# (26/59 are the ``` fences; 27-58 is the prompt body).
-RUBRIC=$(sed -n '27,58p' "$BENCH")
+# Verbatim rubric: the benchmark's FIRST fenced block. Sliced by fence, never by line
+# number — the old `sed -n '27,58p'` silently truncated the moment the file changed
+# length. This is one of two prompts NOT sliced from its agent def under #136, and the
+# reason is in shadow-validate-run.sh: validation is closed, and this scores ONE claim
+# against ONE excerpt while `agents/validator.md` processes a whole article with file
+# I/O. Slicing the agent here would hand the model an article-shaped prompt for a
+# claim-shaped task. It restates validator.md's Process step 3 and CAN drift from it;
+# reconcile the two first if validation ever reopens.
+RUBRIC=$(awk '/^```$/{n++; next} n==1' "$BENCH")
+[[ -n "${RUBRIC//[[:space:]]/}" ]] || { echo "ERROR: empty rubric sliced from $BENCH" >&2; exit 1; }
 
 declare -A GOLD=( [1]="CLEAN" [2]="CORRECTION/overstatement" [3]="CORRECTION/contradiction"
                    [4]="CLEAN" [5]="CORRECTION/overstatement" [6]="CORRECTION/add-citation"

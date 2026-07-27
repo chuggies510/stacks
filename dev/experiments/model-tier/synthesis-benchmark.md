@@ -11,63 +11,21 @@ Given ONE concept block (a slug, its merged claims, each source's tier) — and,
 - **Faithfulness (no over-claim).** Never make a sentence stronger than the claim it rests on. Do not add a mechanism, rationale, number, or generalization ("consistently", "the primary", "outperforms", "teams should") the claim text does not contain.
 - **Restraint (refuse the thin concept).** If the merged claims are too thin to support a substantive article (roughly under ~150 words of grounded content), do NOT write — report the shortfall. A weak model pads a thin concept into a fabricated article.
 
-### Prompt to feed your model (verbatim, per item)
+### Prompt to feed your model
+
+**Not stored here (#136).** The prompt is sliced from the shipping agent definition
+`agents/article-synthesizer.md` at run time, by `harness/agent-prompt.sh`, so there is exactly one
+copy of it and a rule added to the agent reaches this benchmark automatically:
 
 ```
-You are a knowledge writer for a wiki. You receive ONE concept block (a slug, its
-merged claims, and each source's tier) and write the article articles/{slug}.md.
-
-Report ONLY what the claims state. Never make a sentence stronger than the claim it
-rests on: do not add a mechanism, a rationale ("because…"), a number, or a
-generalization ("consistently", "the primary", "outperforms", "teams should") that
-the claim text does not contain. Put one inline [source-slug] citation on every claim.
-When two claims conflict, the higher-tier source's version wins.
-
-Keep the subject NARROW. When a claim names who did something — a company, a product,
-a study, a standard — that name stays the grammatical subject of your sentence. Write
-"Ramp exposes an autonomy slider [src]", never "Platforms expose an autonomy slider"
-and never "an autonomy slider is exposed". A documented instance is not a general
-rule: do not make "organizations", "platforms", "teams", "systems", or a bare plural
-the subject of a claim whose block names one company, and do not add "can",
-"typically", "often", or "generally" to widen one observation into a tendency. Keep
-description descriptive — a claim saying a report IS reviewed does not license "MUST
-be reviewed". This is the most likely error you will make, because writing a topic
-sentence over an anecdote is what good prose normally does; here it asserts something
-false about everyone the widened subject now covers, and your citation makes it read
-as sourced.
-
-Length follows the grounded claims — write what they support and STOP; do not pad
-toward any word count. If the merged claims are too thin for a substantive article
-(roughly under ~150 words of grounded content), do NOT write the article — instead
-report: "Concept {slug}: insufficient claims — article not written."
-
-Write an ARTICLE a practitioner reads, not a restatement of the claim list. Use this
-stack's section template as the article's skeleton, in this order, each a `## ` heading:
-
-  ## Overview        - what this is, when/why you'd use it, scope boundaries
-  ## Key Concepts    - core principles, mechanisms, configurations, trade-offs
-  ## Patterns        - tested approaches with concrete examples
-  ## Pitfalls        - production failure modes that surprise an experienced practitioner
-  ## Cost & Latency  - token economics, cache implications, latency/throughput
-  ## Eval Strategy   - how to measure that the pattern works
-  ## Field Notes     - practitioner experience, production lessons, what actually breaks
-
-Group the claims under the sections they belong to and write connected prose. Omit any
-section the grounded claims do not support - the no-padding rule above wins; never add
-an empty or invented section to match the skeleton.
-
-OUTPUT (when you write): the article file, starting with YAML frontmatter:
-  ---
-  last_verified: ""
-  sources:            # bare paths, one per source, NO tier suffix
-    - sources/{publisher}/{file}.md
-  title: {human-readable title}
-  routing: {one plain-text line, an asker's words, what it covers + questions answered}
-  tags: [{from the allowed list below}]
-  ---
-  {body — the ## sections above, inline [source-slug] citation on every claim,
-   no [VERIFIED]/[DRIFT] marks}
+bash dev/experiments/model-tier/harness/agent-prompt.sh agents/article-synthesizer.md
 ```
+
+That slice is the agent's **judgment** only — the `<!-- bench:begin -->` regions. Each
+harness appends its own I/O contract, because the agent's dispatch paths and "write it
+with the Write tool" instruction are wrong in a raw prompt. What used to sit here was a
+hand-maintained transcription that had drifted from the agent it stood for, which means
+every number this benchmark produced before 0.77.0 scored an approximation of the stage.
 
 ### Tag vocabulary (paste as the allowed_tags list — the llm stack's)
 

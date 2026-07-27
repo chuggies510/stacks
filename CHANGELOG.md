@@ -1,3 +1,27 @@
+## 0.77.0 — 2026-07-27
+
+**Every benchmark in this repo was grading a typed-out copy of the real instructions, not the real instructions. Now three of them read the real thing.**
+
+- **The agent definitions now mark which parts a benchmark should read.** `source-extractor`, `article-synthesizer`, and `enrichment` gained `<!-- bench:begin -->` / `<!-- bench:end -->` marker pairs around the regions that tell the model *how to judge*. A new `harness/agent-prompt.sh` pulls those regions out with one line of `awk`. A rule added to an agent now reaches its benchmark automatically, instead of waiting for someone to remember to retype it. (#136)
+
+  Multiple pairs per file, because the split is not one clean cut: single sentences of plumbing ("write the file with the Write tool", a dispatch path) sit inside otherwise model-facing sections, so a region ends before that sentence and starts again after it.
+
+- **Five copies of the prompts existed; three are gone.** The benchmark files each carried a hand-typed version of the shipping prompt, and `shadow-extract-run.sh` carried another — an 11-line paraphrase standing in for a 128-line agent, which is what the local extraction runs actually used. The extraction, synthesis, and enrichment benchmark prompt sections are now pointers at the agent file. (#136)
+
+- **Validation is deliberately left alone, and both its harnesses now say why.** Its two runners score ONE claim against ONE excerpt, while `agents/validator.md` processes a whole article with file I/O — slicing the agent there would hand the model an article-shaped prompt for a claim-shaped task. Validation is closed and no tier decision rides on it. Both files now carry that reasoning plus a note that they restate the agent's Process step 3 and can drift from it, to be reconciled first if validation reopens.
+
+- **What this does to numbers already published.** Every synthesis and enrichment result in this repo was scored against the copy, so each measures an approximation of its stage rather than the stage. Enrichment is the stark case: its copy was 14 non-blank lines standing in for a 70-line agent, carrying **none** of that agent's six procedure steps. The six identical perfect scores behind the saturation finding (#137) were scored against a restatement of the task. Do not compare a post-0.77.0 run against a pre-0.77.0 one.
+
+- **The harness owns the input/output rules, the agent owns the judgment.** The sliced region excludes file paths and "write it with the Write tool", which are wrong in a raw prompt to a model with no file access. Each harness appends its own contract instead — and, where the agent points at a file the model cannot open, the harness inlines what that file said. `synth-shadow.sh` now supplies the STACK.md section skeleton and the frontmatter field list, and states both branches: what to return when writing an article, and what to return when the claims are too thin to support one.
+
+- **A check that fails if this rots.** `bash dev/experiments/model-tier/harness/agent-prompt.sh --self-check` runs 12 assertions. Per agent: the slice clears a line floor, still contains the specific judgment that stage is benchmarked on, and leaks none of five classes of tool/path instruction. Plus an unfenced file, an unbalanced pair, and a pair enclosing nothing are each refused. Verified to go red two ways: stripping an agent's markers, and moving a Judgment Bias section outside the fence while leaving the line count above its floor.
+
+- **Fixed before shipping, from a codex review of this change:** an unquoted heredoc in `shadow-extract-run.sh` executed a backtick pair, silently deleting words from the prompt and still exiting 0; the synthesis contract demanded an article unconditionally, contradicting the agent's own thin-concept refusal that benchmark item 3 exists to test; the enrichment contract told the model to cite only pages it had fetched while forbidding it to fetch; and the self-check's original assertions could pass with the defect present (a line count and a single grep for one exact phrase).
+
+- **Agent definitions also had rules moved into the section they belong to** (no content dropped, verified by diffing with marker lines filtered out): source-tier conflict resolution and the section-skeleton rule moved from `## Input` into `## Judgment Bias` in `article-synthesizer`; the tier-rating rule and the verdict table moved into `## Judgment Bias` in `enrichment`. Both were judgment living in a section describing file inputs, which is why the fence could not reach them.
+
+- **Filed, not fixed: #139.** The local extraction harness feeds the model a bare slug list with no scope lines — the exact input this repo's own key finding blames for over-minting — while the rule it now slices names *described scope* as the primary reuse test. Pre-existing; #136 only made it visible. The prompt no longer calls that list a scope map.
+
 ## 0.76.1 — 2026-07-26
 
 **Reverting 0.76.0. It was measured within the hour and it made the thing it was paired with worse.**

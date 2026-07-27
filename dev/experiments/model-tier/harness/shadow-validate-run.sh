@@ -59,7 +59,15 @@ classify() {
   printf '%s\t%s' "$v" "$repl"
 }
 
-# gate-first prompt (validation-benchmark.md, verbatim STEP 1/STEP 2) for ONE claim.
+# gate-first prompt for ONE claim.
+#
+# KNOWN REMAINING COPY (#136), left deliberately. Every other harness now slices its
+# prompt from the shipping agent def; this one does not, for two reasons: validation is
+# CLOSED (cloud-owned, no tier decision rides on this script), and the shape genuinely
+# differs — `agents/validator.md` processes a whole ARTICLE with file I/O, this scores
+# ONE claim against ONE excerpt. Slicing the agent here would hand the model an
+# article-shaped prompt for a claim-shaped task. It restates validator.md Process step
+# 3, so it CAN drift from it; if validation ever reopens, reconcile the two first.
 gatefirst_prompt() { # <claim> <excerpt> <cited 0|1> <sources-csv>
   cat <<EOF
 You are a knowledge validator. You are given ONE article claim and the CITED SOURCE

@@ -12,23 +12,21 @@ Read ONE source's text and emit its concepts as concept blocks. For each **disti
 - assign a source **tier** (1–4) per the rubric below;
 - be **conservative**: don't fragment one concept into several, don't mint a slug for a concept an existing article already covers, don't invent concepts the source doesn't discuss, and discard pure reference material (flag/endpoint/config listings with no behavior knowledge).
 
-### Prompt to feed your model (verbatim, per source)
+### Prompt to feed your model
+
+**Not stored here (#136).** The prompt is sliced from the shipping agent definition
+`agents/source-extractor.md` at run time, by `harness/agent-prompt.sh`, so there is exactly one
+copy of it and a rule added to the agent reaches this benchmark automatically:
 
 ```
-You extract knowledge from ONE source into concept entries for a knowledge wiki.
-INPUTS: (a) the source text; (b) EXISTING_SLUGS — the articles that already exist;
-(c) the tier rubric.
-For each DISTINCT, in-scope concept the source covers (in-scope = LLM production/
-research knowledge; discard pure reference such as CLI-flag or API listings):
-  - assign a kebab-case slug;
-  - if an existing article in EXISTING_SLUGS covers this concept, REUSE that exact
-    slug; only mint a NEW slug when none covers it;
-  - assign tier 1-4 per the rubric.
-Be CONSERVATIVE: do not fragment one concept into several, do not mint a slug for a
-concept an existing article already covers, do not invent concepts.
-OUTPUT: one line per concept, exactly:  <slug> | reuse:<existing-slug|NEW> | tier:<N>
-Nothing else.
+bash dev/experiments/model-tier/harness/agent-prompt.sh agents/source-extractor.md
 ```
+
+That slice is the agent's **judgment** only — the `<!-- bench:begin -->` regions. Each
+harness appends its own I/O contract, because the agent's dispatch paths and "write it
+with the Write tool" instruction are wrong in a raw prompt. What used to sit here was a
+hand-maintained transcription that had drifted from the agent it stood for, which means
+every number this benchmark produced before 0.77.0 scored an approximation of the stage.
 
 ### Tier rubric (paste into the prompt as the rubric)
 

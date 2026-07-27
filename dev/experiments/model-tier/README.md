@@ -19,6 +19,17 @@ is usually not the accuracy blocker; the input context is.
 
 ## Stages
 
+> **PROMPT-SOURCE CAVEAT (2026-07-27, #136) — every number in this table predating
+> v0.77.0 was scored against a hand-typed copy of the shipping prompt, not the prompt.**
+> Each benchmark used to embed its own transcription of the agent it stood for, and the
+> two drifted. Enrichment is the extreme: 14 non-blank lines standing in for a 70-line
+> agent, carrying **zero** of its six procedure steps. As of 0.77.0 every harness slices
+> its prompt from the agent definition itself (`harness/agent-prompt.sh`, marker-fenced
+> regions in `agents/*.md`), so there is one copy. Consequence: **do not compare a
+> post-0.77.0 run against a pre-0.77.0 one**, and treat every pre-0.77.0 absolute figure
+> as scoped to a rubric rather than to the stage. Relative orderings within a single
+> pre-0.77.0 ladder are probably intact — the copy was identical across its arms.
+
 | Stage | Agent | Benchmark | Status |
 |---|---|---|---|
 | Extraction | source-extractor | `extraction-benchmark.md` | Fix shipped (0.57.0 scoped slugs). Haiku validation in flight; local qwen clears behind a harness. |

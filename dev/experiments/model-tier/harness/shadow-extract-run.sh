@@ -53,17 +53,15 @@ EOF
 
 extract_prompt() { # <source-file> -> stdout: the local extraction prompt
   cat <<EOF
-You extract knowledge from ONE source into concept entries for a knowledge wiki.
-For each DISTINCT, in-scope concept the source covers (in-scope = this stack's
-domain knowledge; discard pure reference such as CLI-flag or API listings):
-  - assign a kebab-case slug;
-  - if an existing article in EXISTING_SLUGS covers this concept, REUSE that exact
-    slug; only mint a NEW slug when none covers it;
-  - assign tier 1-4 per the rubric.
-Be CONSERVATIVE: do not fragment one concept into several, do not mint a slug for
-a concept an existing article already covers, do not invent concepts.
-OUTPUT: one line per concept, exactly:  <slug> | reuse:<existing-slug|NEW> | tier:<N>
-Nothing else.
+$(bash "$HERE/agent-prompt.sh" "$HERE/../../../../agents/source-extractor.md")
+
+OUTPUT CONTRACT (overrides any output shape described above): emit ONLY the one-line
+rows specified at the end of this prompt. No concept blocks, no headings, no prose.
+EXISTING_SLUGS below is a BARE SLUG LIST, not the scope map the reuse-vs-mint rule
+above describes. You get slugs only, with no scope line for any of them, so judge
+reuse from what each slug's wording implies.
+(No backticks in this heredoc: it is unquoted, so a backtick pair would be executed
+as a command and silently vanish from the prompt, exit 0.)
 
 TIER RUBRIC:
 $RUBRIC

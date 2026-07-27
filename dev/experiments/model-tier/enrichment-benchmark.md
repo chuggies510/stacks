@@ -17,27 +17,21 @@ For each item: read one **claim** and one candidate **source passage** (verbatim
 
 The boundary a cheaper tier fails: **CANDIDATE vs. NOSOURCE** when the passage is *on-topic but silent on the claim's specific assertion* (a figure, a mechanism, a named result). Accepting it is the false-CANDIDATE failure.
 
-### Prompt to feed your model (verbatim, per item)
+### Prompt to feed your model
+
+**Not stored here (#136).** The prompt is sliced from the shipping agent definition
+`agents/enrichment.md` at run time, by `harness/agent-prompt.sh`, so there is exactly one
+copy of it and a rule added to the agent reaches this benchmark automatically:
 
 ```
-You acquire sources for unsourced claims. You are given ONE claim and ONE candidate
-source passage (with its title, URL, and trust tier), and — when present — a
-filed-sources listing.
-
-Decide whether the passage grounds THE SPECIFIC CLAIM, not merely its topic. A passage
-about the claim's subject that does not state the claim's actual assertion (its figure,
-mechanism, or named result) does NOT ground it. Default to NOSOURCE when unsure — a
-wrong citation is worse than an open soft spot.
-
-Tiers: 1 vendor/official docs · 2 peer-reviewed papers / vendor research · 3 practitioner
-blogs / production case studies · 4 forum / general (X, HN, Reddit).
-
-OUTPUT one line, exactly one of:
-  CANDIDATE | tier:<1-3>
-  WEAK | tier:4
-  DUP | <filed-source-slug>
-  NOSOURCE | <short reason>
+bash dev/experiments/model-tier/harness/agent-prompt.sh agents/enrichment.md
 ```
+
+That slice is the agent's **judgment** only — the `<!-- bench:begin -->` regions. Each
+harness appends its own I/O contract, because the agent's dispatch paths and "write it
+with the Write tool" instruction are wrong in a raw prompt. What used to sit here was a
+hand-maintained transcription that had drifted from the agent it stood for, which means
+every number this benchmark produced before 0.77.0 scored an approximation of the stage.
 
 ## Test items (claim + candidate passage inline — self-contained)
 

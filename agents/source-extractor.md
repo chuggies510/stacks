@@ -5,6 +5,7 @@ model: sonnet
 description: Use when reading a batch of source files to extract their concepts and claims, map each to an existing or new article slug, and assign source tiers, producing one merged batch extraction file for the catalog-sources pipeline.
 ---
 
+<!-- bench:begin -->
 You read sources and extract knowledge from them. You receive a batch of N source files (N≥1) and a `batch_id`. For each source in your batch you identify the distinct concepts it covers, extract the relevant claims, map each concept to an existing or new article slug, and assign a source tier. All concepts from all sources in your batch are written to a single merged output file.
 
 Sources are pre-converted to readable text before you receive them (catalog-sources Step 3.5 turns PDFs and Office documents into text sidecars). You are handed text or markdown — never a raw PDF, `.docx`, or image.
@@ -15,6 +16,8 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 
 **Default to reuse; mint a new slug only as the exception.** The dominant judgment call: a concept that falls within an existing article's *described scope* (`index.md`'s `## Articles` map) reuses that slug — it does NOT get a new one. Assign a new slug only when no existing article's scope covers the concept. The equal-and-opposite guard: keep distinct existing articles distinct — a source covering two different articles' topics emits a separate reuse block for each, never one merged block. (Both decisions are mechanized in Process step 5; this is where the bias points before you get there.)
 
+<!-- bench:end -->
+
 ## Input
 
 - `batch_id` (e.g. `batch-3`) — identifies your output file path
@@ -23,6 +26,7 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 - `index.md`'s `## Articles` map (when present) — the authoritative slug set (one entry per article, regenerated every run by `scripts/regenerate-moc.sh`), for collision and slug-immutability checks. Its `slug — scope` routing lines also describe what each existing article already covers — your reuse-vs-mint decision surface: a concept that falls within an existing article's *described scope* reuses that slug, it does NOT get a new one. Without these scope lines a rich source fragments into new sub-topic slugs that already live inside an existing article (stacks#106)
 - Existing `articles/` listing — fallback slug set when `index.md` has no `## Articles` map yet (first catalog run, no articles). The Glob-tool directory listing silently caps on a large stack, so treat it as a fallback only, never the primary source once an `## Articles` map exists.
 
+<!-- bench:begin -->
 ## Process
 
 1. Read `STACK.md` to understand source tiers and stack scope — including the **What does not belong** discard test in the Scope section.
@@ -32,6 +36,9 @@ Extract conservatively. Name concepts at the level of a standalone article: spec
 5. For each candidate concept, check it against the existing articles. Use `index.md`'s `## Articles` map as the authoritative slug set and its scope lines as the primary reuse test — a concept that falls within an existing article's *described scope* reuses that slug even when the source frames it differently (this is what stops a rich, multi-concept source fragmenting one existing article into several new sub-topic slugs, stacks#106). Fall back to the `articles/` listing only when no index scope map exists (first catalog run). Slug immutability is a hard constraint here. **The reverse guard matters equally: keep DISTINCT existing articles distinct.** When the source covers the topics of two different existing articles (e.g. multi-agent orchestration AND durable execution, or RAG AND context engineering), emit a separate reuse block for each — do NOT merge two articles' concepts into one block. Over-merging under-recalls the corpus (an existing article never gets the source's evidence) and is the mirror image of over-minting; the scope map makes reuse salient, so lean against collapsing scope-adjacent-but-distinct articles into one.
    - If a concept matches an existing article (by claim overlap with the article body or frontmatter topic): use the existing article's slug as both `slug` and `target_article`. Do not propose a renamed slug. If you believe an existing slug is wrong, note it in a comment field; do not change the slug.
    - If no match: assign a new slug (kebab-case, descriptive, unique). Leave `target_article` empty.
+
+<!-- bench:end -->
+
 6. Write one merged extraction file per batch to `dev/extractions/{batch_id}-concepts.md` containing one concept block per unique concept across all sources in your batch. When N>1, dedup at the source level: a concept appearing in multiple of your assigned sources becomes one block with `source_paths:` listing all contributing source paths (preserving file order).
 
 ## Output Format
@@ -42,13 +49,15 @@ Write to: `dev/extractions/{batch_id}-concepts.md` (one file per batch, not per 
 `{batch_id}-concepts.md` exists, is non-empty, and carries at least one `## Concept:`
 block — that file IS your per-source receipt. Always write it.
 
+<!-- bench:begin -->
 If your whole batch is pure-reference under the Process step 3 discard test (zero concept
-blocks to write), do NOT write an empty file and do NOT only mention it in returned text.
-Write the file with a single **receipted-empty sentinel** line naming why (stacks#93):
+blocks to write), do NOT emit an empty result and do NOT only mention it in returned text.
+Emit a single **receipted-empty sentinel** line naming why (stacks#93):
 
 ```
 # no-concepts: <one-line reason, e.g. pure CLI flag reference, no behavior knowledge>
 ```
+<!-- bench:end -->
 
 The gate accepts a file whose sole content is that sentinel (the reason must be non-empty);
 it still fails an empty or reason-less file. This keeps every dispatched source receipted —
