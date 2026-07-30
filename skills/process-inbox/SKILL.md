@@ -1,11 +1,6 @@
 ---
 name: process-inbox
-description: |
-  Use when the user wants to process queued inbox files from other sessions into
-  the knowledge library. Reads all .md files in inbox/, classifies each against
-  existing stacks using content and source metadata, moves matched files to the
-  target stack's sources/incoming/, and reports unmatched files. Works from any
-  repo. Examples: "/stacks:process-inbox".
+description: Use when queued Markdown extracts in a knowledge library inbox need routing to matching stacks.
 ---
 
 # Process Inbox

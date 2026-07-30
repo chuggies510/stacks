@@ -1,15 +1,6 @@
 ---
 name: ingest-book
-description: |
-  Use when the user wants to convert a whole handbook, standard, or reference PDF into
-  a knowledge stack chapter by chapter — "ingest this handbook", "convert the ASPE PEDH
-  into the library", "add this design manual as reference", "book-scale faithful
-  extraction". Parses the table of contents into a chapter page-map (operator confirms),
-  runs each chapter through doc-tools extract-pdf faithful mode, and files the gated
-  output into the stack's deep-reference tier with printed-page provenance. Must be run
-  from within a library repo. Distinct from catalog-sources (which synthesizes articles
-  from staged sources) — ingest-book produces reference-grade handbook chapters, the
-  shelf lookup reads behind the articles.
+description: Use when working inside a knowledge-library repository and a complete handbook, standard, design manual, or other book-scale PDF must enter a stack as chapter-level deep reference rather than synthesized articles.
 ---
 
 # Ingest Book

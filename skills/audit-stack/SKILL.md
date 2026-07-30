@@ -1,13 +1,6 @@
 ---
 name: audit-stack
-description: |
-  Use when the user wants to check a knowledge stack's articles against their
-  cited sources. Dispatches the validator agent to fix source-contradictions in
-  place and list soft spots (claims not tied to a source), then writes a fresh
-  audit report. Incremental by default: re-validates only articles changed since
-  their last audit (pass --full to re-check all, or --only {slug,...} to scope to
-  named articles). Runs from any repo; targets the library configured in
-  ~/.config/stacks/config.json, or the current directory when it is itself a library.
+description: Use when knowledge-stack articles must be checked against cited sources for contradictions, unsupported claims, or audit drift.
 ---
 
 # Audit Stack

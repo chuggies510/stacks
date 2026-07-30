@@ -1,9 +1,6 @@
 ---
 name: init-library
-description: |
-  Use when the user wants to create a new knowledge library. Scaffolds the
-  directory from templates, creates a private GitHub repo, and updates stacks
-  config. Run this before /stacks:new-stack.
+description: Use when creating a new knowledge-library repository before any stacks exist.
 ---
 
 # Init Library

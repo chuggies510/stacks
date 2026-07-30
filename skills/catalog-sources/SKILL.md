@@ -1,14 +1,6 @@
 ---
 name: catalog-sources
-description: |
-  Use when the user wants to process new sources into article-per-concept wiki
-  entries for a knowledge stack. Enumerates new sources, identifies concepts per
-  source (W1), deduplicates shared concept slugs (W1b), synthesizes one article
-  per unique concept (W2), files sources to their publisher directory (W3), and
-  regenerates the stack Map of Contents (W4). Runs from any repo; targets the
-  library configured in ~/.config/stacks/config.json, or the current directory
-  when it is itself a library. Accepts an optional --from {path} argument
-  to stage source files from an existing directory before cataloging.
+description: Use when new documents or staged sources must become article-per-concept entries in a knowledge stack.
 ---
 
 # Catalog Sources
