@@ -1,139 +1,79 @@
 # CLAUDE.md
 
-Claude Code plugin for building and maintaining curated domain knowledge libraries. Sources are ingested into topic guides that can be queried with `/stacks:lookup` from any repo.
+Claude Code plugin for building and maintaining curated domain knowledge libraries.
+Sources are ingested into topic guides queryable with `/stacks:lookup` from any repo.
 
-This repo is the **stacks tool**. It is NOT a knowledge library. Do not store knowledge content here. Libraries are created with `/stacks:init-library`.
+This repo is the **stacks tool**. It is NOT a knowledge library, so no knowledge content
+goes here. Libraries are created with `/stacks:init-library`. Front door for the
+commands: `/stacks:using-stacks`.
 
-## Slash Commands
+Repo: git@github.com:chuggies510/stacks.git (private)
 
-**Universal** (from workspace-toolkit plugin):
-- `/start` — Initialize session, load memory bank
-- `/stop` — Session handoff with knowledge extraction
+## Conventions
 
-**This plugin** (stacks:*):
-- `/stacks:init-library` — Scaffold a new library repo + private GitHub repo
-- `/stacks:new-stack` — Create a new knowledge stack in a library
-- `/stacks:catalog-sources` — Process sources/incoming/ into article-per-concept wiki entries
-- `/stacks:process-inbox` — Route inbox/*.md files to matching stacks
-- `/stacks:audit-stack` — Validate articles against their cited sources, fix contradictions in place, identify gaps
-- `/stacks:enrich-stack` — Acquire sources to close audit soft spots
-- `/stacks:ingest-book` — Convert a handbook PDF chapter-by-chapter (doc-tools faithful mode) into the deep-reference tier
-- `/stacks:lookup` — Look up knowledge from the configured library (articles + deep reference)
-- `/stacks:using-stacks` — Entry point that routes to the right stacks skill
+Skills live at `skills/{name}/SKILL.md`, frontmatter `name` + `description` only,
+description starting "Use when...". Agents live in `agents/`, frontmatter `tools`
+(comma-separated), `model`, `description`, with 3+ worked examples in the body.
 
-## Plugin Structure
+Version bumps must land in all three manifests together, or the launcher shows a stale
+version: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
+`.codex-plugin/plugin.json`. Directory-source plugins load straight from the repo, so
+`git pull` is the update mechanism, not `claude plugin update`.
 
-```
-stacks/
-├── .claude-plugin/
-│   ├── plugin.json            # Plugin identity and version
-│   └── marketplace.json       # Single-plugin marketplace descriptor
-├── skills/{name}/SKILL.md     # User-invocable skills (init-library, new-stack, catalog-sources, lookup, audit-stack, enrich-stack, ingest-book, process-inbox, using-stacks)
-├── agents/                    # 4 subagent definitions (source-extractor, article-synthesizer, validator, enrichment)
-├── scripts/                   # Lifecycle scripts (install, uninstall, update, init)
-├── templates/
-│   ├── library/               # Files copied when /stacks:init-library creates a library
-│   └── stack/                 # Files copied when /stacks:new-stack scaffolds a stack
-└── references/                # Reference docs (web-fetch-routing.md, reference-tier.md)
-```
-
-## Frontmatter Convention
-
-Skill files live at `skills/{name}/SKILL.md`. Frontmatter uses only `name` and `description` fields. No `version`, `allowed-tools`, or `thinking`. Description starts with "Use when..." for trigger matching.
-
-```yaml
----
-name: catalog-sources
-description: Use when the user wants to catalog sources into a stack...
----
-```
-
-Agent files live in `agents/`. Frontmatter defines `tools` (comma-separated), `model`, and `description`. Include 3+ worked examples in agent prompts.
-
-## Registration Model
-
-Stacks registers as a directory-source marketplace via `extraKnownMarketplaces` in `~/.claude/settings.json`, the same mechanism ChuggiesMart uses. The `marketplace.json` file with `"source": "./"` tells Claude Code the plugin lives at the repo root. `install.sh` writes both the marketplace registration and the `enabledPlugins` entry.
-
-## Development Workflow
-
-1. Edit source files in this repo.
-2. Bump version in both `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
-3. Update `CHANGELOG.md` with the version entry.
-4. `git commit && git push`
-5. Restart Claude Code session to pick up changes.
-
-Directory-source plugins load directly from the repo. No cache refresh or `claude plugin update` needed. `git pull` is the update mechanism.
-
-## Version Bumping Rules
-
-Two files must stay in sync:
-- `.claude-plugin/plugin.json` — plugin identity
-- `.claude-plugin/marketplace.json` — marketplace descriptor
-
-Mismatches cause the launcher to show stale versions. Bump both as part of the change, not as an afterthought. Every code change that touches functionality gets a semver bump and CHANGELOG entry.
-
-## Testing
-
-```bash
-bash scripts/install.sh
-# restart claude code, then:
-/stacks:init-library ~/tmp/test-library
-# open session in ~/tmp/test-library
-/stacks:new-stack test-stack
-/stacks:catalog-sources test-stack
-/stacks:lookup some question
-# clean up
-rm -rf ~/tmp/test-library
-```
-
-Do not commit test library content to this repo.
-
-## GitHub
-
-- **Repo**: git@github.com:chuggies510/stacks.git
-- **Issues**: `gh issue list --state open`
+Test by `bash scripts/install.sh`, restarting, then running init-library → new-stack →
+catalog-sources → lookup against a throwaway path. Never commit test library content.
 
 ## Gotchas
 
-### A gate that asks whether a record has the right SHAPE answers nothing about its CONTENT — and the fix is never a better grep
+Silent traps that exit 0.
 
-The repo's dominant self-inflicted failure, hit five separate times in one session including *inside gates written to prevent it*. A `grep -qE '^routing:'` asking whether the field exists, a count asking how many concepts an extractor returned, an assertion checking a sliced prompt is `>= 15` lines, a guard asking whether *any* article in a menu carried a description (54 of 55 passed, and the run was then labelled `title`), a mutation sweep reporting SURVIVED when `perl`/`sed` escaping had silently failed to apply the mutation at all: every one answers a question about the record's shape while the question was about its content. Each reads green with the exact defect it was written to catch sitting in the file.
+**A gate that asks whether a record has the right SHAPE answers nothing about its
+CONTENT, and the fix is never a better grep.** This repo's dominant self-inflicted
+failure, hit five times in one session including inside gates written to prevent it: a
+`grep -qE '^routing:'` asking whether a field exists, a count of returned concepts, a
+`>= 15` line assertion, a guard asking whether *any* article carried a description (54
+of 55 passed and the run was labelled good), a mutation sweep reporting SURVIVED when
+the escaping had silently failed to apply the mutation at all. Every one reads green
+with the exact defect it was written to catch sitting in the file. Three habits close
+it: assert an anchor PHRASE plus explicit absent-classes, never a size; quantify
+"every" by counting the population, never "any"; and prove a negative test is really
+negative before believing it (an aborted run leaves the file unchanged exactly like a
+correct run does). Real-corpus verification catches what fixtures cannot.
 
-Three habits close it. **(1) Assert an anchor phrase, never a size.** A line floor plus one exact phrase that must be present, plus explicit checks for each class of thing that must be absent (`agent-prompt.sh --self-check` uses per-agent anchor phrases and five I/O-leak classes). **(2) Quantify "every", never "any".** Count the population and compare, do not ask whether one member qualifies. **(3) Prove the negative test is really negative.** Before believing a mutation SURVIVED, assert the mutation actually changed the file; before believing a red test is red for your reason, check it is not passing for an unrelated one (an aborted run leaves `index.md` unchanged exactly like a correct run does). Real-corpus verification catches what fixtures cannot: counting `]]` per line to detect a malformed title refused three real stacks whose routing lines legitimately contain wiki-links, and byte-identity across all 12 regenerated stack indexes (1,174 articles) is worth more than any fixture set. Sibling rule from `CLAUDE.md` core: 4+ findings on one mechanism means redesign it, and here both redesigns were subtractions (delete the markdown parser; delete the second reader).
+**Article frontmatter is not YAML — parse it with `article_field`, never a YAML
+library.** 27 of the 1,174 corpus articles fail a real YAML parse (an unquoted `: ` in a
+value, a leading `@`). The format is line-oriented `key: value` between two `---`, first
+occurrence wins; `scripts/article-field.sh` is the single definition. The failure it
+closes is WRONG text, not absent text: a scan not bounded by the closing `---` walks
+into the body and returns body prose as a title, which then gets written into a stack
+index and believed. Do not write a second reader, and do not reach for `yq`.
 
-### Stacks article frontmatter is not YAML — parse it with `article_field`, never a YAML library
+**`\t` in a single-quoted grep pattern behaves differently inside a script than through
+the Bash tool.** The Bash tool wraps `grep` as a function running `ugrep`, which reads
+`'\t'` in an ERE as a tab, so a pattern tested interactively MATCHES. That function is
+not exported into the child bash a script spawns, where real GNU grep reads `'\t'` as a
+literal `t` and the pattern never matches a tab-separated line. Always write a tab as
+ANSI-C `$'\t'`, and verify a self-check by running the script, not by pasting the grep.
+`awk -F'\t'` is unaffected.
 
-27 of the 1,174 corpus articles fail a real YAML parse (an unquoted `: ` inside a value, a leading `@`). The format is line-oriented `key: value` between two `---` delimiters, first occurrence wins. `scripts/article-field.sh` (sourceable as `article_field <field> <article>`, 0.78.0) is the single definition; `regenerate-moc.sh` sources it. Do not write a second reader and do not reach for `yq`. The failure it closes is **wrong text, not absent text**: a scan that is not bounded by the closing `---` walks into the body and returns body prose as an article title, which then gets written into a stack's `index.md` and believed. A missing title merely refuses. `article_field` prints nothing unless the closing delimiter was reached and the field is present, well-formed and non-empty.
+**Shell env does not persist between a skill's Bash blocks; cwd does.** A `STACK=`,
+`SCRIPTS_DIR=`, or `$(date +%s)` set in one block is EMPTY in the next. Re-derive it in
+the block that needs it, or pass it through `$ARGUMENTS` of a nested skill, never an env
+var. The three fan-out pipelines avoid this structurally by crossing state through
+`dev/<phase>/{run.env,dispatch.tsv}` files; the trap still applies to any new skill prose.
 
-### `\t` in a single-quoted `grep` pattern behaves differently inside a script than when you test it through the Bash tool
+**A sub-agent's success is observable only as returned text, never an exit code.** Gate
+on the file it was told to write (size, mtime, content shape) — a hallucinated "success"
+line cannot fake a freshly-written file.
 
-The Bash tool wraps `grep` as a shell **function** that runs `ugrep` (verify with `type grep`). `ugrep` interprets `\t` in a single-quoted ERE (`grep -qE '^0\tslug$'`) as a tab, so a pattern tested interactively through the Bash tool MATCHES. But that function is NOT exported into the child `bash` a script spawns (`bash scripts/pipeline/catalog.sh …`), where `grep` is real **GNU grep** — which treats `\t` in a single-quoted pattern as a literal `t`, so the identical pattern NEVER matches a tab-separated line. A pipeline `--self-check` assertion authored/verified through the Bash tool therefore passes falsely and fails (silently, deterministically) when the harness runs it in child bash. This cost 3/23 catalog self-check assertions false-failing every run (#104, fixed 0.60.0). Always write a tab in a bash regex as ANSI-C `$'\t'` (e.g. `grep -qE $'^0\tslug$'`) — the form the rest of the pipeline scripts already use — never `'\t'`. When authoring or debugging a self-check, run it via `bash scripts/pipeline/<x>.sh --self-check` (child bash = real grep), not by pasting the grep into the Bash tool. `awk -F'\t'` is unaffected (awk interprets `\t` itself).
+**A verify/grade sub-agent over a large batch blows the 64K output cap and dies
+mid-write**, having written NO file, silent to the orchestrator except the failure
+notification. The cap scales with items × note verbosity, not a fixed count. Split at an
+article boundary (N files aggregate the same as one) and instruct terse per-item notes.
+Budget 150-200 records per agent for a grade-every-item pass.
 
-### Template `.gitignore` Self-Shadows Its Own `.gitkeep` Placeholders
-
-When a template subtree (e.g. `templates/stack/`) ships both a `.gitignore` and a `.gitkeep` inside a to-be-ignored child directory, bare-directory patterns silently block their own placeholder. `sources/trash/` in `templates/stack/.gitignore` matches `templates/stack/sources/trash/` AND `templates/stack/sources/trash/.gitkeep` — so `git add` of the .gitkeep refuses, the template directory ships without its placeholder, and downstream scaffolding has no empty dir to seed. Use `dir/*` + `!dir/.gitkeep`:
-
-```
-sources/incoming/*
-sources/trash/*
-!sources/incoming/.gitkeep
-!sources/trash/.gitkeep
-```
-
-`dir/*` ignores directory *contents* (what you want for user-added files post-scaffold) while leaving the directory entry traversable so `!.gitkeep` re-include reaches. Diagnose with `git check-ignore -v path/to/.gitkeep`. Affects any `templates/` subtree with a nested `.gitignore`.
-
-### Claude Code Sub-agent Success Is Observable Only as Returned Text, Not Exit Codes
-
-Sub-agents dispatched via the Task tool return a text response to the calling session. They do not return a shell exit code. Any gate the main session wants to enforce against sub-agent success must parse the returned text for an observable signal, or — as both pipelines do — gate on the file the sub-agent was told to write (`gate-batch.sh` checks size + mtime + content-shape). A hallucinated "success" line cannot fake a file that wasn't freshly written. Symptom on failure: main session sees truncated or empty text and hangs or silently marks the work done.
-
-### A verify/grade sub-agent over a large batch blows the 64K output-token cap and dies mid-write
-
-A sub-agent told to emit one structured record **per item** across a big batch (S26: a `validation-verifier` grading 253 claims into a single JSON) hits `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (64000) — its reasoning + the growing JSON exceed the cap, and it terminates with an API error **having written no file** (the Write never completes). Silent to the orchestrator except the failure notification; the durable output path is simply absent. The other batches (≤200 items with terse notes) survived, so the cap scales with items × note-verbosity, not a fixed count. Fixes: split the batch at an article boundary (S26: `batch-b3` → `b3a`/`b3b`, both under the cap and each writing its own JSON — the summary globs `*.json`, so N files aggregate the same as one), AND instruct the agent to keep per-item `note` terse (empty when the item matched), pushing prose into a capped top-level `would_fix`. Budget ~150-200 records/agent as the safe ceiling for a grade-every-item pass.
-
-### Shell env does not persist between a skill's Bash blocks; cwd does
-
-A SKILL.md that sets `STACK=...`, `SCRIPTS_DIR=...`, an array, or `DISPATCH_EPOCH=$(date +%s)` in one Bash block and reads it in a later block gets an EMPTY value: the harness re-initializes the shell each call (env vars and functions are lost). The working directory IS preserved across calls, so a `cd` in one block holds for the next (including into a nested skill invocation). Consequences for skill prose: never pass a signal between blocks via an env var — re-derive it in the block that needs it (e.g. re-run `resolve-library.sh` rather than reuse `$LIBRARY`), or pass it through `$ARGUMENTS` of a nested skill (the 0.36/0.37 lookup→enrich path passes `--auto`/`--query` this way, not env). This bit the lookup auto-path twice (an unset `$LIBRARY` `cd`, a lost sentinel). The three fan-out pipelines (catalog, audit, enrich) now avoid this structurally — their deterministic flow lives in `scripts/pipeline/*.sh` phases that cross state through `dev/<phase>/{run.env,dispatch.tsv}` files, never shell env (epic #87, #72). The trap still applies to any NEW skill Bash-block prose: re-derive per block or pass through `$ARGUMENTS`, never an env var.
-
-## Chuggies Bot
-
-@chuggies_bot is a Telegram-based AI assistant that reads memory banks and issues across repos. It runs on Dev Pi (192.168.3.4) via OpenClaw. Memory bank handoffs are consumed by the bot's nightly refresh (2am Pacific) — keep `active-context.md` structured and current.
+**A template `.gitignore` self-shadows its own `.gitkeep`.** A bare `sources/trash/`
+matches the placeholder too, so `git add` refuses, the template ships without it, and
+downstream scaffolding has no empty dir to seed. Use `dir/*` plus `!dir/.gitkeep`, which
+ignores contents while leaving the directory entry traversable. Diagnose with
+`git check-ignore -v`.
