@@ -1,3 +1,8 @@
+## 0.78.2 — 2026-07-31
+
+- Rewrote all nine skill descriptions as single-line "Use when" trigger conditions, per the superpowers writing-skills rule that a description states when to reach for a skill, never what it does. The prior block descriptions summarized each skill's pipeline stage by stage, which invites an agent to act on the description instead of reading the skill.
+- Cuts the plugin's always-loaded description budget from 4,463 to 1,077 bytes, easing the Codex 2% skills-context ceiling that was truncating descriptions across all installed plugins.
+
 ## 0.78.1 — 2026-07-30
 
 - Added native Codex plugin and marketplace manifests. Stacks can now be installed once at user scope and used from any Codex project.
