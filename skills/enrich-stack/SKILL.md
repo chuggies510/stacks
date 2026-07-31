@@ -1,6 +1,6 @@
 ---
 name: enrich-stack
-description: Use when a knowledge stack has audit soft spots, lookup misses, or an empty scope that needs grounding sources.
+description: Use when a knowledge stack has audit soft spots, lookup misses, or an empty scope that needs grounding sources; runs from any repo against the configured library.
 ---
 
 # Enrich Stack

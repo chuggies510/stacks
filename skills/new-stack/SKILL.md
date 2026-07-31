@@ -1,6 +1,6 @@
 ---
 name: new-stack
-description: Use when creating a new topic stack inside an existing knowledge library.
+description: Use when creating a new topic stack inside an existing knowledge library; runs from any repo against the configured library.
 ---
 
 # New Stack

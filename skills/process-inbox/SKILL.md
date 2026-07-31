@@ -1,6 +1,6 @@
 ---
 name: process-inbox
-description: Use when queued Markdown extracts in a knowledge library inbox need routing to matching stacks.
+description: Use when queued Markdown extracts in a knowledge library inbox need routing to matching stacks; runs from any repo against the configured library.
 ---
 
 # Process Inbox

@@ -1,6 +1,6 @@
 ---
 name: audit-stack
-description: Use when knowledge-stack articles must be checked against cited sources for contradictions, unsupported claims, or audit drift.
+description: Use when knowledge-stack articles must be checked against cited sources for contradictions, unsupported claims, or audit drift; runs from any repo against the configured library.
 ---
 
 # Audit Stack

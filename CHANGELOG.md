@@ -1,3 +1,7 @@
+## 0.78.3 — 2026-07-31
+
+- Restored two selection triggers the 0.78.2 rewrite dropped. Six descriptions had lost "runs from any repo", which is a triggering condition, not workflow: without it, and with `ingest-book` the only skill still naming a location, the set read as library-repo-only tooling that a session working in another repo would not consider applicable. `catalog-sources` had also narrowed to already-staged sources, hiding its `--from {path}` staging of an arbitrary directory.
+
 ## 0.78.2 — 2026-07-31
 
 - Rewrote all nine skill descriptions as single-line "Use when" trigger conditions, per the superpowers writing-skills rule that a description states when to reach for a skill, never what it does. The prior block descriptions summarized each skill's pipeline stage by stage, which invites an agent to act on the description instead of reading the skill.

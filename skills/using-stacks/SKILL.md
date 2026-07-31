@@ -1,6 +1,6 @@
 ---
 name: using-stacks
-description: Use when work may involve querying, creating, cataloging, auditing, or enriching a knowledge library and the correct stacks skill is unclear.
+description: Use when work in any repo may involve querying, creating, cataloging, auditing, or enriching a knowledge library and the correct stacks skill is unclear.
 ---
 
 # Using stacks

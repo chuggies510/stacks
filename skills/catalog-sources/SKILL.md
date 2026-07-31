@@ -1,6 +1,6 @@
 ---
 name: catalog-sources
-description: Use when new documents or staged sources must become article-per-concept entries in a knowledge stack.
+description: Use when new documents must become article-per-concept entries in a knowledge stack, whether already staged or still sitting in some other directory; runs from any repo against the configured library.
 ---
 
 # Catalog Sources
