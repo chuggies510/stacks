@@ -1,3 +1,8 @@
+## 0.78.1 — 2026-07-30
+
+- Added native Codex plugin and marketplace manifests. Stacks can now be installed once at user scope and used from any Codex project.
+- Cut `CLAUDE.md` and the shipped `templates/library/CLAUDE.md` to the bone (`5c33e28`). The template is a deployed artifact seeded into every new library, so its cut belongs to a release; it shipped without one.
+
 ## 0.78.0 — 2026-07-27
 
 **The local extraction test was showing the model bare filenames, which is the exact thing this repo blames for splitting one article into several duplicates. It now shows names plus what each article is about, read through the same code that builds the stack index.**

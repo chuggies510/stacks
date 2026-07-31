@@ -1,0 +1,24 @@
+{
+  "name": "stacks",
+  "version": "0.78.1",
+  "description": "Build, refine, and query persistent domain knowledge libraries.",
+  "author": {
+    "name": "chris"
+  },
+  "repository": "https://github.com/chuggies510/stacks",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Stacks",
+    "shortDescription": "Persistent domain knowledge libraries",
+    "longDescription": "Build, refine, audit, and query curated domain knowledge libraries from source material.",
+    "developerName": "chris",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use Stacks to work with my domain knowledge library."
+    ]
+  }
+}

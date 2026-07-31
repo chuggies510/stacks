@@ -61,13 +61,20 @@ The tool never knows what's in your library. Your library doesn't care what vers
 ## quick start
 
 ```bash
-# clone and install
+# clone
 git clone https://github.com/chuggies510/stacks ~/stacks
+
+# Claude Code
 bash ~/stacks/scripts/install.sh
-# restart claude code
+
+# Codex
+codex plugin marketplace add ~/stacks
+codex plugin add stacks@stacks
 ```
 
-Then from any Claude Code session:
+Restart the client after installation.
+
+Then from any Claude Code or Codex session:
 
 ```
 /stacks:init-library ~/knowledge            # create library + private GitHub repo
@@ -184,9 +191,16 @@ Also you don't have to run a vector database.
 
 ```bash
 git clone https://github.com/chuggies510/stacks ~/stacks
-bash ~/stacks/scripts/install.sh    # register plugin with Claude Code
-# restart claude code
+
+# Claude Code
+bash ~/stacks/scripts/install.sh
+
+# Codex
+codex plugin marketplace add ~/stacks
+codex plugin add stacks@stacks
 ```
+
+Restart the client after installation.
 
 After install, everything runs through skills. No more bash commands needed.
 
@@ -197,6 +211,6 @@ bash scripts/uninstall.sh  # remove plugin registration (library untouched)
 bash scripts/update.sh     # git pull (directory-source plugins update in place)
 ```
 
-**Requirements**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), `gh` CLI (authenticated), `jq`.
+**Requirements**: Claude Code or Codex, `gh` CLI (authenticated), `jq`.
 
 Config lives at `~/.config/stacks/config.json`. Library path is set by `/stacks:init-library` and read by `/stacks:lookup` at runtime so it works from any repo.
