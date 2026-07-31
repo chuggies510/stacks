@@ -1,14 +1,6 @@
 ---
 name: using-stacks
-description: |
-  The universal entry point to the stacks knowledge library — discovers and
-  routes to the right /stacks:* skill for the task. Use when you want to look up
-  domain knowledge, turn sources into articles, check or improve a stack's
-  accuracy, or set up a new library/stack — or when unsure which stacks skill
-  applies, or the user runs /stacks:using-stacks. This is the meta-skill that
-  governs how the seven stacks skills are chosen and the discipline they share.
-  Examples: "how do I use stacks", "route me to the right stacks tool",
-  "I have some PDFs to add to my knowledge base".
+description: Use when work may involve querying, creating, cataloging, auditing, or enriching a knowledge library and the correct stacks skill is unclear.
 ---
 
 # Using stacks

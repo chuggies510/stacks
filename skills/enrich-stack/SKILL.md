@@ -1,18 +1,6 @@
 ---
 name: enrich-stack
-description: |
-  Use when the user wants to close a stack's audit soft spots by acquiring
-  sources. Reads dev/audit/soft-spots.tsv (produced by audit-stack), drops
-  stale gaps, dispatches the enrichment agent to web-search one grounding
-  source per claim, then presents what it found for operator approval and
-  stages only approved sources into sources/incoming/ — never auto-ingests,
-  except under --auto (lookup's hands-free path, #69) which auto-stages the
-  agent's CANDIDATE sources. Also consumes lookup misses as gaps, not just audit
-  soft spots. Slots between audit-stack and catalog-sources. Cold-starts an empty
-  but scaffolded stack (zero articles, no soft spots, no lookup misses) by seeding
-  gaps from STACK.md's scope areas (#86). Runs from any repo; targets the library
-  configured in ~/.config/stacks/config.json, or the current directory when it is
-  itself a library.
+description: Use when a knowledge stack has audit soft spots, lookup misses, or an empty scope that needs grounding sources.
 ---
 
 # Enrich Stack

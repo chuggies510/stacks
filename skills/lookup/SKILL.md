@@ -1,10 +1,6 @@
 ---
 name: lookup
-description: |
-  Use when the user needs to look up domain knowledge from their knowledge
-  library. Works from any repo. Reads the stacks config to find the library,
-  searches the catalog and indexes, and synthesizes an answer from articles.
-  Examples: "/stacks:lookup how do VAV systems work", "/stacks:lookup mep chilled water sizing".
+description: Use when answering a domain question from the configured knowledge library or searching its articles and deep-reference chapters.
 ---
 
 # Lookup

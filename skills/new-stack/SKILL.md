@@ -1,10 +1,6 @@
 ---
 name: new-stack
-description: |
-  Use when the user wants to create a new knowledge stack in their library.
-  Scaffolds the directory structure, STACK.md schema, index, and log from
-  templates. Runs from any repo; targets the library configured in
-  ~/.config/stacks/config.json, or the current directory when it is itself a library.
+description: Use when creating a new topic stack inside an existing knowledge library.
 ---
 
 # New Stack
