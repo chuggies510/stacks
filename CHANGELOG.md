@@ -1,3 +1,9 @@
+## 0.78.4 - 2026-08-05
+
+- Fixed all 39 skill runtime-root fences so Stacks helpers resolve under Claude Code, Codex, and Pi. Resolution preserves an explicit `STACKS_PLUGIN_ROOT` or Claude source root, follows Pi's active `using-stacks` skill symlink or managed Git package, then checks only immediate Codex cache versions. Every candidate must contain both `scripts/resolve-library.sh` and `skills/using-stacks/SKILL.md`, so failure cannot select a nested worktree, an unrelated package, or `/scripts/...`. (#143)
+- Added a regression matrix that executes the resolver copied from every fence under strict shell mode, asserts the 39-site population, and covers explicit, Claude, Codex-cache, nested-worktree, Pi-symlink, Pi-managed-git, incomplete-root, and missing-root paths. (`tests/plugin-root.bats`)
+- Repaired three stale full-gate assertions: article fixtures now carry the frontmatter boundaries required by the gate, and the near-duplicate warning check matches the current distinctive-title diagnostic.
+
 ## 0.78.3 — 2026-07-31
 
 - Restored two selection triggers the 0.78.2 rewrite dropped. Six descriptions had lost "runs from any repo", which is a triggering condition, not workflow: without it, and with `ingest-book` the only skill still naming a location, the set read as library-repo-only tooling that a session working in another repo would not consider applicable. `catalog-sources` had also narrowed to already-staged sources, hiding its `--from {path}` staging of an arbitrary directory.

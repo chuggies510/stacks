@@ -1,16 +1,17 @@
 #!/usr/bin/env bats
 
-# The launcher reads plugin.json; marketplace.json must match or it shows a stale
-# version. CLAUDE.md mandates bumping both JSON files + the CHANGELOG every change.
-# That was policy-only (no enforcement) — Codex #19. This makes a mismatch fail CI.
+# The launchers read three manifests; any mismatch presents a stale version.
+# CLAUDE.md mandates bumping all three plus the CHANGELOG every change.
 
 ROOT="${BATS_TEST_DIRNAME}/.."
 
-@test "plugin.json and marketplace.json versions match" {
+@test "Claude, marketplace, and Codex manifest versions match" {
   p=$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")
   m=$(jq -r '.plugins[0].version' "$ROOT/.claude-plugin/marketplace.json")
+  c=$(jq -r '.version' "$ROOT/.codex-plugin/plugin.json")
   [ -n "$p" ] && [ "$p" != "null" ]
   [ "$p" = "$m" ]
+  [ "$p" = "$c" ]
 }
 
 @test "top CHANGELOG entry matches plugin.json version" {

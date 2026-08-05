@@ -11,7 +11,7 @@ The library is a structure an LLM walks to reach knowledge: `lookup` → `catalo
 - **Frictionless path** — each hop is encoded so the LLM lands on the right article by recognition (its native pattern-matching), not literal keyword match. `index.md` is the routing map; the design goal is per-article routing lines (what the article covers, the questions it answers) so retrieval is recognition-based.
 - **Truthful destination** — `lookup` reads articles, not the sources behind them, so the article must stay accurate to its sources. `audit-stack` guards this.
 
-Current gaps against the principle (build directions, not shipped state): retrieval is literal keyword (`rank-articles.sh`) over a title-list `index.md`, so the path is under-encoded; the audit guards per-claim fidelity but not cross-article connection or source-to-source contradiction. These are the next builds.
+Recognition-based retrieval shipped in #59: `lookup` walks the per-article `routing:` lines projected into `index.md`. The remaining truthful-destination gaps are durable audit findings for cross-article structural problems (#148) and systematic source-to-source contradictions (#149).
 
 ## Core Requirements
 

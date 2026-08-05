@@ -84,6 +84,10 @@ you never `cd` into the library first, because fieldwork happens in the consumin
 repo. If resolution fails (no config and the cwd has no `catalog.md`), the skill
 prints a fix hint pointing at `/stacks:init-library`.
 
+Runtime-root mechanics are owned by
+[Tech Context](../../.claude/memory-bank/tech-context.md#project-structure); the
+executable skill fences are tested projections of that contract.
+
 ### 5. A lookup miss is a gap to close, not a dead end
 
 When `lookup` can't answer, that gap feeds `enrich-stack` (its `--auto` path

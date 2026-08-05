@@ -102,7 +102,7 @@ EOF
   run python3 "$SCRIPT" "$EXTR" "$EXTR/_dedup.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING"* ]]
-  [[ "$output" == *"similar titles"* ]]
+  [[ "$output" == *"distinctive-title overlap"* ]]
   grep -q '^NEAR_DUP_PAIRS=.*knob-and-tube-hazards~legacy-wiring-hazards\|^NEAR_DUP_PAIRS=.*legacy-wiring-hazards~knob-and-tube-hazards' "$EXTR/_dedup-meta.txt"
 }
 
