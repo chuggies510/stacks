@@ -8,7 +8,7 @@
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
 | `agents/` | 4 worker subagent definitions: source-extractor, article-synthesizer, validator, enrichment |
 | `skills/{name}/SKILL.md` | User-invocable skills: lookup, audit-stack, catalog-sources, enrich-stack, init-library, new-stack, process-inbox |
-| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, check-coverage.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, convert-sources.sh, rank-articles.sh, rewrite-source-refs.sh, resolve-library.sh, lookup-misses.sh, telemetry.sh). `scripts/pipeline/` holds the per-pipeline orchestration scripts (enrich.sh, audit.sh, catalog.sh all shipped, epic #87 pipelines migrated; each has an inline `--self-check`, no bats file). `locate-plugin-root.sh` stays deleted (#63). Every executable skill fence resolves `STACKS_ROOT` in place: explicit override or Claude source first, Pi's active physical skill root or managed Git package second, then immediate Codex cache versions. `tests/plugin-root.bats` executes all 39 projections and pins the runtime matrix. |
+| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, check-coverage.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, convert-sources.sh, rewrite-source-refs.sh, resolve-library.sh, lookup-misses.sh, telemetry.sh). `scripts/pipeline/` holds the per-pipeline orchestration scripts (enrich.sh, audit.sh, catalog.sh all shipped, epic #87 pipelines migrated; each has an inline `--self-check`, no bats file). `locate-plugin-root.sh` stays deleted (#63). Every executable skill fence resolves `STACKS_ROOT` in place: explicit override or Claude source first, Pi's active physical skill root or managed Git package second, then immediate Codex cache versions. `tests/plugin-root.bats` executes all 39 projections and pins the runtime matrix. |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
 | `references/` | `default-topic-template.md` (the only reference doc; wave-engine/refresh-procedure/obsidian were removed in 0.21.0) |
@@ -71,12 +71,14 @@ Runtime dependencies:
 
 Consumers of this plugin:
 - `~/.claude/settings.json` — `extraKnownMarketplaces` + `enabledPlugins` entries written by install.sh
+- `~/.pi/agent/skills/{lookup,using-stacks}`: Pi skill links point at this directory-source plugin; `which -a pi` verifies the single Bun-installed Pi CLI
 - `~/.config/stacks/config.json` — written by `/stacks:init-library` to point `lookup` and `process-inbox` at the active library
 
 ## Version Sync
 
-Two files must match on every version change:
+Three files must match on every version change:
 - `.claude-plugin/plugin.json` → `version`
 - `.claude-plugin/marketplace.json` → plugin entry `version`
+- `.codex-plugin/plugin.json` → `version`
 
 Mismatches cause the launcher to show stale versions.
