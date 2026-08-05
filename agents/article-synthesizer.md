@@ -60,7 +60,7 @@ normalized. Never prepend the stack name: write `sources/cpsc/legacy-wiring.md`,
 
 **First write** (no existing article): write the article from scratch using the concept block's claims. Set `last_verified: ""`.
 
-**Update** (existing article present): read the existing article, merge the new claims with the existing body content (prefer the new extraction for any claim the concept block explicitly covers; retain existing body content that the concept block does not address), set `last_verified: ""` (the validator will repopulate this on the next A1 pass). If the existing body carries any legacy audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`), strip every occurrence first — older audit cycles left them inline; the current validator emits none.
+**Update** (existing article present): read the existing article, merge the new claims with the existing body content (prefer the new extraction for any claim the concept block explicitly covers; retain existing body content that the concept block does not address), set `last_verified: ""` (the audit gate will repopulate this after the next validated A1 pass). If the existing body carries any legacy audit marks (`[VERIFIED]`/`[DRIFT]`/`[UNSOURCED]`/`[STALE]`), strip every occurrence first. Older audit cycles left them inline; the current validator emits none.
 
 ## Example 1: First write — new article
 

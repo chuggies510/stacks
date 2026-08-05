@@ -9,13 +9,13 @@ description: Use when work in any repo may involve querying, creating, catalogin
 
 Stacks is a knowledge library: raw sources (PDFs, docs, web dumps) become small
 synthesized **articles**, one per concept, that an agent in any repo reads
-instead of re-reading originals or hallucinating. Seven skills build, query, and
+instead of re-reading originals or hallucinating. Eight workflows build, query, and
 maintain it. This meta-skill is the front door: it picks the right one and
 carries the discipline they all share.
 
 **Two repos, one rule.** The `stacks` plugin is the tool (loaded everywhere); a
-separate library repo (e.g. `library-stack`) is the content. Every skill runs
-**from any repo** — most stack work happens in the field (a consuming repo, an
+separate library repo (e.g. `library-stack`) is the content. Seven field workflows
+run from any repo; `ingest-book` runs inside the library. Most stack work happens in the field (a consuming repo, an
 audit or PCA), not inside the library. The build and maintain skills resolve the
 target library from `~/.config/stacks/config.json` (or the current directory when
 it is itself a library) and operate there; you do not `cd` into the library first.
@@ -36,9 +36,10 @@ Working with the knowledge library?
     ├── Need to KNOW something (a domain question)
     │        → lookup            (from any repo; a miss can auto-enrich)
     │
-    ├── Have new SOURCES to turn into articles
+    ├── Have new SOURCES to ingest
+    │        ├── a complete handbook or book-scale PDF     → ingest-book
     │        ├── files queued by other sessions in inbox/  → process-inbox
-    │        └── a folder of source docs to ingest         → catalog-sources [--from <dir>]
+    │        └── a folder of source docs for articles      → catalog-sources [--from <dir>]
     │
     ├── Quality — keep a stack honest
     │        ├── check articles against their cited sources → audit-stack
@@ -51,7 +52,7 @@ Working with the knowledge library?
 
 ## Core operating behaviors
 
-Non-negotiable, across all seven skills.
+Non-negotiable, across all eight workflows.
 
 ### 1. Source-grounded, or it doesn't ship
 
@@ -74,15 +75,18 @@ the terms someone would actually ask about, not just its title, so the match is
 by meaning, not literal keyword. A true article no one can route to is dead
 weight.
 
-### 4. Every skill runs anywhere; the library is resolved, not your cwd
+### 4. Field workflows run anywhere; book ingestion runs inside the library
 
-All seven skills run from any repo. `lookup` and `process-inbox` read the
+Seven workflows run from any repo. `lookup` and `process-inbox` read the
 configured library; `new-stack`, `catalog-sources`, `audit-stack`, and
 `enrich-stack` resolve that same library (from `~/.config/stacks/config.json`, or
-the current directory when it is itself a library) and operate on it in place —
+the current directory when it is itself a library) and operate on it in place.
 you never `cd` into the library first, because fieldwork happens in the consuming
 repo. If resolution fails (no config and the cwd has no `catalog.md`), the skill
 prints a fix hint pointing at `/stacks:init-library`.
+
+`ingest-book` is the exception. Run it from inside the library repository because
+it creates a chapter-level deep-reference tree rather than synthesized articles.
 
 Runtime-root mechanics are owned by
 [Tech Context](../../.claude/memory-bank/tech-context.md#project-structure); the

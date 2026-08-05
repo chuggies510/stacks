@@ -54,7 +54,7 @@ case "$type" in
          f>=2{exit}
          f==1 && /^last_verified:/{n++; empty = ($0 ~ /^last_verified: *""[[:space:]]*$/)}
          END{exit !(n==1 && empty)}' "$path" \
-      || fail "frontmatter needs exactly one last_verified, empty at synthesis (validator sets it)"
+      || fail "frontmatter needs exactly one last_verified, empty at synthesis (audit gate sets it)"
     grep -qE '^routing:'         "$path" || fail "missing routing field"
     ;;
   audit-findings)

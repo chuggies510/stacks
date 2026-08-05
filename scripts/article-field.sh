@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # article-field.sh <field> <article.md>
+# article-field.sh --check-one <field> <article.md>
+# article-field.sh --set <field> <value> <article.md>
 #
 # THE definition of how a stacks article's frontmatter field is read. Prints the
 # value on stdout and exits 0; exits 1 printing nothing when the field is absent
@@ -62,8 +64,66 @@ article_field() {
   ' "$article"
 }
 
+# Validate exactly one well-formed field in a complete frontmatter block. Unlike
+# article_field, an empty value is valid here because synthesis leaves the audit
+# provenance field empty until validation succeeds.
+article_field_unique() {
+  local field="${1:?usage: article_field_unique <field> <article.md>}"
+  local article="${2:?usage: article_field_unique <field> <article.md>}"
+  [[ -r "$article" ]] || return 1
+
+  FIELD="$field" awk '
+    BEGIN { k = ENVIRON["FIELD"]; status = 1 }
+    NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+    /^---[[:space:]]*$/ { closed = 1; exit }
+    index($0, k ":") == 1 {
+      count++
+      if (substr($0, length(k) + 2, 1) != " ") malformed = 1
+    }
+    END { if (closed && count == 1 && !malformed) status = 0; exit status }
+  ' "$article"
+}
+
+# Replace one existing frontmatter field atomically while preserving file mode.
+article_set_field() {
+  local field="${1:?usage: article_set_field <field> <value> <article.md>}"
+  local value="${2:?usage: article_set_field <field> <value> <article.md>}"
+  local article="${3:?usage: article_set_field <field> <value> <article.md>}"
+  [[ -r "$article" ]] || return 1
+
+  local tmp
+  tmp=$(mktemp "${article}.field.XXXXXX") || return 1
+  cp -p "$article" "$tmp" || { rm -f "$tmp"; return 1; }
+  if ! FIELD="$field" VALUE="$value" awk '
+    BEGIN { k = ENVIRON["FIELD"]; v = ENVIRON["VALUE"] }
+    NR == 1 {
+      if ($0 !~ /^---[[:space:]]*$/) { malformed = 1; exit }
+      print
+      next
+    }
+    !closed && /^---[[:space:]]*$/ { closed = 1; print; next }
+    !closed && index($0, k ":") == 1 {
+      count++
+      if (substr($0, length(k) + 2, 1) != " ") { malformed = 1; exit }
+      print k ": " v
+      next
+    }
+    { print }
+    END { if (!closed || count != 1 || malformed) exit 1 }
+  ' "$article" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  [[ -s "$tmp" ]] || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$article"
+}
+
 # Only run as a script when executed directly, so the file can also be sourced.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   set -euo pipefail
-  article_field "$@"
+  case "${1:-}" in
+    --check-one) shift; article_field_unique "$@" ;;
+    --set) shift; article_set_field "$@" ;;
+    *) article_field "$@" ;;
+  esac
 fi

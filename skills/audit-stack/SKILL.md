@@ -63,11 +63,11 @@ Each agent prompt names:
 - its **`BATCH_TAG`** (the `batch_tag` value: `0`, `1`, …),
 - the **`RUN_ID`** from prep's output (echoed verbatim in each `VALIDATED` receipt row).
 
-The validator strips prior-cycle marks, fixes source-contradictions in place, sets `last_verified` to today, writes one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row per assigned article (clean articles included) plus any `CORRECTION`/`SOFTSPOT` lines, to `$STACK/dev/audit/_audit-${BATCH_TAG}.md`.
+The validator strips prior-cycle marks, fixes source contradictions in place, leaves `last_verified` unchanged, and writes one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row per assigned article (clean articles included) plus any `CORRECTION`/`SOFTSPOT` lines to `$STACK/dev/audit/_audit-${BATCH_TAG}.md`.
 
 ## Step 4: Gate — every dispatched article must be receipted (`audit.sh gate`)
 
-After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows — the `--verdict` filter skips the `CORRECTION`/`SOFTSPOT` rows that reuse the slug column). A dropped, duplicated, unknown, or missing receipt fails **by name**.
+After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows; the `--verdict` filter skips the `CORRECTION`/`SOFTSPOT` rows that reuse the slug column). Only after freshness, RUN_ID, and per-article coverage pass does the script replace each dispatched article's single existing `last_verified` value with today's quoted date. A dropped, duplicated, unknown, or missing receipt fails **by name** without advancing any stamp.
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"

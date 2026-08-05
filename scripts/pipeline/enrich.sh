@@ -103,6 +103,24 @@ scope_topics() {
   ' "$md"
 }
 
+is_tracked() {
+  git ls-files --error-unmatch -- "$1" >/dev/null 2>&1
+}
+
+# Remove transient files without deleting operator-owned records that happen to
+# match the reserved naming pattern (#147).
+remove_untracked() {
+  local path
+  for path in "$@"; do
+    [[ -e "$path" ]] || continue
+    if is_tracked "$path"; then
+      echo "WARNING: preserving tracked transient path: $path" >&2
+    else
+      rm -f "$path"
+    fi
+  done
+}
+
 # --- prep -------------------------------------------------------------------
 phase_prep() {
   local STACK="" AUTO=0 QUERY=""
@@ -219,6 +237,14 @@ phase_prep() {
     return 0
   fi
 
+  # A tracked active output cannot be both an operator record and this run's
+  # agent destination. Fail before dispatch rather than overwrite it (#147).
+  local batch n_batches=$(((N_GAPS + CAP - 1) / CAP)) active
+  for ((batch=0; batch<n_batches; batch++)); do
+    active="$DEV/_enrich-$batch.md"
+    is_tracked "$active" && die "tracked active findings path would be overwritten: $active"
+  done
+
   # Shard into CAP-sized batches and write the dispatch manifest (prepend the
   # batch_tag to each gap row). Then drop $GAPS — dispatch.tsv supersedes it.
   awk -F'\t' -v cap="$CAP" 'NF>=1 { printf "%d\t%s\n", int((NR-1)/cap), $0 }' "$GAPS" > "$DISPATCH"
@@ -226,7 +252,7 @@ phase_prep() {
 
   # Clear any stale per-batch findings from a prior run (freshness gate depends
   # on this: every kept file must be written strictly after RUN_ID below).
-  rm -f "$DEV"/_enrich-*.md
+  remove_untracked "$DEV"/_enrich-*.md
 
   local RUN_ID; RUN_ID=$(date +%s)
   local N_BATCH; N_BATCH=$(cut -f1 "$DISPATCH" | sort -u | wc -l | tr -d ' ')
@@ -294,14 +320,15 @@ phase_finish() {
   local LIB; LIB=$(enter_library) || die "could not resolve the library."
   cd "$LIB" || die "could not cd into library: $LIB"
   local DEV="$STACK/dev/enrich"
+  [[ -f "$DEV/dispatch.tsv" ]] || die "no dispatch.tsv at $DEV; run 'enrich.sh prep' first."
 
   # Consolidate findings: pass DUP/NOSOURCE through, dedup CANDIDATE/WEAK by url
   # (never NOSOURCE — its url is empty and would collapse into one bogus group),
   # merging the gap_ids/slugs a single url serves. Output shape (8 tab fields):
   #   KIND<TAB>gap_ids<TAB>slugs<TAB>source_ref<TAB>url<TAB>tier<TAB>title<TAB>quote
-  shopt -s nullglob
-  local FILES=("$DEV"/_enrich-*.md)
-  shopt -u nullglob
+  local FILES=() t
+  while IFS= read -r t; do FILES+=("$DEV/_enrich-$t.md"); done \
+    < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
   if [[ ${#FILES[@]} -gt 0 ]]; then
     awk -F'\t' '
       $0=="" { next }
@@ -336,7 +363,7 @@ phase_finish() {
   # Cleanup: the deduped view above is now in the model's context; nothing on
   # disk is needed for approval/staging. Removing here means an operator cancel
   # (Step 6) leaves the correct clean end state with no extra step.
-  rm -f "$DEV"/_enrich-*.md "$DEV/dispatch.tsv" "$DEV/run.env" "$DEV/_filed-sources.tsv" "$DEV/_gaps.tsv"
+  remove_untracked "$DEV"/_enrich-*.md "$DEV/dispatch.tsv" "$DEV/run.env" "$DEV/_filed-sources.tsv" "$DEV/_gaps.tsv"
 }
 
 # --- self-check -------------------------------------------------------------
@@ -510,6 +537,54 @@ EOF
     ok "scope-deep-exclusion-excluded"
   else
     bad "scope-deep-exclusion-excluded" "expected only 'Kept area', no depth-4 exclusion; got: $(cat "$d/deep/dev/enrich/dispatch.tsv" 2>/dev/null)"
+  fi
+
+  # Cleanup must never delete a path owned by the library repository (#147).
+  mkdir -p "$d/tracked/articles" "$d/tracked/dev/enrich"
+  printf '# Tracked\n\n## Scope\n\n- Seed\n' > "$d/tracked/STACK.md"
+  printf 'operator record\n' > "$d/tracked/dev/enrich/_enrich-99.md"
+  git -C "$d" init -q
+  git -C "$d" add tracked/dev/enrich/_enrich-99.md
+
+  mkdir -p "$d/collision/articles" "$d/collision/dev/enrich"
+  printf '# Collision\n\n## Scope\n\n- Seed\n' > "$d/collision/STACK.md"
+  printf 'operator record\n' > "$d/collision/dev/enrich/_enrich-0.md"
+  git -C "$d" add collision/dev/enrich/_enrich-0.md
+  out=$(bash "$0" prep collision 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] \
+     && grep -q 'tracked active findings path' <<<"$out" \
+     && [[ "$(cat "$d/collision/dev/enrich/_enrich-0.md")" == "operator record" ]]; then
+    ok "prep-refuses-tracked-active-output"
+  else
+    bad "prep-refuses-tracked-active-output" "expected fail-closed collision, rc=$rc out=$out"
+  fi
+
+  bash "$0" prep tracked >/dev/null 2>&1 || bad "tracked-cleanup-prep-runs" "prep exited nonzero"
+  if [[ "$(cat "$d/tracked/dev/enrich/_enrich-99.md" 2>/dev/null)" == "operator record" ]]; then
+    ok "prep-preserves-tracked-findings"
+  else
+    bad "prep-preserves-tracked-findings" "tracked findings changed or vanished"
+  fi
+  local TENV="$d/tracked/dev/enrich/run.env" TRUN
+  TRUN=$(grep -m1 '^RUN_ID=' "$TENV" | cut -d= -f2)
+  printf 'NOSOURCE\tgap-0\tlookup-miss\t\t\t\t\tno source\n' > "$d/tracked/dev/enrich/_enrich-0.md"
+  touch -d "@$((TRUN + 1))" "$d/tracked/dev/enrich/_enrich-0.md"
+  bash "$0" gate tracked >/dev/null 2>&1 || bad "tracked-cleanup-gate-runs" "gate exited nonzero"
+  local finish_out
+  finish_out=$(bash "$0" finish tracked 2>&1) || bad "tracked-cleanup-finish-runs" "finish exited nonzero"
+  if [[ "$(cat "$d/tracked/dev/enrich/_enrich-99.md" 2>/dev/null)" == "operator record" ]] \
+     && [[ ! -e "$d/tracked/dev/enrich/_enrich-0.md" ]] \
+     && grep -q $'^NOSOURCE\tgap-0\t' <<<"$finish_out" \
+     && ! grep -q 'operator record' <<<"$finish_out"; then
+    ok "finish-uses-manifest-preserves-tracked-and-cleans-transient"
+  else
+    bad "finish-uses-manifest-preserves-tracked-and-cleans-transient" "tracked file changed, leaked into output, or transient survived"
+  fi
+  out=$(bash "$0" finish tracked 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] && grep -q 'dispatch.tsv' <<<"$out"; then
+    ok "finish-refuses-missing-manifest"
+  else
+    bad "finish-refuses-missing-manifest" "expected nonzero naming dispatch.tsv, rc=$rc out=$out"
   fi
 
   echo "---"; echo "self-check: $pass passed, $fail failed"

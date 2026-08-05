@@ -252,6 +252,23 @@ phase_gate() {
   # its own batch but cross-emitted by another now fails (batchB omission + batchA
   # unknown) instead of leaking past the global union (#92).
   bash "$HELPERS/check-coverage.sh" --verdict VALIDATED --field 2 --batched "$DEV/dispatch.tsv" "${PAIRS[@]}"
+
+  # The deterministic gate, not generated agent text, owns the provenance stamp.
+  # Preflight every article before changing any, then advance all dates (#128).
+  local TODAY slug article
+  TODAY=$(date +%Y-%m-%d)
+  while IFS=$'\t' read -r _ slug _; do
+    article="$STACK/articles/$slug.md"
+    [[ -f "$article" ]] || die "validated article missing: $article"
+    bash "$HELPERS/article-field.sh" --check-one last_verified "$article" \
+      || die "$article must have exactly one well-formed last_verified field in frontmatter"
+  done < "$DEV/dispatch.tsv"
+
+  while IFS=$'\t' read -r _ slug _; do
+    article="$STACK/articles/$slug.md"
+    bash "$HELPERS/article-field.sh" --set last_verified "\"$TODAY\"" "$article" \
+      || die "could not set last_verified in $article"
+  done < "$DEV/dispatch.tsv"
 }
 
 # --- finish -----------------------------------------------------------------
@@ -392,8 +409,9 @@ self_check() {
   echo "# MEP" > "$d/mep/STACK.md"
   local s
   for s in vav chiller pump cooling-tower ahu boiler; do
-    printf '# %s\n\nBody.\n' "$s" > "$d/mep/articles/$s.md"
+    printf '%s\n' '---' "title: $s" 'last_verified: ""' 'routing: test article' '---' '' "# $s" '' 'Body.' > "$d/mep/articles/$s.md"
   done
+  chmod 0644 "$d/mep/articles/"*.md
 
   export STACKS_CONFIG="$d/config.json"
   printf '{"library":"%s"}\n' "$d" > "$d/config.json"
@@ -434,8 +452,46 @@ self_check() {
     } > "$F0"
     printf 'VALIDATED\tvav\t%s\n' "$RUN_ID" > "$F1"
   }
+  # A malformed later article must not leave earlier stamps advanced.
+  printf '%s\n' '---' 'title: vav' 'last_verified: ""' 'last_verified: ""' 'routing: test article' '---' '' '# vav' '' 'Body.' > "$d/mep/articles/vav.md"
+  mk_clean
+  local out rc
+  out=$(bash "$0" gate mep 2>&1) && rc=0 || rc=$?
+  if [[ "$rc" -ne 0 ]] \
+     && grep -q 'exactly one well-formed last_verified' <<<"$out" \
+     && grep -q '^last_verified: ""$' "$d/mep/articles/ahu.md"; then
+    ok "gate-preflights-all-stamps"
+  else
+    bad "gate-preflights-all-stamps" "expected duplicate rejection before any stamp, rc=$rc out=$out"
+  fi
+  printf '%s\n' '---' 'title: vav' 'last_verified: ""' 'routing: test article' '---' '' '# vav' '' 'Body.' > "$d/mep/articles/vav.md"
   mk_clean
   if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-clean-passes"; else bad "gate-clean-passes" "clean gate failed"; fi
+  local mode stamp_count
+  mode=$(stat -c %a "$d/mep/articles/vav.md" 2>/dev/null || stat -f %Lp "$d/mep/articles/vav.md")
+  stamp_count=$(grep -c '^last_verified:' "$d/mep/articles/vav.md")
+  if [[ "$(grep -c '^last_verified: \"[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\"$' "$d/mep/articles/vav.md")" == "1" ]] \
+     && [[ "$stamp_count" == "1" ]] \
+     && [[ "$mode" == "644" ]]; then
+    ok "gate-stamps-once-and-preserves-mode"
+  else
+    bad "gate-stamps-once-and-preserves-mode" "expected one quoted stamp and mode 644"
+  fi
+
+  # The setter validates the same snapshot it transforms: duplicate fields and
+  # body text masquerading as frontmatter both fail without changing the file.
+  local bad_dup="$d/bad-duplicate.md" bad_body="$d/bad-body.md" dup_before body_before
+  printf '%s\n' '---' 'last_verified: ""' 'last_verified: ""' '---' > "$bad_dup"
+  printf '%s\n' 'Body text' 'last_verified: ""' '---' > "$bad_body"
+  dup_before=$(cksum "$bad_dup"); body_before=$(cksum "$bad_body")
+  if ! bash "$HELPERS/article-field.sh" --set last_verified '"2026-08-05"' "$bad_dup" \
+     && ! bash "$HELPERS/article-field.sh" --set last_verified '"2026-08-05"' "$bad_body" \
+     && [[ "$(cksum "$bad_dup")" == "$dup_before" ]] \
+     && [[ "$(cksum "$bad_body")" == "$body_before" ]]; then
+    ok "field-setter-validates-transformed-snapshot"
+  else
+    bad "field-setter-validates-transformed-snapshot" "malformed input was accepted or changed"
+  fi
 
   # flag-first arg ordering: the skill hands gate/finish the same $ARGUMENTS as prep,
   # so `audit-stack {stack} --full` reaches gate as `--full {stack}` — it must still
@@ -445,7 +501,6 @@ self_check() {
 
   # (a) drop the vav receipt row → present-but-incomplete: gate-batch passes (file
   #     present, has a VALIDATED row for... nothing now), check-coverage FAILS naming vav.
-  local out rc
   mk_clean; : > "$F1"   # F1 must stay non-empty + have a VALIDATED row or gate-batch trips first;
   printf 'VALIDATED\tnot-vav\t%s\n' "$RUN_ID" > "$F1"   # a receipt for an UNKNOWN slug: vav omitted + not-vav unknown
   out=$(bash "$0" gate mep 2>&1) && rc=0 || rc=$?

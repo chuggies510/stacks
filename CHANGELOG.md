@@ -1,3 +1,10 @@
+## 0.78.5 - 2026-08-05
+
+- Preserved tracked enrichment findings during both cleanup phases, refused an active tracked batch-output collision before dispatch, and limited finish aggregation to manifest-owned files. Transient run output is still removed. (#147)
+- Moved `last_verified` stamping behind audit receipt freshness, RUN_ID, and coverage checks. The deterministic gate now replaces exactly one existing field with a quoted date, so generated validator text cannot advance or duplicate the stamp. (#128)
+- Made lookup stack enumeration and empty deep-reference discovery safe under both zsh and Bash. (#144)
+- Routed complete handbook and book-scale PDF ingestion through `ingest-book`, and added an inventory check covering all eight operational workflows. (#145)
+
 ## 0.78.4 - 2026-08-05
 
 - Fixed all 39 skill runtime-root fences so Stacks helpers resolve under Claude Code, Codex, and Pi. Resolution preserves an explicit `STACKS_PLUGIN_ROOT` or Claude source root, follows Pi's active `using-stacks` skill symlink or managed Git package, then checks only immediate Codex cache versions. Every candidate must contain both `scripts/resolve-library.sh` and `skills/using-stacks/SKILL.md`, so failure cannot select a nested worktree, an unrelated package, or `/scripts/...`. (#143)

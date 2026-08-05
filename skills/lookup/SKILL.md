@@ -36,12 +36,10 @@ If catalog.md contains no stack entries (no lines starting with `- [`), tell the
 Resolve `STACKS_TO_SEARCH` from catalog.md:
 
 ```bash
-mapfile -t STACKS_TO_SEARCH < <(
-  grep '^- \[' "$LIBRARY/catalog.md" \
-  | sed 's|.*\[\([^]]*\)\](\([^/]*\)/).*|\2|'
-)
-[[ ${#STACKS_TO_SEARCH[@]} -gt 0 ]] \
-  || { echo "No stacks found in catalog.md — run /stacks:new-stack first."; exit 1; }
+STACKS_TO_SEARCH=$(grep '^- \[' "$LIBRARY/catalog.md" \
+  | sed 's|.*\[\([^]]*\)\](\([^/]*\)/).*|\2|')
+[ -n "$STACKS_TO_SEARCH" ] \
+  || { echo "No stacks found in catalog.md; run /stacks:new-stack first."; exit 1; }
 ```
 
 ## Step 4: Hop-1 — narrow to matching stacks
@@ -67,7 +65,7 @@ For each stack in `STACKS_TO_SEARCH`:
 - Read `$LIBRARY/{stack}/index.md`. If it does not exist, note the stack as "no article index yet".
 - The `## Articles` section is the routing map: `- [[slug|title]] — {routing line}`, where the routing line says what the article covers and the questions it answers (#59). This is the recognition surface for Step 6.
 - Capture any `## Reading Paths` section as supplementary retrieval context.
-- **Deep-reference tier** (stacks#85): also read every `$LIBRARY/{stack}/reference/*/index.md` that exists (one per ingested handbook; most stacks have none — skip silently when the glob is empty). Each is a `## Chapters` map of gated handbook chapters: `- [[chapter-slug|Vol V Ch C: Title]] — {topics} (printed pp. N-M)`. This is the recognition surface for Step 6.5. Schema: the plugin's `references/reference-tier.md`.
+- **Deep-reference tier** (stacks#85): enumerate with `find "$LIBRARY/{stack}/reference" -mindepth 2 -maxdepth 2 -type f -name index.md -print 2>/dev/null`, then read every returned index (one per ingested handbook; most stacks return none). Each `## Chapters` map is a recognition surface for Step 6.5. Its generated row format is owned by the plugin's `references/reference-tier.md`.
 
 If a stack has neither an article index nor any reference index, note it as "no index yet" and skip it. If ALL stacks were skipped (no index of either kind anywhere), tell the user to run `/stacks:catalog-sources` in the library repo.
 
