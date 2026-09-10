@@ -1,0 +1,16 @@
+sources/incoming/*
+sources/trash/*
+!sources/incoming/.gitkeep
+!sources/trash/.gitkeep
+sources/.raw/
+dev/audit/_audit-*.md
+# A catalog run's working files (dispatch manifests, concept batches, dedup
+# state, run.env). `finish` retains them as the run's audit trail, and the
+# catalog skill stages the stack with `git add "{stack}/"`, so without this every
+# catalog commit would carry them. Local-only by design: they are cleared at the
+# next `prep` on this stack. `dir/*` + `!.gitkeep` so the placeholder survives.
+dev/extractions/*
+!dev/extractions/.gitkeep
+# Deep-reference tier: raw handbook PDFs stay local (re-pull any page), never
+# committed. The gated chapter .md files under reference/{book}/ ARE tracked.
+reference/**/*.pdf

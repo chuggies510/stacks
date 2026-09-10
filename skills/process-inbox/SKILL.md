@@ -1,0 +1,152 @@
+---
+name: process-inbox
+description: Use when queued Markdown extracts in a knowledge library inbox need routing to matching stacks; runs from any repo against the configured library.
+---
+
+# Process Inbox
+
+Route inbox session extracts to the correct stack's incoming directory.
+
+## Step 0: Telemetry
+
+```bash
+STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
+[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
+[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
+[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
+SKILL_NAME="stacks:process-inbox" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev/null || true
+```
+
+## Step 1: Find the library
+
+```bash
+STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
+[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
+[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
+[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
+LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
+echo "Library: $LIBRARY"
+```
+
+`resolve-library.sh` reads `$STACKS_CONFIG` (or `~/.config/stacks/config.json`)
+for `.library`, and falls back to the current directory when it is itself a
+library (has `catalog.md`) — so this works even before the machine has been
+registered with a config. It prints a fix hint and exits non-zero when no
+library can be found.
+
+## Step 2: Enumerate stacks
+
+```bash
+STACKS=$(find "$LIBRARY" -maxdepth 2 -name STACK.md -exec dirname {} \; | sort)
+```
+
+If STACKS is empty, tell the user: "No stacks in your library yet. Run /stacks:new-stack {name} first." Stop.
+
+For each stack in STACKS, read `{stack}/STACK.md`. Collect the stack name (basename) and its scope/domain description from the file. This context is used in Step 4 to classify inbox files.
+
+## Step 3: Enumerate inbox
+
+```bash
+INBOX="$LIBRARY/inbox"
+```
+
+If `$INBOX` does not exist as a directory, tell the user: "No inbox/ directory found in your library at $INBOX. Create it and drop session extract files there to process them." Stop.
+
+```bash
+INBOX_FILES=$(find "$INBOX" -maxdepth 1 -name "*.md" -type f | sort)
+```
+
+If INBOX_FILES is empty, tell the user: "Inbox is empty. Drop session extract files in $INBOX to process them." Stop.
+
+Count and report:
+
+```bash
+N=$(echo "$INBOX_FILES" | grep -c .)
+echo "Found $N file(s) in inbox/"
+```
+
+## Step 4: Classify and route
+
+For each file in INBOX_FILES, extract its header block. Use `while IFS= read -r` to handle filenames safely:
+
+```bash
+while IFS= read -r f; do
+  filename=$(basename "$f")
+  header_h1=$(head -1 "$f")
+  header_meta=$(sed -n '3,4p' "$f")
+  header_sections=$(grep "^## " "$f" | head -5)
+  echo "--- $filename ---"
+  echo "$header_h1"
+  echo "$header_meta"
+  echo "$header_sections"
+done <<< "$INBOX_FILES"
+```
+
+Using the header block (filename, H1 title, Source line, Extracted from line, first 5 `##` section headings) and the stack STACK.md scope context collected in Step 2, classify each file:
+
+- **One clear match**: the content clearly belongs to one stack based on domain (e.g., California Energy Code → mep-stack, Svelte reactivity → svelte). Route it.
+- **Ambiguous (mixed sub-topics across stacks)**: route the file if one stack clearly owns it overall; otherwise leave it in inbox and record the candidate stacks in the report.
+- **No match**: content doesn't fit any existing stack — leave in inbox, record as unmatched.
+
+For each matched file, move it to `{stack}/sources/incoming/`:
+
+```bash
+STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
+[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
+[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
+[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
+TARGET_STACK="$LIBRARY/{matched-stack}"
+mkdir -p "$TARGET_STACK/sources/incoming"
+dest=$(bash "$STACKS_ROOT/scripts/collision-dest.sh" "$TARGET_STACK/sources/incoming" "$filename")
+mv "$f" "$dest"
+echo "Routed: $filename → {matched-stack}/sources/incoming/"
+```
+
+Track three lists throughout this step:
+- MOVED: filename → stack pairs for all successfully routed files
+- UNMATCHED: filenames with no stack home
+- TIES: filename → [candidate1, candidate2] pairs where classification was ambiguous
+
+## Step 5: Commit (conditional)
+
+```bash
+cd "$LIBRARY"
+```
+
+If MOVED is empty, tell the user: "No files routed — all files are unmatched or tied. See report below." Skip the commit and proceed to Step 6.
+
+If any files were moved, stage both the additions in each affected stack's `sources/incoming/` directory AND the deletions in `inbox/`. Some libraries track inbox files, some gitignore them — `git add -A` on both paths handles both cases and ensures a clean tree after the commit:
+
+```bash
+cd "$LIBRARY"
+git add -A inbox/ {each affected stack}/sources/incoming/
+git commit -m "chore(inbox): route {N_MOVED} file(s) to stack incoming dirs"
+```
+
+Replace `{each affected stack}` with the actual stack paths from the MOVED list. Replace `{N_MOVED}` with the count of moved files.
+
+Do NOT assume inbox is gitignored. Early versions of the skill only staged additions, which left deletions unstaged in libraries that track `inbox/` and required a second cleanup commit.
+
+## Step 6: Report
+
+Print a clean summary:
+
+```
+## Inbox Processing Complete
+
+Routed (N):
+  {filename} → {stack}/sources/incoming/
+
+Unmatched — left in inbox/ (N):
+  {filename}  (no clear stack home)
+
+Tied — left in inbox/ (N):
+  {filename}  (candidates: stack1, stack2)
+
+Next steps:
+  Use a compatible Stacks harness to catalog each stack that received files.
+```
+
+If there are no unmatched files, omit the Unmatched section. If there are no tied files, omit the Tied section.
+
+Note at the bottom: "process-inbox routes files to incoming/. This Hermes release cannot catalog sources; use a compatible Stacks harness to build article-per-concept wiki entries."
