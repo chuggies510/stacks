@@ -1,6 +1,6 @@
 {
   "name": "stacks",
-  "version": "0.78.5",
+  "version": "0.78.6",
   "description": "Build, refine, and query persistent domain knowledge libraries.",
   "author": {
     "name": "chris"

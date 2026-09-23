@@ -14,7 +14,7 @@ seed_plugin() {
   touch "$root/scripts/resolve-library.sh" "$root/skills/using-stacks/SKILL.md"
 }
 
-@test "all 39 skill fences resolve the newest shallow Codex cache under strict mode" {
+@test "all 38 skill fences resolve the newest shallow Codex cache under strict mode" {
   test_home="$BATS_TEST_TMPDIR/home with spaces"
   seed_plugin "$test_home/.codex/plugins/cache/stacks/stacks/0.78.3"
   seed_plugin "$test_home/.codex/plugins/cache/stacks/stacks/0.78.4"
@@ -33,7 +33,7 @@ printf '%s\\n' \"\$STACKS_ROOT\""
     checks=$((checks + 1))
   done < <(grep -nH '^[[:space:]]*STACKS_ROOT=' "$ROOT"/skills/*/SKILL.md)
 
-  [ "$checks" -eq 39 ]
+  [ "$checks" -eq 38 ]
 }
 
 @test "resolver preserves explicit and Claude roots" {

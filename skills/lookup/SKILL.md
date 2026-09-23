@@ -180,23 +180,12 @@ outside every stack's domain), there is nothing to enrich against: tell the user
 For each in-scope stack (usually one):
 
 1. Tell the user: `Gap detected in {stack} — researching now…`
-2. Move into the library and run the enrichment loop hands-free. `enrich-stack`
-   is library-local, so `cd` there first — working directory persists into the
-   skill invocation that follows. Re-resolve the library path here rather than
-   reusing `$LIBRARY` from Step 1: shell variables do not survive between bash
-   blocks, so the bare variable would be empty. `--auto` makes enrich-stack
-   auto-stage the agent's `CANDIDATE` sources (tier 1-3, quote-verified) without
-   an operator prompt, then catalog + audit:
+2. Run the enrichment loop hands-free from the current repo. `enrich-stack`
+   resolves the configured library itself, so do not `cd` into it. `--auto` makes
+   enrich-stack auto-stage the agent's `CANDIDATE` sources (tier 1-3,
+   quote-verified) without an operator prompt, then catalog + audit.
 
-   ```bash
-   STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
-   [ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
-   [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
-   [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
-   cd "$(bash "$STACKS_ROOT/scripts/resolve-library.sh")"
-   ```
-
-   Then invoke `/stacks:enrich-stack {stack} --auto --query "{the user's query}"`.
+   Invoke `/stacks:enrich-stack {stack} --auto --query "{the user's query}"`.
    The `--query` scopes the run to **this one gap**: enrich-stack web-searches a
    grounding source for exactly this query, stages it if `CANDIDATE` (tier 1-3,
    quote re-verified), catalogs it into an article, and re-audits — committing the

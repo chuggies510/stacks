@@ -1,3 +1,7 @@
+## 0.78.6 - 2026-09-22
+
+- Removed lookup's instruction to `cd` into the library before its auto-enrichment handoff. `enrich-stack` resolves the configured library itself, matching the `using-stacks` front door, so the handoff runs from the consuming repo with no shell state carried between invocations. The deleted fence drops the resolver population from 39 to 38. (#146)
+
 ## 0.78.5 - 2026-08-05
 
 - Preserved tracked enrichment findings during both cleanup phases, refused an active tracked batch-output collision before dispatch, and limited finish aggregation to manifest-owned files. Transient run output is still removed. (#147)
