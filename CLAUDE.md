@@ -11,6 +11,8 @@ Repo: git@github.com:chuggies510/stacks.git (private)
 
 ## Conventions
 
+Release-note writing: follow `CHANGELOG.md#how-to-write-an-entry`.
+
 Skills live at `skills/{name}/SKILL.md`, frontmatter `name` + `description` only,
 description starting "Use when...". Agents live in `agents/`, frontmatter `tools`
 (comma-separated), `model`, `description`, with 3+ worked examples in the body.

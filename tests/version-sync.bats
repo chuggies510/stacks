@@ -16,6 +16,6 @@ ROOT="${BATS_TEST_DIRNAME}/.."
 
 @test "top CHANGELOG entry matches plugin.json version" {
   p=$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")
-  c=$(grep -m1 '^## ' "$ROOT/CHANGELOG.md" | awk '{print $2}')
+  c=$(grep -m1 -E '^## [0-9]+\.[0-9]+\.[0-9]+([[:space:]]|$)' "$ROOT/CHANGELOG.md" | awk '{print $2}')
   [ "$p" = "$c" ]
 }

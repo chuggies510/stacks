@@ -1,5 +1,9 @@
 # stacks System Patterns
 
+## Release-note writing
+
+`CHANGELOG.md#how-to-write-an-entry` owns the reader, structure, and detail rules.
+
 ## Architecture
 
 Three-layer plugin:

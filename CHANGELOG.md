@@ -1,3 +1,20 @@
+The reader may be a developer who imports a library: a user, not the next developer changing it. Names and commands they must type or import to act, or to see a compatibility limit, may appear in the bullet or detail; internals still belong in the commit and the issue.
+
+## How to write an entry
+
+The reader is Chris or a user deciding whether a release matters to them, not the next developer. Write each entry Minto style, so a reader can stop after any layer and still have the point:
+
+1. **Header:** the version, the date and one plain sentence saying what changed for the reader.
+2. **Up to three bullets, one line each:** what the reader will notice or needs to do, with issue numbers at the end.
+3. **Optional detail:** one short paragraph, at most about three sentences per bullet, for a reader who wants more.
+
+Use plain words. File names, function and tool names, internal terms and how it works inside belong in the commit and the issue. Short never means lossy: a required action, rollback limit or caveat goes in the detail, never dropped. Add a correction as its own line; never edit the original. An entry that will not fit this shape is describing mechanism, or the release is too big.
+
+## 0.78.7 - 2026-09-30: Release notes now explain what changes for you first.
+
+- Added the shared writing rule and rewrote the latest ten non-patch releases without changing their versions or dates.
+- Synced the existing marketplace versions so launchers report the same release.
+
 ## 0.78.6 - 2026-09-22
 
 - Removed lookup's instruction to `cd` into the library before its auto-enrichment handoff. `enrich-stack` resolves the configured library itself, matching the `using-stacks` front door, so the handoff runs from the consuming repo with no shell state carried between invocations. The deleted fence drops the resolver population from 39 to 38. (#146)
@@ -29,33 +46,13 @@
 - Added native Codex plugin and marketplace manifests. Stacks can now be installed once at user scope and used from any Codex project.
 - Cut `CLAUDE.md` and the shipped `templates/library/CLAUDE.md` to the bone (`5c33e28`). The template is a deployed artifact seeded into every new library, so its cut belongs to a release; it shipped without one.
 
-## 0.78.0 — 2026-07-27
+## 0.78.0 - 2026-07-27: Extraction tests now show what each existing article covers.
 
-**The local extraction test was showing the model bare filenames, which is the exact thing this repo blames for splitting one article into several duplicates. It now shows names plus what each article is about, read through the same code that builds the stack index.**
+- Article titles are shown by default, helping the model reuse the right article instead of creating duplicates. (#139)
+- Missing descriptions stop a test unless you explicitly allow them.
+- Rebuilt indexes keep existing content; measurement runs refuse malformed article headers.
 
-- **Three menu shapes, picked with `MENU_SHAPE`, defaulting to the middle one.** The list of existing articles shown to the model was `context-engineering-production` and nothing more. It can now be `bare` (names only, the old behaviour, kept solely as a measurement baseline), `title` (`name - Title`, the new default), or `scope` (`name - what it covers`). (#139)
-
-  Three and not two, because the peer session that produced the original finding measured a middle rung this repo never enumerated: `name - Title` was what 126 of their ~139 runs used. Going from titles to full scope bought them +0.065 F1, but **none** of that gain landed on primary gold and it cost 4.3x wall clock. So `title` is the default and `scope` is a flag to be measured, not an assumption. On the `llm` stack the menu costs roughly 390 / 1,200 / 4,200 tokens across the three shapes.
-
-- **New `scripts/article-field.sh`, the single definition of how an article's frontmatter field is read.** There were two readers. `regenerate-moc.sh` built `index.md` with a one-line `awk`, and this harness grew a second, stricter one that refused frontmatter the pipeline renders happily. Two readers of one format will diverge; the only question is when you notice. Both now call the shared script, and each decides its own policy when a field cannot be read: the index falls back to a bare link, a measurement run refuses to start. Verified by regenerating all 12 stack indexes byte-for-byte identical, and by covering `regenerate-moc.sh` itself in the harness self-check — without that, deleting its calls to the shared reader left every assertion green while `index.md` silently lost every title.
-
-  It is **not** a bug-for-bug clone of the old inline `awk`. It is identical on all 1,174 corpus articles and deliberately stricter on shapes the corpus does not contain, each of which used to yield wrong text rather than no text. Byte-identity proves equivalence on this corpus, not in general, and the difference is intentional.
-
-  Getting here took four review rounds. The first three hardened a parser that read the descriptions back out of `index.md` — the wrong layer, since the index is *generated from* the frontmatter. The fourth round established why every version kept failing: **article frontmatter is not YAML.** 27 of the library's 1,174 articles fail a real YAML parse. It is a line-oriented format whose actual definition was that one-line `awk` in the index generator, so any reader written to YAML semantics was guaranteed to disagree with the corpus.
-
-- **The reader trusts nothing until it has seen the whole frontmatter block, which closes the one dangerous failure.** Unbounded, the first `title:` anywhere in a file wins — so an article missing that field in its frontmatter picked up a matching line from its **body** and presented it as the title. That is text that is *wrong* rather than absent, and a wrong description gets believed where a missing one just refuses. Three shapes reach that same hole and all three now refuse: no opening delimiter on line 1 (which is also what a byte-order mark produces), **no closing delimiter at all** (with none, there is no way to tell frontmatter from body), and a key with no space after the colon (the old reader sliced mid-word and turned `title:NoSpace` into `oSpace`). A block-scalar marker is refused too, since it would have shown `>-` as an article's scope.
-
-  The missing-closing-delimiter case was found by the fifth review round, after the previous four had all called this closed. Every fixture happened to include a closing delimiter, so the whole suite stayed green while the reader did exactly what it was documented not to do.
-
-- **A menu where only SOME articles lost their description is refused too, and this was review round one's catch.** The first version of that guard asked whether *any* description existed. A menu with 54 of 55 articles described therefore passed and ran labelled `title`, judging that one article under exactly the starvation the shape removes. Asking about the record's shape when the question is about its content is the same instrument error the 0.77.0 self-check made. It now counts the gap, names the articles, and refuses; `MENU_ALLOW_UNDESCRIBED=1` proceeds knowingly and warns.
-
-- **The list the model reads and the list the matcher reads are now separate.** `slug-prematch.sh` needs one bare name per line and would break on menu text, so the menu is built into its own file. The guard against writing one over the other compares by inode, not by spelling, since `/tmp/x`, `/tmp/./x` and a symlink are three spellings of one file.
-
-- **The prompt now describes the menu the model actually got.** The sentence explaining the list was hardcoded to say "this is a bare list of names". It is now written per shape, so it cannot go false when the shape changes.
-
-- **`--self-check` with 54 assertions, every one mutation-tested.** Each was verified to go red when the logic it covers is deleted or inverted, and several were rewritten until they did. Three findings came out of the test harness rather than the code: one assertion counted a single failure as both a pass and a fail, so the "N passed" total lied while the exit code stayed correct; another would have passed with only one of two broken articles reported; a third tested a missing file but not an empty or unreadable one.
-
-- **Verified against all 12 stacks**, 1,174 articles, both shapes, zero missing descriptions, and the library working tree unchanged.
+Set `MENU_SHAPE=bare|title|scope` to choose names only, titles, or full scope descriptions; names only remain a measurement baseline. Moving from titles to full scope descriptions improved the answer-matching score (F1) by 0.065 in the peer comparison, with no gain on the primary answers and 4.3 times the runtime, so full scope is optional rather than the default. Every article must have a description for a title or scope test to proceed. Set `MENU_ALLOW_UNDESCRIBED=1` to proceed with missing descriptions and a warning; the library index itself still falls back to a bare link when a field cannot be read. All 12 indexes were unchanged across 1,174 real articles, which proves compatibility with that corpus, not every possible input. Missing header boundaries, malformed fields, and multiline-value markers are refused instead of showing body text as a title or description. Article headers follow the library's line-based format, not YAML.
 
 ## 0.77.1 — 2026-07-27
 
@@ -69,29 +66,13 @@
 
 - **The menu is a three-way choice, not two.** Between the bare name list and the full scope map sits `name - Title`, pulled from article frontmatter. Liminal's ~139 measurement runs used titles in 126 of them and a bare name list in none, so the extraction-harness defect filed as #139 does not reach their numbers. Titles → scope is worth **+0.065 F1** (0.7029 → 0.7677) measured with the menu text as the only variable, but the entire gain sits in secondary buckets (**zero** on primary gold) and costs **4.3x** wall clock.
 
-## 0.77.0 — 2026-07-27
+## 0.77.0 - 2026-07-27: Three benchmark stages now test the instructions that actually ship.
 
-**Every benchmark in this repo was grading a typed-out copy of the real instructions, not the real instructions. Now three of them read the real thing.**
+- Extraction, article writing, and source-acquisition tests now follow their live instructions automatically. (#136)
+- Do not compare results from before this release with results from this release onward.
+- Claim-validation tests keep their separate instructions, and extraction still has a known input limit. (#139)
 
-- **The agent definitions now mark which parts a benchmark should read.** `source-extractor`, `article-synthesizer`, and `enrichment` gained `<!-- bench:begin -->` / `<!-- bench:end -->` marker pairs around the regions that tell the model *how to judge*. A new `harness/agent-prompt.sh` pulls those regions out with one line of `awk`. A rule added to an agent now reaches its benchmark automatically, instead of waiting for someone to remember to retype it. (#136)
-
-  Multiple pairs per file, because the split is not one clean cut: single sentences of plumbing ("write the file with the Write tool", a dispatch path) sit inside otherwise model-facing sections, so a region ends before that sentence and starts again after it.
-
-- **Five copies of the prompts existed; three are gone.** The benchmark files each carried a hand-typed version of the shipping prompt, and `shadow-extract-run.sh` carried another — an 11-line paraphrase standing in for a 128-line agent, which is what the local extraction runs actually used. The extraction, synthesis, and enrichment benchmark prompt sections are now pointers at the agent file. (#136)
-
-- **Validation is deliberately left alone, and both its harnesses now say why.** Its two runners score ONE claim against ONE excerpt, while `agents/validator.md` processes a whole article with file I/O — slicing the agent there would hand the model an article-shaped prompt for a claim-shaped task. Validation is closed and no tier decision rides on it. Both files now carry that reasoning plus a note that they restate the agent's Process step 3 and can drift from it, to be reconciled first if validation reopens.
-
-- **What this does to numbers already published.** Every synthesis and enrichment result in this repo was scored against the copy, so each measures an approximation of its stage rather than the stage. Enrichment is the stark case: its copy was 14 non-blank lines standing in for a 70-line agent, carrying **none** of that agent's six procedure steps. The six identical perfect scores behind the saturation finding (#137) were scored against a restatement of the task. Do not compare a post-0.77.0 run against a pre-0.77.0 one.
-
-- **The harness owns the input/output rules, the agent owns the judgment.** The sliced region excludes file paths and "write it with the Write tool", which are wrong in a raw prompt to a model with no file access. Each harness appends its own contract instead — and, where the agent points at a file the model cannot open, the harness inlines what that file said. `synth-shadow.sh` now supplies the STACK.md section skeleton and the frontmatter field list, and states both branches: what to return when writing an article, and what to return when the claims are too thin to support one.
-
-- **A check that fails if this rots.** `bash dev/experiments/model-tier/harness/agent-prompt.sh --self-check` runs 12 assertions. Per agent: the slice clears a line floor, still contains the specific judgment that stage is benchmarked on, and leaks none of five classes of tool/path instruction. Plus an unfenced file, an unbalanced pair, and a pair enclosing nothing are each refused. Verified to go red two ways: stripping an agent's markers, and moving a Judgment Bias section outside the fence while leaving the line count above its floor.
-
-- **Fixed before shipping, from a codex review of this change:** an unquoted heredoc in `shadow-extract-run.sh` executed a backtick pair, silently deleting words from the prompt and still exiting 0; the synthesis contract demanded an article unconditionally, contradicting the agent's own thin-concept refusal that benchmark item 3 exists to test; the enrichment contract told the model to cite only pages it had fetched while forbidding it to fetch; and the self-check's original assertions could pass with the defect present (a line count and a single grep for one exact phrase).
-
-- **Agent definitions also had rules moved into the section they belong to** (no content dropped, verified by diffing with marker lines filtered out): source-tier conflict resolution and the section-skeleton rule moved from `## Input` into `## Judgment Bias` in `article-synthesizer`; the tier-rating rule and the verdict table moved into `## Judgment Bias` in `enrichment`. Both were judgment living in a section describing file inputs, which is why the fence could not reach them.
-
-- **Filed, not fixed: #139.** The local extraction harness feeds the model a bare slug list with no scope lines — the exact input this repo's own key finding blames for over-minting — while the rule it now slices names *described scope* as the primary reuse test. Pre-existing; #136 only made it visible. The prompt no longer calls that list a scope map.
+The tests now include the writing structure and output requirements the model needs, including the option to decline a concept too thin to support an article. Contradictory fetch instructions and prompt text lost during construction were fixed before release. Earlier article-writing and source-acquisition results measured approximations of the real stages. In particular, the six perfect source-acquisition scores behind the saturation finding (#137) tested a short task restatement that omitted all six procedure steps, so they cannot certify the shipping stage. Claim-validation tests judge one claim against one excerpt, while the live validator checks a whole article; their separate instructions can drift and must be reconciled if that investigation reopens, but no model-choice decision depends on them. The extraction test still shows only article names, despite the reuse rule needing descriptions; this remains filed for follow-up.
 
 ## 0.76.1 — 2026-07-26
 
@@ -105,31 +86,20 @@
 
 - **Three prompt-level attempts in one day, each correct on its own axis, none producing a real article from a case-study source.** The model appears to have two behaviours available on that material — copy the claim, or write a generic sentence about it — and each rule we wrote selected between them rather than producing a third. Articles built from survey sources are unaffected and pass throughout. This is now the evidence for building the check at the pipeline level rather than continuing to rewrite instructions. (#127)
 
-## 0.76.0 — 2026-07-26
+## 0.76.0 - 2026-07-26: Article writers are now asked to keep attribution while writing connected prose.
 
-**Yesterday's rule was all "don't", and the cheapest way to obey a pile of don'ts is to copy the input. Fixed before it shipped a result.**
+- Case-study facts should retain their named actor without becoming copied claim lists. (#126, #127)
+- A clean accuracy score alone still cannot distinguish good writing from verbatim copying.
 
-- **The subject-narrowing rule now says what to DO, not only what to avoid (#126, #127).** Every constraint added in 0.75.0 forbids departing from the source text: don't widen the subject, don't add "can" or "typically", don't turn "is" into "must". A model can satisfy all of them at once by reproducing the claims verbatim — which is the failure the whole synthesis investigation started from, and which the scoring cannot see, because a verbatim copy earns full recall and zero over-claims by construction.
+Two measured drafts became more like their sources after the preceding restraint rule: similarity rose from 0.23 to 0.70 and from 0.42 to 0.61. This release adds an example that keeps the actor in the sentence while joining the claims into prose; it does not relax the ban on unsupported generalizations. A survey-based draft passed both before and after and kept low similarity, but copied claims can earn full claim coverage and zero unsupported claims by construction. Read the draft as well as the score before treating the change as a success.
 
-  Measured before any grade came back: on the two drafts the rule was written for, similarity to the source jumped from 0.23 to 0.70 and from 0.42 to 0.61. The upper figure is most of the way back into copying territory. The rule now states the tension outright — the fix for a claim you cannot generalize is to name who it belongs to and keep writing, not to stop writing — and gives a worked topic sentence that carries its actor. (`agents/article-synthesizer.md`, and the benchmark copy of the same prompt)
+## 0.75.0 - 2026-07-26: Case-study articles must keep each fact tied to the person or company it describes.
 
-  Caught by the session running the measurement, who flagged it *before* sending the grades, on the grounds that a clean score on those two drafts would be the ambiguous outcome rather than the good one. The unambiguous good outcome is the third draft: it passed before, still passes, and its similarity stayed low — so the rule costs a well-behaved article nothing.
+- One company's experience must no longer be presented as a rule for all organizations. (#126)
+- Accurate attribution still permits complete articles, as a survey-based draft demonstrated.
+- Source-acquisition benchmarks can now run offline without leaking expected answers or silently dropping items.
 
-  Same trade in the opposite direction as the section-skeleton fix earlier today: a rule that only restrains produces copying, a rule that only demands structure produces invention. Both need their counterweight in the same breath.
-
-## 0.75.0 — 2026-07-26
-
-**Articles were quietly turning "Ramp does X" into "platforms do X". The facts were right; the "who" was disappearing.**
-
-- **The article writer is now told to keep the subject narrow (#126).** A graded run found nine over-claims across four drafts, and every single one was the same operation: keep the statement exactly as the source had it, and enlarge who it is about. A named company becomes "organizations". One documented case becomes "this can happen". A description of what a company does becomes what one "must" do. Nothing was invented — the facts arrived intact and correctly cited every time — but a sentence sourced to one company's experience was being served as a general rule, with a citation on it that makes it read as verified. The instruction now requires the named actor to stay the subject of the sentence, forbids widening one instance into a tendency, and forbids turning "is" into "must". (`agents/article-synthesizer.md`)
-
-  It sits beside the existing rule rather than replacing it, because the two failures are different: one is *adding* something the source never said, the other is *keeping* what it said and widening who it applies to. The first was already at zero on the tested model; the second was at nine.
-
-- **This also settles a question that was blocking four issues.** The open worry was that a zero-tolerance over-claim rule might forbid article-writing altogether — if every connective sentence counts as an over-claim, then a perfect score would only ever mean "didn't write an article". It doesn't. One draft in the same run cleared every floor with four sections and real prose, because its source was an academic survey whose claims are already general: there was no named actor to widen. So the rule is about *attribution*, not about *addition*, and a written article can satisfy it.
-
-  Prediction worth checking on the next batch, from the session that ran it: articles built from surveys and documentation should pass unchanged, while articles built from company case studies should have been failing all along. If that split doesn't appear, the explanation above is wrong.
-
-- **Added an offline test runner for the source-acquisition stage.** Three of the four pipeline stages had one; this stage had a benchmark document and a by-hand run, which is why its results rest on six items. Contributed by the peer session that built it, with two properties that matter kept as hard assertions rather than conventions: the expected answer is stripped before anything reaches the model and it errors if any survives, and the parsed item set must equal the expected set, so a renamed or dropped item fails loudly instead of silently shrinking the denominator. (`dev/experiments/model-tier/harness/enrich_bench.py`)
+The measured failure was nine unsupported generalizations across four drafts: the facts and citations survived, but their subjects widened. Writers must keep the named actor, avoid turning one case into a tendency, and avoid turning a description into a requirement; the separate ban on invented facts still applies. The survey-based draft passed with four sections and real prose because its claims were already general. Check the next batch for the predicted split between survey or documentation sources and company case studies; if that split does not appear, the explanation needs revisiting. The new benchmark refuses leaked expected answers or a changed item set, so scores include every intended item. Source-acquisition results still rest on six items; adding a runner does not expand that evidence.
 
 ## 0.74.1 — 2026-07-26
 
@@ -141,53 +111,38 @@
 
 Self-check 29 of 29.
 
-## 0.74.0 — 2026-07-26
+## 0.74.0 - 2026-07-26: Existing stacks now keep catalog working files out of their next commit.
 
-**Yesterday's fix for "new stacks would commit their working files" only helped stacks that don't exist yet. Every real one still would.**
+- Starting a catalog run repairs the missing ignore rule on an older stack.
+- Repeated runs reuse the rule instead of adding duplicate lines.
 
-- **A catalog run now repairs the ignore rule on the stack it is about to process.** Since 0.71.0 a finished run keeps its working files so it can be audited afterwards, which is only safe if version control ignores them. 0.72.0 added that rule to the template new stacks are built from — and stopped there. Templates apply at creation, so nothing reached a stack that already existed: **0 of the 12 stacks in the reference library had the rule**, including the largest. Since the catalog step stages the whole stack directory, every one of them would have committed those files on the next run. The repair now happens at the start of a run, so an old stack fixes itself the next time it is used. Writing it once and skipping if already present, so repeated runs do not pile up duplicate lines — and a test proves that, since an ignore rule appended on every run is its own bug. (`scripts/pipeline/catalog.sh`)
+The previous template fix reached only newly created stacks; none of the 12 existing reference stacks had the required rule. Cataloging stages the stack directory, so without this repair a later run could commit its retained working files. The retained files remain available for local inspection.
 
-  Worth naming, because it is the same shape twice in one day: the earlier fix was verified against a fresh scaffold, which is exactly the case that was never broken. The broken case was every stack that predates the change, and nothing checked it.
+## 0.73.0 - 2026-07-26: Cataloging now stops before filing a source that produced no reading result.
 
-Self-check 28 of 28.
+- Missing or empty reading results leave sources queued instead of marking them cataloged. (#132)
+- A completed reading that declines a source with a reason is still accepted.
+- This release does not recover the 18 sources already filed unread.
 
-## 0.73.0 — 2026-07-26
+The check runs before any source moves, because those moves are not rolled back. In a 1,482-source campaign, 18 sources were filed despite readers writing nothing; this release prevents that outcome but does not identify or recover those earlier sources. A pure-reference document may legitimately yield no concepts. Its nonempty decline note distinguishes a completed reading from a reader that crashed or reached its limit.
 
-**A source whose reader died before writing anything was being filed as if it had been read. Reproduced, fixed, and guarded.**
+Correction: the earlier assessment that the issue had dissolved was wrong. An earlier step could detect a killed reader, but skipping that step still let the final step file the unread source; this release adds the final-step protection.
 
-- **The last step now refuses to file a source that produced no extraction (#132).** Cataloging reads each source with a separate agent that writes one findings file per source. If that agent died before writing anything — a session limit, a crash — nothing downstream noticed: the merge step only complains about *unexpected* findings files, never missing ones, and the final step files every source it was handed regardless. The document then sits in the library's filed tree, indistinguishable from one that was actually read, and its content never reached any article. The final step already re-checked the *second* stage's outputs for exactly this reason, with a comment saying it must not trust that the gate ran. The first stage had no such backstop. It does now, and it fires before anything is moved, because a move is not undone.
+## 0.72.0 - 2026-07-26: Catalog runs now resist replay and misleading verification dates.
 
-  This was found in a real 1,482-source campaign by a peer session: 42 reader runs ended on a session-limit banner, 18 of those wrote no file at all, and all 18 of those sources are filed today with none left queued. Reproduced against current code before fixing — the run reported success, emptied the queue, and filed both sources with only one of them ever read.
+- Finishing the same run twice is refused; start a new run before processing more sources.
+- A draft must contain exactly one blank verification date in its header.
+- Newly created stacks keep retained working files out of their commits.
 
-  A source the reader correctly *declines* (a pure-reference document with no knowledge to extract) writes a short "no concepts, here's why" note. That is a completed reading and still passes. The check treats missing and empty as the same thing, and a separate test confirms the decline case is still allowed through — so the two cases can't silently collapse into one.
+Keeping the run records had made the finish step repeatable, which could file a new, unread source placed at an old source's path. The second finish now stops and leaves that source queued. A blank date in body prose or a duplicate date field can no longer hide a dated, unchecked draft. This protects the drafting step; it does not claim that the article has already been fact-checked. The new-stack template now excludes retained working files while keeping its empty-directory placeholder. Catalog instructions were updated to describe retention consistently; audit and enrichment still delete their transient files.
 
-- **Correcting yesterday's assessment of this issue.** It was filed, then judged dissolved on the grounds that current code fails a killed reader by path and leaves its sources queued. The first half is true and the second half is not: that check lives in a separate step which can be skipped, and nothing downstream re-asserts it. The reproduction above is against current code, not the old pipeline. Treat the earlier "dissolved" note as wrong.
+## 0.71.0 - 2026-07-26: New articles no longer appear fact-checked before validation, and catalog runs retain their records.
 
-Self-check 26 of 26.
+- Drafts require a blank verification date, and later validation updates one quoted date. (#125, #128)
+- Article writing has no word target, and new article names are checked against the complete index. (#124, #131)
+- Finished catalog runs retain their working records for inspection on the machine that ran them. (#130)
 
-## 0.72.0 — 2026-07-26
-
-**Closes three holes an outside review found in yesterday's fix, one of which the fix itself opened.**
-
-An independent review (codex, reading the actual diff) checked 0.71.0 and found three real defects. All three are fixed here, each with a test that goes red if the fix is removed.
-
-- **A repeated `finish` could file a source that was never cataloged — a hole 0.71.0 opened.** Keeping the run's working files (so a finished run can be audited) also made the last step repeatable, because deleting those files is what used to stop it. Running it twice without starting a new run would file whatever now sits where the old run's sources sat, treating a document nothing had read as cataloged. That is the exact failure the pipeline exists to prevent. A finished run is now stamped as consumed and the second call refuses, telling the operator to start a new run. The self-check drops a never-cataloged file into the old path and proves it stays put. (`scripts/pipeline/catalog.sh`)
-- **The "was this article fact-checked" gate could be fooled two ways.** 0.71.0 made the check require the stamp be blank at drafting, but it searched the whole file for a blank one, so an article with a real date in its header still passed if the words `last_verified: ""` appeared anywhere below, even inside an example. It also passed an article carrying the field twice, once dated and once blank, which is precisely the duplicate-key defect the same release was fixing elsewhere. The check now reads only the header block and requires exactly one such field. (`scripts/assert-structure.sh`)
-- **New stacks would have committed their working files.** Keeping those files is only safe because the library keeps them out of version control, and the existing library does. The template a *new* stack is built from did not, and the catalog step stages the whole stack directory, so every catalog commit in a new stack would have carried them. Added to the template, using the pattern that does not shadow its own placeholder file. (`templates/stack/.gitignore`)
-- **Documentation that described the old behavior, corrected in one sweep.** Four places in the catalog skill still said the last step deletes the run's files, both worked examples in the extractor still told it to check the folder listing the release had just demoted, and the synthesis benchmark still described the stamp check as presence-only. Verified that the audit and enrich pipelines' near-identical cleanup prose is still accurate — those two genuinely do still delete — so they were left alone. (`skills/catalog-sources/SKILL.md`, `agents/source-extractor.md`, `dev/experiments/model-tier/synthesis-benchmark.md`)
-
-Self-check 24 of 24.
-
-## 0.71.0 — 2026-07-26
-
-**An article can no longer claim it was fact-checked when nothing checked it, and a catalog run stops shredding its own paper trail on the way out.**
-
-- **The "last checked on" date must be blank when an article is first written (#125).** Articles carry a `last_verified` stamp saying when a validator last read the article against its sources. The writer that drafts the article was instructed to leave it blank, and the structural check only asked whether the field existed at all, so any value passed, including a real-looking date on an article nothing had ever verified. The check now requires the field be empty at drafting time. Only the validator sets it. Verified against the one place the check runs (the drafting gate); the audit pass uses a different check and cannot trip on this. (`scripts/assert-structure.sh`, `references/article-contract.md`)
-- **The validator now says how to write that date, instead of just when (#128, format half).** The instruction was one line with no format, which produced articles carrying the field twice and 52 carrying an unquoted date. It now says to replace the value on the line already there, never add a second one, and to quote it. (`agents/validator.md`)
-- **The article writer stopped advertising a word count its own instructions disclaim (#124).** The one-line description said "300-800 word body" while the instructions two paragraphs down explicitly refuse any word target. Graders read the description and marked correct articles down against a number the tool does not actually ask for. Clause deleted; the real rule was already in the right place. (`agents/article-synthesizer.md`, and the same stale number in the project brief)
-- **The extractor checks new article names against the complete list instead of a truncated one (#131).** Before naming a new article, the extractor checks the names already in use so it does not collide with one or silently rename an existing article. It was told the folder listing was the authoritative list, but it fetches that listing itself with a tool that quietly stops after a limit, so on a big stack (one has 613 articles) the check ran against a partial list without saying so. The stack's own index already carries one line per article and is rebuilt every run, so that is now the authoritative list and the folder listing is a fallback. Same wording was corrected in the two other places that repeated it. (`agents/source-extractor.md`, `skills/catalog-sources/SKILL.md`)
-- **A finished catalog run keeps its working files instead of deleting them (#130).** The last step erased everything the run produced along the way: which sources went out to be read, what each one came back with, and which article names were new versus reused. Those files are the only record of what the run actually did, so erasing them made a finished run impossible to check afterwards. The deletion is gone. Caveat worth knowing: these files are cleared again when the same stack is cataloged next, and the library keeps them out of version control, so this makes a run auditable on the machine that ran it, not durably. (`scripts/pipeline/catalog.sh`)
-- **Fixed a self-test that had been failing the whole time.** The drafting gate's "a clean run passes" test used a fake article missing a required field, so it reported failure on correct input. It had been red independently of any change here. Self-check now 23 of 23. (`scripts/pipeline/catalog.sh`)
+Only validation supplies the checked date; the drafting check no longer accepts any date merely because the field exists. The validator is instructed to replace the existing value rather than add another field, but this release covers the formatting half of #128. The advertised 300 to 800 word target was removed because the writing instructions already rejected a word target. Article-name checks use the full index, falling back to a folder listing only when needed, so a silently truncated listing no longer drives collisions or renames on large stacks. The retained records show which sources were sent out, what readers returned, and which articles were new or reused. They are cleared when the same stack is cataloged again and are excluded from version control, so this is local inspection access, not a durable archive. A pre-existing broken clean-run self-check was also repaired.
 
 ## 0.70.1 — 2026-07-26
 
@@ -195,20 +150,20 @@ Self-check 24 of 24.
 
 - **Scoped the bare-sources rule to the frontmatter, where it always applied (found while grading a draft with a peer session).** The article contract said tier "lives only in the extraction block, never in the article", which reads as covering the whole file. It only ever governed the `sources:` frontmatter key (the machine-read list of file paths). A library's own `STACK.md` can require tier ratings in the Sources section at the foot of the article, and library-stack's does: 936 articles across 8 stacks correctly carry them. A structural check reading the rule the broad way would have flagged all 936 as failures, which reads as a corpus-wide catastrophe and is a wording disagreement. The rule now names the frontmatter key explicitly and says the body belongs to the library's schema. No code, no behavior change. (`references/article-contract.md`)
 
-## 0.70.0 — 2026-07-26
+## 0.70.0 - 2026-07-26: Article writers receive a stronger ban on claims their sources never made.
 
-**Articles should stop explaining things the source never said.**
+- Explanations, motives, and requirements may appear only when the source explicitly states them. (#123)
+- Check the next batch for missed source claims as well as unsupported additions.
 
-- **The synthesizer's anti-over-claim rule is now stated in strong words with the cost named (#123).** The article writer was adding its own mechanism, rationale, and normative conclusions (sentences like "this exception reflects the priority given to engineered smoke control", where the source states the rule but never says why) and stamping a citation on them, so invented content read as sourced fact. Two of three articles in one real run shipped this way at the top model tier, and only an after-the-fact grader caught it. The instruction that forbids it was already there and already in the right place; it was simply worded too mildly to bind. It is now rewritten in place (same position, stronger wording): an explicit rule name, a hard "only when a block claim states it" condition, an explicit expectation that almost every sentence is a plain restatement, and the cost of breaking it spelled out. Peer-measured on the sibling task (extraction), the same rewrite cut invented output from 119 to 13 while moving the sentence elsewhere made it worse, so position was deliberately left alone. (`agents/article-synthesizer.md`)
-- **Watch recall on the next catalog batch, not just over-claims.** In the measured sibling run this wording bought precision and paid part of it back in wrong picks, so the article to watch for is the thin-but-clean one: a short article that invents nothing and also drops claims the block did state passes every gate the pipeline currently has. If over-claims fall and recall falls with them, revert this entry in one edit.
+Two of three articles in a real run had added explanations or conclusions and cited them as sourced facts. Stronger wording helped a related extraction task, reducing invented output from 119 to 13, but transfer to article writing remains unproven. The related measurement gained precision at a cost to another accuracy measure, so a short, clean article can still omit real claims and pass the current gates. If unsupported additions and coverage of source claims both fall, revert this wording change in one edit.
 
-## 0.69.0 — 2026-07-22
+## 0.69.0 - 2026-07-22: Cataloging keeps articles findable, and enrichment and audits can stay focused.
 
-**Catalog can no longer ship an article the library can't find, a one-gap enrich no longer balloons into the whole backlog, and audits can now check just the articles you changed.**
+- New articles must include a description that lets lookup find them; 14 existing omissions were repaired. (#117)
+- A single missing answer can be researched without launching work on the whole backlog. (#114)
+- Audits can check named articles without marking other articles as verified. (#100)
 
-- **The routing line is now enforced at the gate, not merely requested (#117).** Synthesized articles were shipping without the `routing:` frontmatter (the one-line scope text `/stacks:lookup` matches against to pick the right article), and nothing checked for it — so an article silently became unfindable until an audit happened to sweep it (a ~$545 operation on the largest stack). The article-shape gate now fails any batch whose article lacks `routing:`, catching it the instant it is written. Also backfilled the 14 already-live unroutable articles and regenerated the affected stack indexes. (`scripts/assert-structure.sh`, `tests/assert-structure.bats`)
-- **A single flagged gap no longer silently expands to the full stack backlog (#114).** Running `enrich-stack {stack}` bare right after a lookup that flagged one gap pulled the ENTIRE backlog (dozens of soft spots, many parallel web-search agents) instead of the one gap. The skill now directs the agent to pass `--query` for a single gap, and adds a confirm-before-fan-out step on any bare multi-batch run. (`skills/enrich-stack/SKILL.md`)
-- **Audits can now scope to named articles instead of re-checking the whole stack (#100).** Adding a few articles to an already-audited stack forced a full re-audit — silently, whenever the `verified.tsv` hash baseline was absent. Added an `--only <slug,slug,...>` scoped audit, a warning when the incremental-skip baseline is missing, and a fix so a scoped run never stamps an article it did not actually check as verified. (`scripts/pipeline/audit.sh`, `skills/audit-stack/SKILL.md`)
+Articles without a lookup description now fail when drafted rather than remaining hidden until a later full audit. The affected indexes were rebuilt after the 14 repairs. For one gap, pass `--query` when starting enrichment. A bare request spanning several batches now asks for confirmation before launching the full backlog. Use `--only <slug,slug,...>` to audit selected articles rather than paying for a full audit, which cost about $545 on the largest stack. A missing baseline still triggers a full re-audit, now with a warning first, and a scoped run never stamps an article it did not check.
 
 ## 0.68.3 — 2026-07-18
 
