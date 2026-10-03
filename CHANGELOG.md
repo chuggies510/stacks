@@ -10,6 +10,10 @@ The reader is Chris or a user deciding whether a release matters to them, not th
 
 Use plain words. File names, function and tool names, internal terms and how it works inside belong in the commit and the issue. Short never means lossy: a required action, rollback limit or caveat goes in the detail, never dropped. Add a correction as its own line; never edit the original. An entry that will not fit this shape is describing mechanism, or the release is too big.
 
+## 0.78.8 - 2026-10-02: Skill usage logs record the right session number again after the memory bank moved.
+
+- Telemetry reads the session number from a project's new `.memory-bank/` folder (ChuggiesMart ADR-130).
+
 ## 0.78.7 - 2026-09-30: Release notes now explain what changes for you first.
 
 - Added the shared writing rule and rewrote the latest ten non-patch releases without changing their versions or dates.

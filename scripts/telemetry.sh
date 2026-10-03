@@ -12,7 +12,7 @@
 
 SKILL_NAME="${SKILL_NAME:-unknown}"
 PROJECT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-SESSION=$(grep "^session:" "$PROJECT/.claude/memory-bank/active-context.md" 2>/dev/null | awk '{print $2}')
+SESSION=$(grep "^session:" "$PROJECT/.memory-bank/active-context.md" 2>/dev/null | awk '{print $2}')
 SESSION="${SESSION:-0}"
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LOG="$HOME/.chuggiesmart/telemetry.jsonl"
