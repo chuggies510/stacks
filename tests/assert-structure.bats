@@ -214,9 +214,9 @@ run_script() {
   [ "$status" -eq 0 ]
 }
 
-@test "audit-findings: receipts mixed with CORRECTION/SOFTSPOT rows pass" {
+@test "audit-findings: receipts mixed with CORRECTION rows pass" {
   local f="$TEST_TMP/_audit-0.md"
-  printf 'VALIDATED\tvav-box\t1700000000\nCORRECTION\tvav-box\t"30%%"->"20%%"\nVALIDATED\tchiller\t1700000000\nSOFTSPOT\tchiller\tsome claim\tno source\n' > "$f"
+  printf 'VALIDATED\tvav-box\t1700000000\nCORRECTION\tvav-box\t"30%%"->"20%%"\nVALIDATED\tchiller\t1700000000\nCORRECTION\tchiller\tremoved "Chillers rarely exceed 80%% efficiency." (no cited or listed source states it)\n' > "$f"
   run_script "$f" audit-findings
   [ "$status" -eq 0 ]
 }

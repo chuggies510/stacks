@@ -5,7 +5,7 @@ description: Use when knowledge-stack articles must be checked against cited sou
 
 # Audit Stack
 
-Validate a stack's articles against their cited sources. The validator **fixes** claims that contradict their source in place (so `/stacks:lookup` never serves a known-wrong claim) and records every fix plus every **soft spot** (a claim not tied to any cited source) for the report. No inline marks are stamped in article bodies. Each run is independent: the validator re-checks every article and the report is rebuilt from this run's findings. There is no carry-forward ledger and no multi-pass loop.
+Validate a stack's articles against their cited sources. The validator **fixes** claims that contradict their source in place (so `/stacks:lookup` never serves a known-wrong claim), trims overstatements, removes a claim no source supports, and records every fix for the report. No inline marks are stamped in article bodies. Each run is independent: the validator re-checks every article and the report is rebuilt from this run's findings. There is no carry-forward ledger and no multi-pass loop.
 
 The deterministic control flow (resolve, enum, shard, gate, report) lives in `scripts/pipeline/audit.sh` as `prep|gate|finish` phases; state crosses phases through `dev/audit/{run.env,dispatch.tsv}` files, never shell env. This skill dispatches the validator agents between `prep` and `gate` and does the log+commit after `finish`.
 
@@ -37,7 +37,7 @@ bash "$STACKS_ROOT/scripts/pipeline/audit.sh" prep $ARGUMENTS
 
 **Scoped audit (`--only`).** Pass **`--only <slug,slug,...>`** (`/stacks:audit-stack {stack} --only ts-a,ts-b`) to audit exactly the named articles (bare slugs, no `.md`), bypassing the incremental skip — an explicitly named article is always re-audited even if unchanged. This is the escape hatch for verifying a small catalog addition without a whole-stack manifest: prep's dispatch covers only the named slugs, so Step 4's gate reconciles that scoped subset (not all articles) and a validator dispatched on just those passes instead of false-failing against the full manifest. finish stamps the audited slugs' fresh hashes into `verified.tsv` and carries every other article's prior baseline row forward — it never marks an un-audited article as verified. An unknown slug fails fast, naming it. Pass the SAME `$ARGUMENTS` (including `--only …`) to the `gate` and `finish` calls below; they read the scoped run-state prep persisted, so no extra flag is needed there.
 
-**If prep prints `NOTHING_TO_AUDIT`** (every article unchanged): skip Steps 2–4 entirely and jump to Step 5 (`audit.sh finish`) — finish refreshes the report, carries the skipped articles' soft spots forward, and re-stamps verified.tsv. There is nothing to dispatch or gate.
+**If prep prints `NOTHING_TO_AUDIT`** (every article unchanged): skip Steps 2–4 entirely and jump to Step 5 (`audit.sh finish`) — finish refreshes the report and index.md and re-stamps verified.tsv. There is nothing to dispatch or gate.
 
 A non-zero exit (no stack name, stack not found, no articles, or an unknown flag) prints the reason and stops the run. Otherwise note the printed `RUN_ID`, manifest, sources, and stack-root paths — they feed the dispatch.
 
@@ -62,11 +62,11 @@ Each agent prompt names:
 - its **`BATCH_TAG`** (the `batch_tag` value: `0`, `1`, …),
 - the **`RUN_ID`** from prep's output (echoed verbatim in each `VALIDATED` receipt row).
 
-The validator strips prior-cycle marks, fixes source contradictions in place, leaves `last_verified` unchanged, and writes one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row per assigned article (clean articles included) plus any `CORRECTION`/`SOFTSPOT` lines to `$STACK/dev/audit/_audit-${BATCH_TAG}.md`.
+The validator strips prior-cycle marks, fixes source contradictions in place, leaves `last_verified` unchanged, and writes one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row per assigned article (clean articles included) plus any `CORRECTION` lines to `$STACK/dev/audit/_audit-${BATCH_TAG}.md`. A removed sentence is quoted in full on its `CORRECTION` line, and a removal that empties something the article's `routing:` promises narrows `routing:` in the same edit. An article with a cited or listed source that is missing or unreadable is left untouched with no receipt row, and the validator ends its reply with a `MISSING SOURCE {slug}: {path}` line.
 
 ## Step 4: Gate — every dispatched article must be receipted (`audit.sh gate`)
 
-After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows; the `--verdict` filter skips the `CORRECTION`/`SOFTSPOT` rows that reuse the slug column). Only after freshness, RUN_ID, and per-article coverage pass does the script replace each dispatched article's single existing `last_verified` value with today's quoted date. A dropped, duplicated, unknown, or missing receipt fails **by name** without advancing any stamp.
+After all validators return, gate the batch. `audit.sh gate` re-reads the run-state from disk (the `RUN_ID` freshness floor and the manifest), runs `gate-batch.sh` (write-or-fail + `audit-findings` shape = a `VALIDATED` receipt row exists) on every expected `_audit-<tag>.md`, then `check-coverage.sh --verdict VALIDATED` (reconciles the dispatched slugs against the slug column of the `VALIDATED` receipt rows; the `--verdict` filter skips the `CORRECTION` rows that reuse the slug column). Only after freshness, RUN_ID, and per-article coverage pass does the script replace each dispatched article's single existing `last_verified` value with today's quoted date. A dropped, duplicated, unknown, or missing receipt fails **by name** without advancing any stamp.
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
@@ -76,11 +76,11 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 bash "$STACKS_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
 ```
 
-A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
+A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. If a validator returned a `MISSING SOURCE` line for the named article, that unreadable source is the cause: tell the operator which source to restore, then re-run with `--only` that article. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
 
 ## Step 5: Audit report (`audit.sh finish`)
 
-`audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections + soft spots), merges `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input — carrying the skipped articles' prior soft spots forward, since an incremental run only re-checks changed articles), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=… softspots=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (carries all soft spots, re-stamps hashes, writes a 0-audited report).
+`audit.sh finish` aggregates the `CORRECTION` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections), regenerates `index.md` (a removal may have narrowed an article's `routing:`, and `/stacks:lookup` routes on `index.md`), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (re-stamps hashes, writes a 0-audited report).
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
@@ -98,7 +98,7 @@ Prepend an entry to `$STACK/log.md` using the counts from `AUDIT_SUMMARY`:
 
 ```markdown
 ## [YYYY-MM-DD] audit-stack
-Validated={articles} Corrections={corrections} SoftSpots={softspots}. Report: dev/audit/report.md
+Validated={articles} Corrections={corrections}. Report: dev/audit/report.md
 ```
 
 Then commit the corrected articles and the report. Substitute `{stack}` and the counts — shell state does not survive between these blocks, so re-resolve the library here rather than relying on a `$STACK`/`$LIBRARY` from an earlier step:
@@ -109,8 +109,8 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
 [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
 LIBRARY=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") && cd "$LIBRARY" || exit 1
-git add "{stack}/articles/" "{stack}/dev/audit/report.md" "{stack}/dev/audit/soft-spots.tsv" "{stack}/dev/audit/verified.tsv" "{stack}/log.md"
-git commit -m "audit({stack}): corrections={corrections} soft-spots={softspots}"
+git add "{stack}/articles/" "{stack}/index.md" "{stack}/dev/audit/report.md" "{stack}/dev/audit/verified.tsv" "{stack}/log.md"
+git commit -m "audit({stack}): corrections={corrections}"
 ```
 
-Present a summary to the user: articles validated, corrections applied, soft-spot count, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff). If soft spots are high, point at the report.
+Present a summary to the user: articles validated, corrections applied, and the report path. If corrections were applied, name the most-corrected articles so the operator can eyeball the auto-edits (they are also visible in the commit diff), and say how many were removed sentences, which the report quotes in full.

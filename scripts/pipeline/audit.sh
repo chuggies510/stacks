@@ -11,7 +11,7 @@ set -euo pipefail
 #   bash audit.sh prep   <stack>   # Step 1+3-setup: enum, shard, run-state
 #                                  # [--full] re-audit all; [--only a,b] scope to named slugs
 #   bash audit.sh gate   <stack>   # Step 3-gate: gate-batch + check-coverage
-#   bash audit.sh finish <stack>   # Step 4: report.md + soft-spots.tsv + counts
+#   bash audit.sh finish <stack>   # Step 4: report.md + counts
 #   bash audit.sh --self-check
 #
 # Phase contract (subcommands because a bash script can't spawn subagents, so the
@@ -29,12 +29,13 @@ set -euo pipefail
 #           receipt rows). A dropped/dup/unknown/missing receipt fails by name.
 #           This replaces the old per-article `last_verified == today` date-gate,
 #           which proved a date but never per-article coverage (#71 headline).
-#   finish  Aggregate CORRECTION/SOFTSPOT rows across the dispatched batch files
+#   finish  Aggregate CORRECTION rows across the dispatched batch files
 #           (enumerated from dispatch.tsv, not globbed — a file the gate somehow
-#           let through still can't silently shrink the report), write report.md +
-#           soft-spots.tsv, print AUDIT_SUMMARY counts for the skill's log+commit,
-#           then remove the transient run files. VALIDATED receipt rows are ignored
-#           by the report (it filters CORRECTION/SOFTSPOT only).
+#           let through still can't silently shrink the report), write report.md,
+#           regenerate index.md (a removal may have narrowed an article's routing:),
+#           print AUDIT_SUMMARY counts for the skill's log+commit, then remove the
+#           transient run files. VALIDATED receipt rows are ignored by the report
+#           (it filters CORRECTION only).
 #
 # State crosses phases ONLY through these files, never shell env (the #72 fix —
 # a var set in one SKILL.md Bash block is empty in the next):
@@ -183,7 +184,7 @@ phase_prep() {
   } > "$DEV/run.env"
 
   # Nothing changed → no dispatch, no gate. finish still runs (refresh the report,
-  # carry skipped soft spots forward, re-hash verified.tsv).
+  # re-hash verified.tsv).
   if [[ "$N" -eq 0 ]]; then
     echo "NOTHING_TO_AUDIT: all $N_TOTAL article(s) unchanged since last audit (dev/audit/verified.tsv). Skip the validator dispatch and gate; run 'audit.sh finish $STACK' to refresh the report."
     return 0
@@ -223,7 +224,7 @@ phase_gate() {
   fi
 
   # Expected per-batch files, one per distinct batch_tag in the manifest. PAIRS
-  # carries the same tag->file association for check-coverage's --batched mode.
+  # carries the same tag->file association for check-coverage's tag=file arguments.
   local BATCHFILES=() PAIRS=() t
   while IFS= read -r t; do
     BATCHFILES+=("$DEV/_audit-$t.md")
@@ -247,10 +248,10 @@ phase_gate() {
 
   # 3) per-article coverage: every dispatched slug (manifest col 2) has exactly one
   # VALIDATED receipt IN ITS OWN BATCH FILE (col 2 of the VALIDATED-only rows;
-  # --verdict skips CORRECTION/SOFTSPOT which reuse the slug column). --batched
-  # reconciles each batch_tag against only its _audit-<tag>.md, so a slug dropped by
-  # its own batch but cross-emitted by another now fails (batchB omission + batchA
-  # unknown) instead of leaking past the global union (#92).
+  # --verdict skips CORRECTION rows, which reuse the slug column). Each batch_tag is
+  # reconciled against only its own _audit-<tag>.md, so a slug dropped by its own
+  # batch but cross-emitted by another fails (batchB omission + batchA unknown)
+  # instead of leaking past the global union (#92).
   bash "$HELPERS/check-coverage.sh" --verdict VALIDATED "$DEV/dispatch.tsv" "${PAIRS[@]}"
 
   # The deterministic gate, not generated agent text, owns the provenance stamp.
@@ -305,58 +306,31 @@ phase_finish() {
   local TODAY; TODAY=$(date +%Y-%m-%d)
   local AUDIT_LINES=""
   [[ ${#BATCHFILES[@]} -gt 0 ]] && AUDIT_LINES=$(cat "${BATCHFILES[@]}")
-  local N_CORR N_SOFT_NEW
+  local N_CORR
   N_CORR=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^CORRECTION'$'\t' || true)
-  N_SOFT_NEW=$(printf '%s\n' "$AUDIT_LINES" | grep -c '^SOFTSPOT'$'\t' || true)
-
-  # Merge soft spots. An incremental run only re-checks changed articles, so the
-  # durable /stacks:enrich-stack input (soft-spots.tsv) must CARRY FORWARD the soft
-  # spots of the skipped (unchanged) articles — replacing only the re-audited ones'
-  # rows — or a one-article re-audit would silently shrink the enrich queue to that
-  # one article. Carry a prior row when its slug was not re-audited this run AND its
-  # article still exists (a deleted article's soft spots are dropped).
   local AUDITED; AUDITED=$(cut -f2 "$DEV/dispatch.tsv" 2>/dev/null | sort -u)
-  local SS="$DEV/soft-spots.tsv" SS_NEW; SS_NEW=$(mktemp)
-  # this run's fresh soft spots (empty on a nothing-to-audit run)
-  printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{print $2"\t"$3"\t"$4}' > "$SS_NEW"
-  if [[ -f "$SS" ]]; then
-    while IFS=$'\t' read -r s c r; do
-      [[ -n "$s" ]] || continue
-      grep -qxF "$s" <<<"$AUDITED" && continue          # re-audited → fresh row already in SS_NEW
-      [[ -f "$STACK/articles/$s.md" ]] || continue       # article gone → drop its stale soft spots
-      printf '%s\t%s\t%s\n' "$s" "$c" "$r"
-    done < "$SS" >> "$SS_NEW"
-  fi
-  sort -u "$SS_NEW" -o "$SS"; rm -f "$SS_NEW"
-  local N_SOFT_TOTAL; N_SOFT_TOTAL=$(grep -c $'\t' "$SS" 2>/dev/null || true); N_SOFT_TOTAL=${N_SOFT_TOTAL:-0}
 
   local SKIPNOTE=""; [[ "$N_SKIPPED" -gt 0 ]] && SKIPNOTE=" ($N_SKIPPED unchanged, skipped)"
 
   {
     echo "# $STACK — audit report ($TODAY)"
     echo
-    echo "Per-run activity report; soft-spots.tsv is the cumulative enrich queue (skipped articles' soft spots carry forward)."
+    echo "Per-run activity report."
     echo
-    echo "Articles validated: $N_ARTICLES$SKIPNOTE.  Corrections applied: $N_CORR.  Soft spots: $N_SOFT_NEW new, $N_SOFT_TOTAL tracked."
+    echo "Articles validated: $N_ARTICLES$SKIPNOTE.  Corrections applied: $N_CORR."
     echo
     echo "## Corrections applied"
-    echo "_Claims the validator rewrote in place to match their cited source._"
+    echo "_Claims the validator rewrote, trimmed or removed in place. A removed sentence is quoted in full._"
     echo
     if [[ "$N_CORR" -gt 0 ]]; then
       printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="CORRECTION"{printf "- `%s` — %s\n", $2, $3}'
-    else echo "_None. No cited claim contradicted its source._"; fi
-    echo
-    echo "## Soft spots found this run"
-    echo "_Claims not tied to a cited source. Left in place — add a source or confirm. The cumulative queue (incl. skipped articles) is soft-spots.tsv._"
-    echo
-    if [[ "$N_SOFT_NEW" -gt 0 ]]; then
-      printf '%s\n' "$AUDIT_LINES" | awk -F'\t' '$1=="SOFTSPOT"{printf "- `%s` — \"%s\" — %s\n", $2, $3, $4}'
-    else echo "_None this run. Every re-audited claim ties to a cited source._"; fi
+    else echo "_None. Every re-audited claim agreed with its cited source._"; fi
   } > "$REPORT"
 
-  # soft-spots.tsv (the /stacks:enrich-stack input) was already written by the merge
-  # block above — it carries skipped articles' soft spots forward, which a per-run
-  # overwrite would lose.
+  # The validator may have narrowed an article's routing: line when it removed a
+  # sentence. /stacks:lookup routes on index.md, not article frontmatter, so rebuild
+  # the Map of Contents every run (cheap, deterministic, preserves Reading Paths).
+  bash "$HELPERS/regenerate-moc.sh" "$STACK"
 
   # Refresh verified.tsv: the baseline the next prep skips against. Re-audited
   # articles (this run's dispatch slugs, in AUDITED) get their post-validation hash.
@@ -384,12 +358,12 @@ phase_finish() {
   done < <(find "$STACK/articles" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
   rm -f "$VPRIOR"
 
-  # Cleanup: transient per-batch inputs + run-state. report.md, soft-spots.tsv, and
-  # verified.tsv are the durable artifacts the skill commits.
+  # Cleanup: transient per-batch inputs + run-state. report.md and verified.tsv are
+  # the durable artifacts the skill commits.
   rm -f "$DEV"/_audit-*.md "$DEV/dispatch.tsv" "$DEV/run.env"
 
-  echo "AUDIT_SUMMARY: articles=$N_ARTICLES skipped=$N_SKIPPED corrections=$N_CORR softspots=$N_SOFT_TOTAL"
-  echo "Wrote $REPORT, $DEV/soft-spots.tsv ($N_SOFT_TOTAL tracked), $VOUT ($N_SKIPPED skipped next run if unchanged)"
+  echo "AUDIT_SUMMARY: articles=$N_ARTICLES skipped=$N_SKIPPED corrections=$N_CORR"
+  echo "Wrote $REPORT, $STACK/index.md, $VOUT ($N_SKIPPED skipped next run if unchanged)"
 }
 
 # --- self-check -------------------------------------------------------------
@@ -448,7 +422,7 @@ self_check() {
       printf 'VALIDATED\tcooling-tower\t%s\n' "$RUN_ID"
       printf 'VALIDATED\tpump\t%s\n' "$RUN_ID"
       printf 'CORRECTION\tchiller\t"44 F" -> "42 F" per [ashrae]\n'
-      printf 'SOFTSPOT\tpump\tPumps rarely exceed 80%% efficiency.\tno scoped source\n'
+      printf 'CORRECTION\tpump\tremoved "Pumps rarely exceed 80%% efficiency." (no cited or listed source states it)\n'
     } > "$F0"
     printf 'VALIDATED\tvav\t%s\n' "$RUN_ID" > "$F1"
   }
@@ -540,16 +514,34 @@ self_check() {
     bad "finish-fails-on-missing-batch" "expected nonzero + path, rc=$rc out=$out"
   fi
 
-  # finish: report + soft-spots with correct counts (1 correction, 1 soft spot).
+  # finish: report with correct counts (2 corrections) and the removed sentence kept
+  # verbatim in report.md. A soft-spots.tsv left over from an older audit is not read,
+  # rewritten or deleted (the one-time library cleanup reads it, then deletes it).
+  local REPORT="$d/mep/dev/audit/report.md" SS="$d/mep/dev/audit/soft-spots.tsv"
+  printf 'pump\tPumps rarely exceed 80%% efficiency.\tno scoped source\n' > "$SS"
+  local ss_before; ss_before=$(cksum "$SS")
+  # The validator narrowed pump's routing in the same edit as its removal; lookup
+  # routes on index.md, so finish must carry the new line into it.
+  printf '%s\n' '---' 'title: pump' 'last_verified: ""' 'routing: narrowed routing text' '---' '' '# pump' '' 'Body.' > "$d/mep/articles/pump.md"
   mk_clean
   out=$(bash "$0" finish mep 2>&1) || bad "finish-runs" "finish exited nonzero"
-  local REPORT="$d/mep/dev/audit/report.md" SS="$d/mep/dev/audit/soft-spots.tsv"
-  if grep -q 'articles=6 skipped=0 corrections=1 softspots=1' <<<"$out" \
-     && [[ -f "$REPORT" && -f "$SS" ]] \
-     && grep -q $'^pump\tPumps rarely exceed' "$SS"; then
-    ok "finish-writes-report-and-softspots"
+  if grep -qx 'AUDIT_SUMMARY: articles=6 skipped=0 corrections=2' <<<"$out" \
+     && [[ -f "$REPORT" ]] \
+     && grep -qF -- '- `pump` — removed "Pumps rarely exceed 80% efficiency." (no cited or listed source states it)' "$REPORT" \
+     && ! grep -qi 'soft' "$REPORT"; then
+    ok "finish-writes-report-with-removed-sentence"
   else
-    bad "finish-writes-report-and-softspots" "out=$out ss=$(cat "$SS" 2>/dev/null)"
+    bad "finish-writes-report-with-removed-sentence" "out=$out report=$(cat "$REPORT" 2>/dev/null)"
+  fi
+  if grep -qxF -- '- [[pump|pump]] — narrowed routing text' "$d/mep/index.md" 2>/dev/null; then
+    ok "finish-regenerates-index"
+  else
+    bad "finish-regenerates-index" "pump's routing line missing from index.md: $(cat "$d/mep/index.md" 2>/dev/null)"
+  fi
+  if [[ "$(cksum "$SS")" == "$ss_before" ]] && ! grep -qi 'soft' <<<"$out"; then
+    ok "finish-leaves-legacy-softspots-alone"
+  else
+    bad "finish-leaves-legacy-softspots-alone" "soft-spots.tsv changed or finish still mentions soft spots: out=$out ss=$(cat "$SS" 2>/dev/null)"
   fi
   # finish cleaned up the transient run-state.
   [[ ! -f "$DISP" && ! -f "$ENV" ]] && ok "finish-cleans-run-state" || bad "finish-cleans-run-state" "run-state survived"
@@ -569,13 +561,13 @@ self_check() {
   # (i2) gate no-ops cleanly on the empty dispatch (nothing to reconcile).
   if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-noop-on-empty"; else bad "gate-noop-on-empty" "gate failed on empty dispatch"; fi
 
-  # (i3) finish on the empty run CARRIES the prior soft spot (pump) forward — the
-  #      skip must not shrink the enrich queue to only re-audited articles.
+  # (i3) finish on the empty run reports 0 audited / 6 skipped and refreshes the report.
   out=$(bash "$0" finish mep 2>&1) || bad "finish-empty-runs" "finish exited nonzero: $out"
-  if grep -q $'^pump\tPumps rarely exceed' "$SS"; then
-    ok "finish-carries-skipped-softspots"
+  if grep -qx 'AUDIT_SUMMARY: articles=0 skipped=6 corrections=0' <<<"$out" \
+     && grep -q 'Articles validated: 0 (6 unchanged, skipped)' "$REPORT"; then
+    ok "finish-empty-run-summary"
   else
-    bad "finish-carries-skipped-softspots" "pump soft spot lost, ss=$(cat "$SS" 2>/dev/null)"
+    bad "finish-empty-run-summary" "out=$out report=$(cat "$REPORT" 2>/dev/null)"
   fi
 
   # (ii) change ONE article → its hash moves → prep dispatches only it.

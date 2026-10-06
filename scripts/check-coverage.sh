@@ -22,8 +22,8 @@ set -euo pipefail
 #   --verdict TAG    Count a receipt row only when its col-1 verdict equals TAG.
 #                    For a findings file that MIXES a per-item receipt row with
 #                    per-item detail rows sharing the id column — audit's
-#                    _audit-<tag>.md carries VALIDATED (receipt) plus CORRECTION/
-#                    SOFTSPOT (detail), all keyed on slug in col 2, so without the
+#                    _audit-<tag>.md carries VALIDATED (receipt) plus CORRECTION
+#                    rows (detail), all keyed on slug in col 2, so without the
 #                    filter a corrected article's slug double-counts as a receipt.
 #                    Omit (enrich) when every tab row is already a receipt.
 #   <dispatch.tsv>   The dispatch manifest (see below).
@@ -265,10 +265,10 @@ self_check() {
   check "metadata-cols-ok (5-col manifest)" 0 "COVERAGE_OK: 2 items" "$d/dispatch_meta.tsv" "batchA=$d/outA.txt"
 
   # --verdict filter: a findings file that mixes a per-item receipt row (VALIDATED)
-  # with per-item DETAIL rows sharing col 2 (audit's CORRECTION/SOFTSPOT keyed on
+  # with per-item DETAIL rows sharing col 2 (audit's CORRECTION keyed on
   # slug). Without --verdict, the detail row's slug double-counts as a receipt.
   printf 'batchA\ta\nbatchA\tb\nbatchA\tc\n' > "$d/dispatch_mix.tsv"
-  printf 'VALIDATED\ta\tRUN1\nCORRECTION\ta\t"x"->"y"\nVALIDATED\tb\tRUN1\nSOFTSPOT\tb\tsome claim\tno source\nVALIDATED\tc\tRUN1\n' > "$d/outMix.txt"
+  printf 'VALIDATED\ta\tRUN1\nCORRECTION\ta\t"x"->"y"\nVALIDATED\tb\tRUN1\nCORRECTION\tb\tremoved a claim\nVALIDATED\tc\tRUN1\n' > "$d/outMix.txt"
   # (i) --verdict VALIDATED → clean PASS
   check "verdict-filter clean (mixed rows)" 0 "COVERAGE_OK: 3 items" --verdict VALIDATED "$d/dispatch_mix.tsv" "batchA=$d/outMix.txt"
   # (j) same file WITHOUT --verdict → 'a' and 'b' double-count as duplicates.
