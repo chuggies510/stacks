@@ -143,3 +143,25 @@ printf '%s\\n' \"\$STACKS_ROOT\""
     [ "$output" = "$plugin" ]
   done
 }
+
+@test "resolver falls back to the install.sh directory marketplace path when nothing else is installed" {
+  test_home="$BATS_TEST_TMPDIR/home"
+  plugin="$BATS_TEST_TMPDIR/checkout/stacks"
+  seed_plugin "$plugin"
+  mkdir -p "$test_home/.claude"
+  jq -n --arg p "$plugin" \
+    '{extraKnownMarketplaces: {stacks: {source: {source: "directory", path: $p}}}}' \
+    > "$test_home/.claude/settings.json"
+  [ ! -e "$test_home/.codex" ]
+  [ ! -e "$test_home/.claude/plugins/installed_plugins.json" ]
+  resolver=$(resolver_for "$ROOT/skills/lookup/SKILL.md")
+
+  for sh in bash zsh; do
+    run env -u STACKS_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT -u CODEX_PLUGIN_CACHE -u CODEX_HOME \
+      HOME="$test_home" "$sh" -c "set -euo pipefail
+$resolver
+printf '%s\\n' \"\$STACKS_ROOT\""
+    [ "$status" -eq 0 ]
+    [ "$output" = "$plugin" ]
+  done
+}
