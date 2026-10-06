@@ -36,10 +36,7 @@ Use the STACK.md Topic Template's section list as the article's skeleton, so sec
 
 <!-- bench:end -->
 
-Write to the **output path given in your dispatch**; when the dispatch names no path,
-write `articles/{slug}.md` (the default — the normal catalog run). A production self-test
-A/B run (#95/#109) passes a challenger shadow path so the challenger never touches the
-shipped article; everything else about how you write is identical regardless of path.
+Write `articles/{slug}.md`.
 
 <!-- bench:begin -->
 Frontmatter fields, writer/reader stages, and the machine
