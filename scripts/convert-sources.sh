@@ -12,6 +12,7 @@ set -uo pipefail
 #
 # Usage:
 #   convert-sources.sh <incoming_dir> <archive_dir>
+#   convert-sources.sh --pdf-text <file>   (print one PDF's text to stdout)
 #
 # Arguments:
 #   incoming_dir   Directory whose top-level files are converted in place; text
@@ -36,8 +37,33 @@ set -uo pipefail
 # ponytail: serial, one file at a time. A 400-page PDF can take ~30-60s under
 # pdfplumber; parallelize only if a real batch makes this the bottleneck.
 
+extract_pdf() {  # $1 file -> stdout text (empty if no text layer / failure)
+  command -v uv >/dev/null 2>&1 || return 1
+  uv run --no-project --with pdfplumber python3 - "$1" 2>/dev/null <<'PY'
+import sys, re, pdfplumber
+out = []
+try:
+    with pdfplumber.open(sys.argv[1]) as pdf:
+        for page in pdf.pages:
+            # layout=True keeps multi-column standards in reading order; the cost
+            # is whitespace padding, squeezed below so it doesn't bloat tokens.
+            t = page.extract_text(layout=True)
+            if t:
+                out.append(t)
+except Exception:
+    sys.exit(1)
+text = "\n\n".join(out)
+text = re.sub(r"[ \t]+\n", "\n", text)   # drop trailing whitespace
+text = re.sub(r"\n{3,}", "\n\n", text)   # collapse blank-line runs
+sys.stdout.write(text)
+PY
+}
+
+# Single-file mode for fetch-source-text.sh (#115): print one PDF's text, nothing else.
+if [[ "${1:-}" == --pdf-text && $# -eq 2 ]]; then extract_pdf "$2"; exit; fi
+
 if [[ $# -ne 2 ]]; then
-  echo "usage: convert-sources.sh <incoming_dir> <archive_dir>" >&2
+  echo "usage: convert-sources.sh <incoming_dir> <archive_dir> | --pdf-text <file>" >&2
   exit 2
 fi
 
@@ -64,28 +90,6 @@ archive_original() {
 sidecar_path() {
   local stem; stem=$(basename "$1"); stem=${stem%.*}
   bash "$SCRIPT_DIR/collision-dest.sh" "$INCOMING" "$stem.txt"
-}
-
-extract_pdf() {  # $1 file -> stdout text (empty if no text layer / failure)
-  command -v uv >/dev/null 2>&1 || return 1
-  uv run --no-project --with pdfplumber python3 - "$1" 2>/dev/null <<'PY'
-import sys, re, pdfplumber
-out = []
-try:
-    with pdfplumber.open(sys.argv[1]) as pdf:
-        for page in pdf.pages:
-            # layout=True keeps multi-column standards in reading order; the cost
-            # is whitespace padding, squeezed below so it doesn't bloat tokens.
-            t = page.extract_text(layout=True)
-            if t:
-                out.append(t)
-except Exception:
-    sys.exit(1)
-text = "\n\n".join(out)
-text = re.sub(r"[ \t]+\n", "\n", text)   # drop trailing whitespace
-text = re.sub(r"\n{3,}", "\n\n", text)   # collapse blank-line runs
-sys.stdout.write(text)
-PY
 }
 
 extract_xlsx_sheets() {  # $1 xlsx, $2 outdir -> writes one <sheet>.csv per non-empty

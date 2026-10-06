@@ -158,7 +158,7 @@ phase_prep() {
 
   # Assemble gaps into $GAPS (gap_id<TAB>slug<TAB>claim<TAB>reason).
   : > "$GAPS"
-  local MISS=0 N_GAPS=0
+  local N_GAPS=0
 
   if [[ -n "$QUERY" ]]; then
     # Targeted mode (--query, lookup's live auto-path #69): exactly ONE gap, the
@@ -174,7 +174,7 @@ phase_prep() {
     while IFS=$'\t' read -r slug claim reason; do
       [[ -z "$claim" ]] && continue
       printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-      i=$((i+1)); MISS=$((MISS+1))
+      i=$((i+1))
     done < <(bash "$HELPERS/lookup-misses.sh" "$STACK" "" "$LIB")
     N_GAPS=$i
   fi
@@ -239,7 +239,6 @@ phase_prep() {
     echo "COLDSTART=$COLDSTART"
     echo "QUERY=$QUERY"
     echo "N_GAPS=$N_GAPS"
-    echo "N_MISS=$MISS"
     echo "CAP=$CAP"
     echo "DISPATCH=$ADEV/dispatch.tsv"
     echo "LISTING=$ADEV/_filed-sources.tsv"
@@ -250,7 +249,7 @@ phase_prep() {
   elif [[ "$COLDSTART" -eq 1 ]]; then
     echo "Cold-start (#86): 0 articles, seeding $N_GAPS topic area(s) from STACK.md scope. AUTO=$AUTO"
   else
-    echo "Lookup misses: $MISS; $N_GAPS gaps to enrich. AUTO=$AUTO"
+    echo "Lookup misses: $N_GAPS to enrich. AUTO=$AUTO"
   fi
   echo "Filed-sources listing: $(wc -l < "$LISTING" | tr -d ' ') sources with URLs (for dedup)."
   echo "Dispatch: $N_BATCH batch(es), CAP=$CAP, RUN_ID=$RUN_ID"
@@ -362,7 +361,6 @@ self_check() {
   # A filed source with NO URL: exercises the listing-loop grep-no-match path so a
   # missing `|| true` (which killed prep under set -e + pipefail) fails prep-runs.
   printf '# ASHRAE notes\n\nNo source url in this file.\n' > "$d/mep/sources/ashrae/notes.md"
-  printf '# VAV\n\nMinimum VAV box airflow is typically 20%% of design maximum.\n' > "$d/mep/articles/vav.md"
   {
     printf 'vav\tMinimum VAV box airflow is typically 20%% of design maximum.\tno cited source\n'
     printf 'chiller\tChilled water is commonly distributed at 44 F supply.\tno cited source\n'

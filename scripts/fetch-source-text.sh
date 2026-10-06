@@ -78,14 +78,13 @@ ISPDF=0
 if [ "$STDIN" = 1 ]; then
   RAW=$(cat)
 else
-  T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; mkdir "$T/in"
+  T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
   # --compressed: a server sending content-encoding gzip otherwise yields binary (#138)
   curl -sSL --compressed --max-time 45 -A 'Mozilla/5.0 (compatible; stacks-enrich/1)' -o "$T/f" "$FETCH_URL" 2>/dev/null
   if [ "$(head -c 4 "$T/f" 2>/dev/null)" = "%PDF" ]; then
-    # PDF: reuse the shared converter (#115); no text layer -> empty -> exit 3 below
-    ISPDF=1; mv "$T/f" "$T/in/f.pdf"
-    "$(dirname "$0")/convert-sources.sh" "$T/in" "$T/arch" >/dev/null 2>&1
-    RAW=$(cat "$T/in/f.txt" 2>/dev/null)
+    # PDF: the shared converter's one-file mode (#115); no text layer -> empty -> exit 3 below
+    ISPDF=1
+    RAW=$(bash "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/convert-sources.sh" --pdf-text "$T/f")
   else
     RAW=$(cat "$T/f" 2>/dev/null)
   fi

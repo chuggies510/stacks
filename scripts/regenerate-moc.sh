@@ -36,7 +36,7 @@ declare -A TAG_GROUPS
 while IFS= read -r article; do
   # Group by the first tag. article_tags accepts both frontmatter forms (inline flow
   # list and block list) and strips quotes; sed, not head, so the pipe never SIGPIPEs.
-  tag=$(article_tags "$article" | sed -n 1p)
+  tag=$(article_tags "$article"); tag=${tag%%$'\n'*}
   title=$(article_field title "$article") || title=""
   # Strip [[ ]] from the display label — titles that contain wikilink markup
   # would otherwise produce nested brackets that break the outer link (#60).

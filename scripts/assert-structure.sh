@@ -51,14 +51,9 @@ case "$type" in
     # title and routing go through article_field, the one frontmatter reader: a bare
     # `grep '^title:'` passed a value that was empty or sat in the body.
     article_field title "$path" >/dev/null || fail "missing title field (absent, empty, or outside the frontmatter block)"
-    # Anchored to the frontmatter block AND unique. A bare grep over the whole
-    # file passes a dated key in frontmatter as long as an empty `last_verified: ""`
-    # appears anywhere below (a body line, a fenced example) — and passes the
-    # duplicate-key case (#128) outright, which is the very defect this guards.
-    awk '/^---[[:space:]]*$/{f++; next}
-         f>=2{exit}
-         f==1 && /^last_verified:/{n++; empty = ($0 ~ /^last_verified: *""[[:space:]]*$/)}
-         END{exit !(n==1 && empty)}' "$path" \
+    # Exactly one last_verified inside a closed frontmatter block (#128: a duplicate
+    # key is the defect), and empty at synthesis.
+    { article_field_unique last_verified "$path" && [[ "$(article_field last_verified "$path")" == '""' ]]; } \
       || fail "frontmatter needs exactly one last_verified, empty at synthesis (audit gate sets it)"
     article_field routing "$path" >/dev/null || fail "missing routing field (absent, empty, or outside the frontmatter block)"
     ;;
