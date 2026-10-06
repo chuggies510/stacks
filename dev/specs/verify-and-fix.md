@@ -14,8 +14,7 @@ served model `qwen3.8-27b`, OpenAI-compatible `/v1/chat/completions`, reached fr
 through the existing tunnel `127.0.0.1:11436` (liminal tech-context owns the port, slots and
 speed; quote it there, do not copy it here). Two settings come in through env with those
 defaults: `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`. `local-infer.sh` gains the
-`/v1/chat/completions` call shape beside its Ollama one (the request body differs; nothing
-else does) with reasoning turned off or capped, because this is a thinking model and an
+`/v1/chat/completions` call shape beside its Ollama one (item 5 lists what changes) with reasoning turned off or capped, because this is a thinking model and an
 uncapped reply can burn its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
 The server has 8 slots, so the serial-only rule below is relaxed to a small fixed
 concurrency (4). Measure it during the advisory batch; no parallelism code beyond `xargs -P`.
@@ -44,7 +43,9 @@ listed source for the article was read; a source that is missing or unreadable i
 and its claims are left alone (an unread source is not "no source"). The `CORRECTION` row
 carries the full removed sentence, so `report.md` keeps the text even when the article was
 never committed. If the trim removes something the article's `routing:` line promises, the
-same edit narrows `routing:`. Deleted with it, swept in one change: the `SOFTSPOT` verdict and
+same edit narrows `routing:`; audit finish regenerates `index.md` so lookup sees it. An
+article with an unreadable source gets no `VALIDATED` receipt, so the run fails its coverage
+gate instead of passing it unvalidated. Deleted with it, swept in one change: the `SOFTSPOT` verdict and
 its acceptance in `assert-structure.sh`, `soft-spots.tsv` merging, carry-forward and
 `git add` in `audit.sh` and the audit skill, soft-spot counts in the summary, log and commit
 message, the soft-spot section of `report.md`, the soft-spot input of `enrich.sh prep` (enrich
@@ -63,18 +64,21 @@ Item 4 ships in S31; items 1 to 3 build when breathless is back up.
 **5. Build requirements for items 1 to 3 (S31 Codex plan review, accepted).**
 
 - Draft into scratch, never into `articles/`, and replace an existing article only after the
-  complete draft passed its filters; an update draft gets the existing article as input and
-  keeps its unaffected claims and sources.
+  complete draft passed its filters. Snapshot the pre-update article before any writer runs;
+  the drafter, any cloud writer and the reviewer all get that snapshot, and the reviewer checks
+  that its unaffected claims and source paths survived.
 - The reviewer leaves a fresh receipt for every dispatched slug, clean drafts included, and
   finish reconciles receipts with the existing coverage gate, so a local draft can never ship
   unreviewed.
 - The advisory batch is scored against every slug in `dispatch-w2.tsv`: a missing draft,
-  missing grade or failed call counts as a failure, and a grade missing required fields is
-  rejected, not read as zero.
+  missing grade or failed call counts as a failure. A grade is rejected, not read as zero,
+  unless its counts are nonnegative integers with `recall_present <= recall_total` and its
+  claim population matches the block under the writer's conflict and sibling-link rules.
 - Promotion needs the existing acceptance criteria in full, including the same-block
   comparison with a cloud article (transcription clears recall and over-claim by
-  construction, #127) and the cloud-token comparison, plus one repaired scratch copy per
-  failing draft. Recall is graded under the writer's own tier-conflict and sibling-link rules.
+  construction, #127) and the cloud-token comparison, plus one repaired scratch copy for
+  every draft whose grade lists any fix, citation-only fixes included, counted in the token
+  comparison. Recall is graded under the writer's own tier-conflict and sibling-link rules.
 - One refusal policy: a refusal is an explicit outcome, reconciled like an article, and it
   never overwrites an existing article.
 - The local drafter reads the target stack's real Topic Template, scope map and tag rule, not
