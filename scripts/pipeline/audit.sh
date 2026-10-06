@@ -24,7 +24,7 @@ set -euo pipefail
 #           prose reads. Exits non-zero if the stack has no articles.
 #   gate    Re-read run-state from disk, gate every expected _audit-<tag>.md
 #           (gate-batch.sh: write-or-fail + audit-findings shape = a VALIDATED
-#           receipt row exists) then check-coverage.sh --verdict VALIDATED --field 2
+#           receipt row exists) then check-coverage.sh --verdict VALIDATED
 #           (reconciles dispatched slugs vs the slug column of the VALIDATED
 #           receipt rows). A dropped/dup/unknown/missing receipt fails by name.
 #           This replaces the old per-article `last_verified == today` date-gate,
@@ -251,7 +251,7 @@ phase_gate() {
   # reconciles each batch_tag against only its _audit-<tag>.md, so a slug dropped by
   # its own batch but cross-emitted by another now fails (batchB omission + batchA
   # unknown) instead of leaking past the global union (#92).
-  bash "$HELPERS/check-coverage.sh" --verdict VALIDATED --field 2 --batched "$DEV/dispatch.tsv" "${PAIRS[@]}"
+  bash "$HELPERS/check-coverage.sh" --verdict VALIDATED "$DEV/dispatch.tsv" "${PAIRS[@]}"
 
   # The deterministic gate, not generated agent text, owns the provenance stamp.
   # Preflight every article before changing any, then advance all dates (#128).

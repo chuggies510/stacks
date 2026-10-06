@@ -30,7 +30,7 @@ set -euo pipefail
 #           sentinel slug (no home article; the agent searches the topic direct).
 #   gate    Re-read run-state from disk, gate every expected _enrich-<tag>.md
 #           (gate-batch.sh: write-or-fail + enrichment-findings shape) then
-#           check-coverage.sh --field 2 (reconciles dispatched gap_ids vs the
+#           check-coverage.sh (reconciles dispatched gap_ids vs the
 #           gap_id column of the findings rows). A dropped/dup/unknown/missing
 #           findings row fails by name.
 #   finish  Aggregate the per-batch findings, dedup CANDIDATE/WEAK rows by url
@@ -311,7 +311,7 @@ phase_gate() {
   # against only its _enrich-<tag>.md, catching a cross-batch misattribution the
   # global union would miss (#92).
   bash "$HELPERS/gate-batch.sh" "$RUN_ID" enrichment enrichment-findings "${BATCHFILES[@]}"
-  bash "$HELPERS/check-coverage.sh" --field 2 --batched "$DEV/dispatch.tsv" "${PAIRS[@]}"
+  bash "$HELPERS/check-coverage.sh" "$DEV/dispatch.tsv" "${PAIRS[@]}"
 }
 
 # --- finish -----------------------------------------------------------------
