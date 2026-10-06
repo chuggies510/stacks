@@ -10,6 +10,14 @@ The reader is Chris or a user deciding whether a release matters to them, not th
 
 Use plain words. File names, function and tool names, internal terms and how it works inside belong in the commit and the issue. Short never means lossy: a required action, rollback limit or caveat goes in the detail, never dropped. Add a correction as its own line; never edit the original. An entry that will not fit this shape is describing mechanism, or the release is too big.
 
+## 0.79.0 - 2026-10-06: Audits now remove sentences no source supports, and lookup names the edition of a standard it answers from.
+
+- Audit removes an unsourced sentence instead of listing it as a soft spot; the removed text is kept in the audit report. Run the one-time cleanup below in each library. (#122)
+- Lookup says which edition of a standard each answer comes from, warns when you asked about a different one, and uses more than one stack when a question spans them. (#118, #119)
+- Source fetching reads compressed pages, PDFs and full arXiv papers; catalog runs no longer launch the extra Haiku comparison agents. (#138, #115, #116)
+
+One-time cleanup per library stack, run from the library: `/stacks:audit-stack <stack> --only <slugs>`, where the slugs are the unique article names in that stack's `dev/audit/soft-spots.tsv` that still have an article, joined with commas (skip the stack when no slug is left, since an empty list audits the whole stack); delete that `soft-spots.tsv` only after the audit finishes. Until then the old file is ignored, and enrich now works only from lookup misses and empty stacks. A sentence is removed only after every source the article cites was read; an article with a missing or unreadable source is left untouched and its audit stops so you can restore the source. Also in this release: skills find the plugin through the installed-plugins record when no Codex cache exists (#63), the unused structural advisory and local validation shadow are gone (#148, #113), and article checks now require a non-empty title and routing line inside the header.
+
 ## 0.78.8 - 2026-10-02: Skill usage logs record the right session number again after the memory bank moved.
 
 - Telemetry reads the session number from a project's new `.memory-bank/` folder (ChuggiesMart ADR-130).
