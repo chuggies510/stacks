@@ -66,6 +66,10 @@ case "$type" in
     # VALIDATED does the per-slug reconciliation against the dispatch manifest.
     grep -qE '^VALIDATED'$'\t' "$path" \
       || fail "no VALIDATED receipt rows — validator wrote no per-article receipts"
+    # 0.79.0 retired SOFTSPOT: the validator removes an unsourced claim. A row here
+    # means a stale validator left the claim in place, so the report would lie.
+    ! grep -qE '^SOFTSPOT'$'\t' "$path" \
+      || fail "retired SOFTSPOT row: validator is out of date (0.79.0 removes unsourced claims)"
     ;;
   enrichment-findings)
     # Every non-blank line is a tab record led by a verdict. Split on a real tab

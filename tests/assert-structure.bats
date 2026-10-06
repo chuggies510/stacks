@@ -229,6 +229,14 @@ run_script() {
   [[ "$output" == *"STRUCTURE_FAILURE"* ]]
 }
 
+@test "audit-findings: a retired SOFTSPOT row fails even beside receipts" {
+  local f="$TEST_TMP/_audit-0.md"
+  printf 'VALIDATED\tvav-box\t1700000000\nSOFTSPOT\tvav-box\tMinimum airflow is 20%%.\tuncited\n' > "$f"
+  run_script "$f" audit-findings
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"retired SOFTSPOT"* ]]
+}
+
 @test "audit-findings: empty file fails" {
   local f="$TEST_TMP/_audit-0.md"
   : > "$f"
