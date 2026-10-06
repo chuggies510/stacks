@@ -163,6 +163,46 @@ run_script() {
   [[ "$output" == *"missing routing field"* ]]
 }
 
+@test "article-md: routing only in the body fails" {
+  local f="$TEST_TMP/article.md"
+  printf '%s\n' '---' 'title: Heat Exchanger Types' 'last_verified: ""' '---' 'routing: plate vs shell-and-tube, quoted from the body' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing routing field"* ]]
+}
+
+@test "article-md: empty routing fails" {
+  local f="$TEST_TMP/article.md"
+  printf '%s\n' '---' 'title: Heat Exchanger Types' 'routing:' 'last_verified: ""' '---' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing routing field"* ]]
+}
+
+@test "article-md: whitespace-only routing fails" {
+  local f="$TEST_TMP/article.md"
+  printf '%s\n' '---' 'title: Heat Exchanger Types' 'routing:    ' 'last_verified: ""' '---' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing routing field"* ]]
+}
+
+@test "article-md: title only in the body fails" {
+  local f="$TEST_TMP/article.md"
+  printf '%s\n' '---' 'routing: plate vs shell-and-tube, when to use each' 'last_verified: ""' '---' 'title: Heat Exchanger Types' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing title field"* ]]
+}
+
+@test "article-md: empty title fails" {
+  local f="$TEST_TMP/article.md"
+  printf '%s\n' '---' 'title:' 'routing: plate vs shell-and-tube, when to use each' 'last_verified: ""' '---' > "$f"
+  run_script "$f" article-md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing title field"* ]]
+}
+
 # ── audit-findings ─────────────────────────────────────────────────────────────
 # The audit gate no longer keys on a today-dated last_verified (#87 T7); the
 # per-batch validator file must carry a VALIDATED receipt row per assigned article.

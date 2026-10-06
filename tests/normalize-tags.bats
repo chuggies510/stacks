@@ -113,3 +113,25 @@ EOF
   run bash "$SCRIPT" "$STACK"
   [ "$status" -eq 0 ]
 }
+
+@test "quoted tags are compared without their quotes" {
+  cat > "$STACK/articles/econ.md" <<'EOF'
+---
+title: Economizer
+tags: ["airflow", 'controls']
+---
+Body.
+EOF
+  cat > "$STACK/articles/vav.md" <<'EOF'
+---
+title: VAV Box
+tags:
+  - "refrigerant"
+---
+Body.
+EOF
+  run bash "$SCRIPT" "$STACK"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"TAG_DRIFT: vav: refrigerant"* ]]
+  [[ "$output" != *"econ"* ]]
+}

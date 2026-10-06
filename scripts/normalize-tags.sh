@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=article-field.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/article-field.sh"
+
 stack_root=${1:-$PWD}
 
 stack_md="$stack_root/STACK.md"
@@ -39,36 +42,7 @@ shopt -s nullglob
 for article in "$articles_dir"/*.md; do
   slug=$(basename "$article" .md)
 
-  # Parse frontmatter tags: accept block list or inline flow list (article-synthesizer may emit either).
-  tags=$(awk '
-    BEGIN { in_fm = 0; in_tags = 0; fm_count = 0 }
-    /^---[[:space:]]*$/ {
-      fm_count++
-      if (fm_count == 1) { in_fm = 1; next }
-      if (fm_count == 2) { exit }
-    }
-    in_fm && /^tags:[[:space:]]*\[/ {
-      line = $0
-      sub(/^tags:[[:space:]]*\[/, "", line)
-      sub(/\].*$/, "", line)
-      n = split(line, arr, ",")
-      for (i = 1; i <= n; i++) {
-        gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", arr[i])
-        if (arr[i] != "") print arr[i]
-      }
-      in_tags = 0
-      next
-    }
-    in_fm && /^tags:[[:space:]]*$/ { in_tags = 1; next }
-    in_fm && in_tags && /^[[:space:]]*-[[:space:]]*/ {
-      item = $0
-      sub(/^[[:space:]]*-[[:space:]]*/, "", item)
-      gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", item)
-      if (item != "") print item
-      next
-    }
-    in_fm && in_tags && /^[^[:space:]-]/ { in_tags = 0 }
-  ' "$article")
+  tags=$(article_tags "$article")
 
   while IFS= read -r tag; do
     [[ -z "$tag" ]] && continue

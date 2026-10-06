@@ -34,16 +34,9 @@ fi
 # 2. Gather all articles and group by tags[0]
 declare -A TAG_GROUPS
 while IFS= read -r article; do
-  # Group by the first tag. Accept BOTH frontmatter forms normalize-tags.sh does:
-  # an inline flow list (`tags: [a, b]`) and a block list (`tags:` then `  - a`).
-  # Inline-only parsing here previously dropped inline-tagged articles to
-  # "uncategorized" even though the STACK.md template demonstrates the inline form.
-  tag=$(awk '
-    /^tags:[[:space:]]*\[/ { line=$0; sub(/^tags:[[:space:]]*\[/,"",line); sub(/[],].*/,"",line); gsub(/^[[:space:]]+|[[:space:]]+$/,"",line); print line; exit }
-    /^tags:/ { found=1; next }
-    found && /^  - / { print $2; exit }
-    found && !/^  -/ { exit }
-  ' "$article")
+  # Group by the first tag. article_tags accepts both frontmatter forms (inline flow
+  # list and block list) and strips quotes; sed, not head, so the pipe never SIGPIPEs.
+  tag=$(article_tags "$article" | sed -n 1p)
   title=$(article_field title "$article") || title=""
   # Strip [[ ]] from the display label — titles that contain wikilink markup
   # would otherwise produce nested brackets that break the outer link (#60).

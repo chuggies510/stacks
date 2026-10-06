@@ -69,6 +69,63 @@ EOF
   grep -qF '[[econ|Economizer]]' "$STACK/index.md"
 }
 
+@test "quoted inline tags group without the quotes" {
+  cat > "$STACK/articles/econ.md" <<'EOF'
+---
+title: Economizer
+tags: ["controls", "airflow"]
+---
+Body.
+EOF
+  bash "$SCRIPT" "$STACK"
+  grep -qxF '### controls' "$STACK/index.md"
+  [ -z "$(grep -F '"' "$STACK/index.md")" ]
+}
+
+@test "quoted block-list tags group without the quotes" {
+  cat > "$STACK/articles/econ.md" <<'EOF'
+---
+title: Economizer
+tags:
+  - 'controls'
+  - "airflow"
+---
+Body.
+EOF
+  bash "$SCRIPT" "$STACK"
+  grep -qxF '### controls' "$STACK/index.md"
+  [ -z "$(grep -F "'" "$STACK/index.md")" ]
+}
+
+@test "a tags: line in the body does not set the group" {
+  cat > "$STACK/articles/notags.md" <<'EOF'
+---
+title: No Tags
+---
+Example frontmatter quoted in prose:
+
+tags: [bogus]
+EOF
+  bash "$SCRIPT" "$STACK"
+  [ -z "$(grep -F '### bogus' "$STACK/index.md")" ]
+  grep -qxF '### uncategorized' "$STACK/index.md"
+}
+
+@test "tags in unclosed frontmatter are not read" {
+  # No closing delimiter: frontmatter cannot be told from body, so nothing is trusted.
+  printf '%s\n' '---' 'title: Unclosed' 'tags:' '  - bogus' > "$STACK/articles/unclosed.md"
+  bash "$SCRIPT" "$STACK"
+  [ -z "$(grep -F '### bogus' "$STACK/index.md")" ]
+  grep -qxF '### uncategorized' "$STACK/index.md"
+}
+
+@test "tags before an opening delimiter are not read" {
+  printf '%s\n' 'title: No fence' 'tags:' '  - bogus' '---' 'Body.' > "$STACK/articles/nofence.md"
+  bash "$SCRIPT" "$STACK"
+  [ -z "$(grep -F '### bogus' "$STACK/index.md")" ]
+  grep -qxF '### uncategorized' "$STACK/index.md"
+}
+
 @test "preserves the Reading Paths section verbatim" {
   cat > "$STACK/index.md" <<'EOF'
 # hvac: Map of Contents

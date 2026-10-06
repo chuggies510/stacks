@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=article-field.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/article-field.sh"
+
 path=${1:-}
 type=${2:-}
 agent_label=$3
@@ -45,7 +48,9 @@ case "$type" in
     grep -qE '^ALL_SLUGS=[^[:space:]]' "$path" || fail "ALL_SLUGS has empty value"
     ;;
   article-md)
-    grep -qE '^title:'           "$path" || fail "missing title field"
+    # title and routing go through article_field, the one frontmatter reader: a bare
+    # `grep '^title:'` passed a value that was empty or sat in the body.
+    article_field title "$path" >/dev/null || fail "missing title field (absent, empty, or outside the frontmatter block)"
     # Anchored to the frontmatter block AND unique. A bare grep over the whole
     # file passes a dated key in frontmatter as long as an empty `last_verified: ""`
     # appears anywhere below (a body line, a fenced example) — and passes the
@@ -55,7 +60,7 @@ case "$type" in
          f==1 && /^last_verified:/{n++; empty = ($0 ~ /^last_verified: *""[[:space:]]*$/)}
          END{exit !(n==1 && empty)}' "$path" \
       || fail "frontmatter needs exactly one last_verified, empty at synthesis (audit gate sets it)"
-    grep -qE '^routing:'         "$path" || fail "missing routing field"
+    article_field routing "$path" >/dev/null || fail "missing routing field (absent, empty, or outside the frontmatter block)"
     ;;
   audit-findings)
     # Per-batch validator output (#87 T7). The success signal is no longer a

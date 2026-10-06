@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # article-field.sh <field> <article.md>
 # article-field.sh --check-one <field> <article.md>
+# article-field.sh --tags <article.md>
 # article-field.sh --set <field> <value> <article.md>
 #
 # THE definition of how a stacks article's frontmatter field is read. Prints the
@@ -84,6 +85,33 @@ article_field_unique() {
   ' "$article"
 }
 
+# THE definition of how an article's tags are read: one tag per line, in order,
+# from either frontmatter form the synthesizer may write (`tags: [a, "b"]` or `tags:`
+# then `  - a`), with quotes and surrounding space stripped. Same bounds as
+# article_field: prints nothing unless the frontmatter is closed, and a `tags:` line in
+# the body is never read. Exits 0 when the field is absent; 1 only if unreadable.
+article_tags() {
+  local article="${1:?usage: article_tags <article.md>}"
+  [[ -r "$article" ]] || return 1
+
+  awk '
+    function add(t) { gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", t); if (t != "") out = out t "\n" }
+    NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+    /^---[[:space:]]*$/ { closed = 1; exit }
+    /^tags:/ && !seen {
+      seen = 1
+      if ($0 ~ /^tags:[[:space:]]*\[/) {
+        line = $0; sub(/^tags:[[:space:]]*\[/, "", line); sub(/\].*$/, "", line)
+        n = split(line, parts, ","); for (i = 1; i <= n; i++) add(parts[i])
+      } else if ($0 ~ /^tags:[[:space:]]*$/) in_list = 1
+      next
+    }
+    in_list && /^[[:space:]]*-/ { item = $0; sub(/^[[:space:]]*-/, "", item); add(item); next }
+    in_list && /^[^[:space:]-]/ { in_list = 0 }
+    END { if (closed) printf "%s", out }
+  ' "$article"
+}
+
 # Replace one existing frontmatter field atomically while preserving file mode.
 article_set_field() {
   local field="${1:?usage: article_set_field <field> <value> <article.md>}"
@@ -122,6 +150,7 @@ article_set_field() {
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   set -euo pipefail
   case "${1:-}" in
+    --tags) shift; article_tags "$@" ;;
     --check-one) shift; article_field_unique "$@" ;;
     --set) shift; article_set_field "$@" ;;
     *) article_field "$@" ;;
