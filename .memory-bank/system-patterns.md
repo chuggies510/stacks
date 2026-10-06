@@ -72,7 +72,7 @@ Every worker agent makes a corpus-relative judgment — reuse-vs-mint (extractor
 - **Extractor** (0.57.0, #95): reuses a slug when a concept falls within an existing article's described scope instead of minting a sub-topic fragment (the #106 fragmentation root). 0.57.1 added the reverse guard — keep distinct existing articles distinct; the scope map can over-correct a weaker tier into *lumping* two articles into one (measured: haiku recall 0.80 on one pass).
 - **Synthesizer** (0.58.0, #110): writes within its slug's boundary, cross-links a sibling with `[[slug]]` instead of restating it.
 - **Enrich** (0.58.0, #98 agent half): checks whether an already-filed source grounds the claim before spending a web search (topic-aware `DUP`, not URL-equality). The staging-time URL-dedup script bug stays open under #98.
-- **Validator** (0.58.0, #98/#106): promotes an uncited-but-already-listed-source claim to a `CORRECTION` (add citation) instead of a soft spot; emits a returned-text structural advisory that is not persisted in the audit artifact (#148).
+- **Validator** (0.58.0, #98): promotes an uncited-but-already-listed-source claim to a `CORRECTION` (add citation) instead of a soft spot.
 
 The lever generalized from one stage to all four: the pipeline maintains the scope map for lookup; the worker dispatches now hand it over.
 

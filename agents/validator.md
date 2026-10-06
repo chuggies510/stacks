@@ -28,7 +28,6 @@ Passed as the per-batch task content:
 - **Assigned articles**: absolute paths, a slice of `articles/*.md`.
 - **Scoped sources**: the source subset covering your articles' citations (resolved from each article's `sources:` frontmatter and inline `[source-slug]` refs). Excludes `sources/incoming/` (pending catalog) and `sources/trash/` (soft-deleted). The parent falls back to the full sources tree only when an article has zero resolvable citations.
 - **STACK.md** (source-hierarchy section): relative trust of sources, for conflict resolution.
-- **`index.md`'s `## Articles` scope map** (when present): the `slug — scope` routing lines for every article in the stack, not just your assigned batch. Used only for the structural advisory (Process step 7), flagging possible lumping/fragmentation across articles in your returned text — it plays no role in claim verification. Skip step 7 when it isn't provided.
 - **`$STACK`** (stack root) and **`$BATCH_TAG`** (your batch id): where and under what name to write your audit file.
 - **`$RUN_ID`**: the run nonce (a Unix timestamp). Echo it verbatim in every `VALIDATED` receipt row so the parent gate can prove the row is from this run.
 
@@ -52,7 +51,6 @@ For each assigned article:
 4. Leave `last_verified:` unchanged. The parent gate replaces its value only after every receipt passes freshness, RUN_ID, and coverage checks. Never append or edit this field.
 5. Write the article in place with `Edit` (corrections + mark-stripping).
 6. Record one `VALIDATED<TAB>{slug}<TAB>{RUN_ID}` receipt row for this article in your audit file (see Output). This is the per-article coverage signal the parent gate reconciles against the dispatch manifest — write it for **every** assigned article, including ones you left unchanged.
-7. **Once, after all assigned articles are processed** — the structural advisory (stacks#106), advisory only, never written to the audit file: using the `index.md` scope map (skip entirely when it wasn't provided), check whether any assigned article's claims substantially overlap a DIFFERENT article's described scope — a sign of lumping (one article holding content that reads like it belongs under another's scope line) or fragmentation (two scope lines describing what reads as one topic). Do not edit either article for placement and do not merge or split content — the default stays leave the author's text, verify against sources; the scope map is for this advisory only. Note any overlap in your **returned text** as a short "Structural advisory" list (this slug, the overlapping slug, one line why); omit it when there's nothing to flag. No new output-file line kind.
 
 ## Output
 
@@ -72,8 +70,6 @@ SOFTSPOT	cooling-tower-cycles	Cycles of concentration above 7 are rarely achieva
 ```
 
 Write this file with the Write tool (overwrite if it exists). It is **never empty**: even a fully-clean batch emits one `VALIDATED` row per assigned article.
-
-**3. Returned text** (not written to any file): a "Structural advisory" note per Process step 7, when you found one — sibling-article scope overlaps worth an operator look. Omit this section when there's nothing to flag.
 
 ## Example 1: claim supported — no change
 
@@ -138,15 +134,3 @@ CORRECTION	duct-leakage-testing	added missing [ashrae-62-1] citation to leakage-
 ```
 
 Not a SOFTSPOT — the article already lists a source that grounds it; this was a citation gap, not an unsourced claim.
-
-## Example 6: structural advisory — possible fragmentation
-
-Your batch validates `economizer-dry-bulb-control.md` and `economizer-enthalpy-control.md`. `index.md`'s scope map describes both with near-identical scope lines ("economizer changeover control strategy"), and most claims in each cite overlapping sections of the same source.
-
-Action: validate both against their sources as usual — no change to either body for placement. In your returned text, add:
-
-```
-Structural advisory: economizer-dry-bulb-control and economizer-enthalpy-control describe near-identical scope ("economizer changeover control strategy") and cite overlapping source sections — possible fragmentation, operator may want to merge.
-```
-
-Nothing is written to the audit file for this — the gate only ever sees the three existing line kinds.
