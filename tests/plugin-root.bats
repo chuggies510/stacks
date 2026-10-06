@@ -122,3 +122,24 @@ $resolver"
   [ "$output" = "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." ]
   [[ "$output" != *"/scripts/"* ]]
 }
+
+@test "resolver falls back to the installed_plugins.json install path when the Codex cache is absent" {
+  test_home="$BATS_TEST_TMPDIR/home"
+  plugin="$BATS_TEST_TMPDIR/installed/stacks/0.78.8"
+  seed_plugin "$plugin"
+  mkdir -p "$test_home/.claude/plugins"
+  jq -n --arg p "$plugin" \
+    '{version: 2, plugins: {"stacks@stacks": [{scope: "user", installPath: $p, version: "0.78.8"}]}}' \
+    > "$test_home/.claude/plugins/installed_plugins.json"
+  [ ! -e "$test_home/.codex" ]
+  resolver=$(resolver_for "$ROOT/skills/lookup/SKILL.md")
+
+  for sh in bash zsh; do
+    run env -u STACKS_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT -u CODEX_PLUGIN_CACHE -u CODEX_HOME \
+      HOME="$test_home" "$sh" -c "set -euo pipefail
+$resolver
+printf '%s\\n' \"\$STACKS_ROOT\""
+    [ "$status" -eq 0 ]
+    [ "$output" = "$plugin" ]
+  done
+}
