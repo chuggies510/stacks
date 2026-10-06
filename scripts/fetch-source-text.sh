@@ -9,7 +9,8 @@ set -uo pipefail
 #
 # WebFetch cannot be used here: it "answers a prompt using a small fast model",
 # so it always returns generated text, never the raw page. This helper does the
-# raw fetch (curl) + tag strip instead.
+# raw fetch (curl) + tag strip instead. A PDF response is converted by
+# convert-sources.sh (no tag strip); an arXiv /abs/ URL is fetched as its PDF.
 #
 # Size: by default the whole cleaned page is emitted (store-full-by-default).
 # Above --max-words, a HEAD span would risk dropping a supporting passage that
@@ -70,21 +71,36 @@ fi
 
 [ -n "$URL" ] || [ "$STDIN" = 1 ] || { echo "usage: fetch-source-text.sh <url> [--quote ...] [--max-words N]" >&2; exit 2; }
 
+# An arXiv /abs/ page is only the abstract; the paper is the PDF (#116).
+FETCH_URL=$(printf '%s\n' "$URL" | sed -E 's#^https?://(www\.)?arxiv\.org/abs/#https://arxiv.org/pdf/#')
+
+ISPDF=0
 if [ "$STDIN" = 1 ]; then
   RAW=$(cat)
 else
-  RAW=$(curl -sSL --max-time 45 -A 'Mozilla/5.0 (compatible; stacks-enrich/1)' "$URL" 2>/dev/null)
+  T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; mkdir "$T/in"
+  # --compressed: a server sending content-encoding gzip otherwise yields binary (#138)
+  curl -sSL --compressed --max-time 45 -A 'Mozilla/5.0 (compatible; stacks-enrich/1)' -o "$T/f" "$FETCH_URL" 2>/dev/null
+  if [ "$(head -c 4 "$T/f" 2>/dev/null)" = "%PDF" ]; then
+    # PDF: reuse the shared converter (#115); no text layer -> empty -> exit 3 below
+    ISPDF=1; mv "$T/f" "$T/in/f.pdf"
+    "$(dirname "$0")/convert-sources.sh" "$T/in" "$T/arch" >/dev/null 2>&1
+    RAW=$(cat "$T/in/f.txt" 2>/dev/null)
+  else
+    RAW=$(cat "$T/f" 2>/dev/null)
+  fi
 fi
 [ -n "$RAW" ] || { echo "WORDS=0 EXCERPTED=0 QUOTE_FOUND=NA" >&2; echo "fetch failed or empty: ${URL:-<stdin>}" >&2; exit 3; }
 
-printf '%s' "$RAW" | QUOTE="$QUOTE" MAXWORDS="$MAXWORDS" python3 -c '
+printf '%s' "$RAW" | QUOTE="$QUOTE" MAXWORDS="$MAXWORDS" ISPDF="$ISPDF" python3 -c '
 import sys, os, re, html
 raw = sys.stdin.read()
-raw = re.sub(r"<script.*?</script>", " ", raw, flags=re.S|re.I)
-raw = re.sub(r"<style.*?</style>", " ", raw, flags=re.S|re.I)
-raw = re.sub(r"<(br|/p|/div|/li|/tr|/h[1-6])\s*/?>", "\n", raw, flags=re.I)
-raw = re.sub(r"<[^>]+>", " ", raw)
-raw = html.unescape(raw)
+if os.environ.get("ISPDF") != "1":   # PDF text is not HTML: "x < 5 and y > 3" must survive
+    raw = re.sub(r"<script.*?</script>", " ", raw, flags=re.S|re.I)
+    raw = re.sub(r"<style.*?</style>", " ", raw, flags=re.S|re.I)
+    raw = re.sub(r"<(br|/p|/div|/li|/tr|/h[1-6])\s*/?>", "\n", raw, flags=re.I)
+    raw = re.sub(r"<[^>]+>", " ", raw)
+    raw = html.unescape(raw)
 raw = re.sub(r"[ \t]+", " ", raw)
 raw = re.sub(r"\n[ \t]+", "\n", raw)
 raw = re.sub(r"\n{3,}", "\n\n", raw).strip()
