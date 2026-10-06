@@ -101,6 +101,8 @@ Requirements:
 - Cite which article(s) the answer comes from (by title, not path)
 - Include specific data points, formulas, rules of thumb, and field notes from the articles
 - For any content drawn from a **reference chapter** (Step 6.5), cite it to the printed book: book name, volume/chapter, and the printed page range from its frontmatter (`book`, `volume`, `chapter`, `printed_pages`). A handbook chapter IS a citable primary source.
+- Name the edition or version of the standard each cited article is written to (articles state it in the body or routing line).
+- If the query names a different edition, say so plainly and point the caller to the primary text.
 - If the articles and chapters don't fully answer the question, say what's missing
 - Do not invent information beyond what the articles and chapters contain
 - Do not call WebSearch/WebFetch to fill a gap here — answer from the grounded content and state what is missing (the line above); a raw web fill is ungrounded and unrecorded. (A *true* miss — nothing matched — never reaches Step 7; it went to Step 9, which does the web search through the verifying pipeline.)
