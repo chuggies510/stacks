@@ -12,7 +12,7 @@
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
 | `references/` | `default-topic-template.md` (the only reference doc; wave-engine/refresh-procedure/obsidian were removed in 0.21.0) |
-| `dev/` | Planning and feature-dev artifacts (not shipped with plugin) |
+| `dev/` | Specs, plans, experiments, and other process artifacts (not shipped with plugin) |
 | `CHANGELOG.md` | Version history |
 | `README.md` | User-facing readme |
 
