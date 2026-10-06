@@ -19,8 +19,8 @@ and `/stacks:lookup`.
 |---|---|---|---|---|
 | `last_verified` | string, `""` or `"YYYY-MM-DD"` | `article-synthesizer` (sets `""` on write/update); `audit.sh gate` (sets today only after receipt freshness, RUN_ID, and coverage pass) | `assert-structure.sh` `article-md` requires the value be exactly `""` at synthesis time. The audit gate reconciles a per-article `VALIDATED<TAB>slug<TAB>RUN_ID` receipt row before replacing the single existing field, so generated agent text cannot advance or duplicate it (#128). `last_verified` records provenance but is not the coverage signal. | Yes, empty at synthesis and one keyed quoted date after validation |
 | `sources` | YAML list of bare `sources/{publisher}/{file}.md` paths | `article-synthesizer` | `validator` (resolves each `[source-slug]` citation against this list); `/stacks:lookup` Step 7 (collects primary-source citations) | No (no grep kind checks list contents; `article-md` doesn't check this key) |
-| `title` | string, human-readable | `article-synthesizer` | `assert-structure.sh` `article-md`; `/stacks:lookup` (cites articles by title) | Yes — key must exist |
-| `routing` | one-line plain-text string, asker's-words description | `article-synthesizer` | `scripts/regenerate-moc.sh` (the MoC line per article); `/stacks:lookup` Step 6 (query-to-article recognition) | No |
+| `title` | string, human-readable | `article-synthesizer` | `assert-structure.sh` `article-md`; `/stacks:lookup` (cites articles by title) | Yes: non-empty inside the frontmatter (read through `scripts/article-field.sh`) |
+| `routing` | one-line plain-text string, asker's-words description | `article-synthesizer` | `scripts/regenerate-moc.sh` (the MoC line per article); `/stacks:lookup` Step 6 (query-to-article recognition) | Yes: `assert-structure.sh` `article-md` requires it non-empty inside the frontmatter; the validator narrows it when it removes a sentence the line promised |
 | `tags` | YAML list, values drawn from `STACK.md`'s `allowed_tags:` | `article-synthesizer` | `scripts/regenerate-moc.sh` (groups the MoC by `tags[0]`); `scripts/normalize-tags.sh` (drift check against `allowed_tags:`) | No (no grep kind checks tag values; enforcement is `normalize-tags.sh`, not `assert-structure.sh`) |
 
 `extraction_hash` and `updated` are **dead**: both were written but never read by any
@@ -147,7 +147,7 @@ contributing blocks.
 | `concept-batch` | `^## Concept:` header present, OR a lone `# no-concepts: <reason>` sentinel (non-empty reason) for a pure-reference source (#93) |
 | `dedup-md` | `^## Concept:` header present (no sentinel — dedup never emits one) |
 | `dedup-meta` | `ALL_SLUGS=` key present with a non-empty value |
-| `article-md` | `^title:` key present; `^last_verified:` present AND equal to `""` (empty at synthesis, #125) |
+| `article-md` | non-empty `title` and `routing` inside the frontmatter block (via `scripts/article-field.sh`); exactly one `last_verified`, equal to `""` (empty at synthesis, #125) |
 | `audit-findings` | a `VALIDATED<TAB>` receipt row present (the validator wrote per-article receipts; `check-coverage.sh --verdict VALIDATED` does the per-slug reconciliation) |
 | `enrichment-findings` | every non-blank line is an 8-tab-field row led by a `CANDIDATE\|WEAK\|DUP\|NOSOURCE` verdict |
 

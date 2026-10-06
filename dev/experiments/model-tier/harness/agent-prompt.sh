@@ -29,9 +29,8 @@ AGENTS_DIR="$HERE/../../../../agents"
 # that stage is actually benchmarked ON, so the check fails if that judgment leaves the
 # fenced region — a line count alone passes a slice whose Judgment Bias was deleted,
 # which is this repo's own shape-vs-content instrument error pointed at its own gate.
-# validator is deliberately absent: after the #136 review its two harnesses were left
-# on their own claim-shaped prompts (see validator-shadow.sh), so fencing it would guard
-# a slice nothing consumes.
+# validator is deliberately absent: it is a reviewer-only stage with no local harness
+# (deleted in S31, #113), so fencing it would guard a slice nothing consumes.
 FENCED_AGENTS=(
   "source-extractor|20|Default to reuse; mint a new slug only as the exception"
   "article-synthesizer|40|KEEP THE SUBJECT NARROW"
