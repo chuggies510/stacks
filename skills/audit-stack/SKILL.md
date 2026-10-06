@@ -78,37 +78,6 @@ bash "$STACKS_ROOT/scripts/pipeline/audit.sh" gate $ARGUMENTS
 
 A non-zero exit means a validator did not process an article it was assigned (no receipt row) or wrote no file — surface the named failure and stop. This is the per-article coverage the old `last_verified == today` date-gate could not prove.
 
-## Step 4.5: Local-validation shadow + advisory verify (verify-and-fix rollout, opt-in — #109)
-
-**Runs only when `STACKS_LOCAL_SHADOW=1` is set.** Default runs skip it. This is the validation analog of the extraction advisory (catalog Step 5.5): it grades whether the cheap local tier could do the per-claim validation judgment behind the harness. The recipe: **the harness owns retrieval** — `pair-claims.py` splits each article into claims and pulls each claim's OWN cited-source excerpt (token-overlap, deterministic), so the model judges ONE claim + ONE excerpt (the offline-benchmark shape) instead of picking its own passage out of a whole-article dump; the cheap tier emits one verdict per claim; the harness coerces a CLEAN on an uncited claim to `INVALID/uncited-clean` from pair-claims' **ground-truth** `cited` flag (closing the S24 item-6 miss, and not dodgeable via the model's echoed text); and the cloud **`validation-verifier`** owns the content judgment (does the real source support the claim). **The cloud `validator`'s in-place fixes from Steps 3–4 are authoritative and untouched; this only observes.** Runs after `gate` and before `finish` clears `dispatch.tsv`. (Gold-check: `shadow-validate-run.sh --gold-check` scores the 7 benchmark items end-to-end — recall 3/3, false-correction 0/4 on automated pairing.)
-
-First the local per-claim pass (reads the transient `dispatch.tsv`, so it must run before `finish`; writes one per-batch claim file + a `batches.tsv` dispatch manifest):
-
-```bash
-if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
-  STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
-  [ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
-  [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
-  [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
-  bash "$STACKS_ROOT/dev/experiments/model-tier/harness/shadow-validate-run.sh" {stack} || echo "validation shadow returned non-zero — non-fatal, continuing"
-fi
-```
-
-Non-fatal by design (Ollama unreachable → the claim logs a PARSE-ERROR verdict and the run proceeds). Read the `SHADOW_VALIDATE_SUMMARY` line for the articles/claims/corrections/unparsed counts, and the dispatch manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validate/batches.tsv` (rows: `batch_tag<TAB>batchfile`).
-
-Then the advisory verify: **reset the grade dir** (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify"`), then for each `batches.tsv` row dispatch one **`stacks:validation-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent absolute paths, scope pinned to: the batch claim file (column 2 — each claim's text, the harness-retrieved source excerpt, and the gated local verdict), the audited articles under `{LIBRARY}/{stack}/articles/` and the stack's real sources `{LIBRARY}/{stack}/sources/` (the agent forms its OWN authoritative verdict from the real source, since the local-quoted excerpt may be paraphrased or mis-retrieved), and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify/{batch_tag}.json`. It never edits any article or verdict. After the wave returns, aggregate:
-
-```bash
-STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(jq -r '.extraKnownMarketplaces.stacks.source.path // empty' "$HOME/.claude/settings.json" 2>/dev/null || true)}}"
-[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
-[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
-[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
-bash "$STACKS_ROOT/dev/experiments/model-tier/harness/validation-verify-summary.sh" \
-  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/validation-verify" || true
-```
-
-Read the `poison recall` and `false-correction rate` lines — a poison recall breach (a claim that overstates/contradicts its source, called CLEAN) is the dangerous class nothing downstream catches; a high false-correction rate means the local tier is trimming truthful claims (often from mis-retrieving the source passage). Both must clear before validation could flip to a local authoritative tier. Advisory only — `finish` proceeds regardless.
-
 ## Step 5: Audit report (`audit.sh finish`)
 
 `audit.sh finish` aggregates the `CORRECTION`/`SOFTSPOT` rows across the dispatched batch files, rebuilds `dev/audit/report.md` (this run's corrections + soft spots), merges `dev/audit/soft-spots.tsv` (the `/stacks:enrich-stack` input — carrying the skipped articles' prior soft spots forward, since an incremental run only re-checks changed articles), re-stamps `dev/audit/verified.tsv` (every article's current hash, so the next prep can skip the unchanged ones), prints an `AUDIT_SUMMARY: articles=… skipped=… corrections=… softspots=…` line, then removes the transient run files. Runs after a `NOTHING_TO_AUDIT` prep too (carries all soft spots, re-stamps hashes, writes a 0-audited report).
