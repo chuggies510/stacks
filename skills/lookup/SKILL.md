@@ -53,7 +53,7 @@ Do the Hop-1 recognition pass now:
 Read the catalog.md descriptions you already loaded in Step 2. Each stack entry has a name and a description of its domain (what topics, questions, and concepts it covers). Match the **query's meaning** against those descriptions — not keyword overlap, but whether the stack's domain is the right place to answer this question.
 
 Decision rules:
-- **Single-domain query**: pick 1 stack. Default narrow: if one stack clearly owns the domain, select only that one.
+- **Single-domain query**: pick 1 stack only if it owns every part of the query; if any part belongs to another stack's description, treat it as cross-domain.
 - **Cross-domain query** (the query genuinely spans two or more distinct domains, e.g. "how does AI apply to building controls"): widen to 2-3 stacks.
 - Do not open stacks whose domain is unrelated to the query even if they share incidental words (e.g. a query about LLM tuning should not pull in HVAC stacks because HVAC sources mention "controls").
 
