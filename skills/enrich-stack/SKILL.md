@@ -1,21 +1,22 @@
 ---
 name: enrich-stack
-description: Use when a knowledge stack has audit soft spots, lookup misses, or an empty scope that needs grounding sources; runs from any repo against the configured library.
+description: Use when a knowledge stack has lookup misses or an empty scope that needs grounding sources; runs from any repo against the configured library.
 ---
 
 # Enrich Stack
 
-Acquire sources for a stack's **soft spots** — article claims that the audit
-flagged as having no cited source. This is the missing acquisition step between
-the two existing skills:
+Acquire sources for a stack's **lookup misses** — queries `/stacks:lookup`
+searched the stack for and could not answer, and, on an empty stack, for the
+topic areas its `STACK.md` scope names. This is the acquisition step in front of
+`catalog-sources`:
 
 ```
-audit-stack   →   enrich-stack   →   catalog-sources
-(finds gaps)      (acquires sources)   (ingests them)
+lookup (a miss)   →   enrich-stack   →   catalog-sources
+(finds the gap)       (acquires sources)   (ingests them)
 ```
 
-For each gap the `enrichment` agent web-searches one source that grounds the
-exact claim, verifies it (not just topically related), rates its tier, and dedups
+For each gap the `enrichment` agent web-searches one source that states what the
+query asks, verifies it (not just topically related), rates its tier, and dedups
 against already-filed sources. This skill batches the gaps, gates the agents,
 dedups by URL, then stages sources into `sources/incoming/`.
 
@@ -30,23 +31,21 @@ dedups by URL, then stages sources into `sources/incoming/`.
 
 Either way it then closes the loop itself — runs `catalog-sources` + `audit-stack`
 in the same session and reports which gaps cleared. A batch run derives its work
-from the latest audit artifact plus mined lookup misses; a `--query` run derives
-exactly one gap. There is no persistent enrichment ledger.
+from mined lookup misses; a `--query` run derives exactly one gap. There is no persistent enrichment ledger.
 
 **Scope the invocation to the reason you're enriching (#114).** If you are
 invoking this skill because a prior `/stacks:lookup` in this session flagged a
 specific miss, or because an article's own "Gaps requiring Tier 1/Tier 2
 sources" note named a specific claim, that is a single-gap job: pass
 `--query "<that gap>"` explicitly. Do not invoke bare — a bare invocation pulls
-the FULL stack backlog (every live soft spot, sharded into many batches, many
+the FULL stack backlog (every live lookup miss, sharded into many batches, many
 parallel web-search agents), a much larger and more expensive run than the one
 gap actually in scope. Reserve a bare invocation for when you actually mean
 "work the whole backlog."
 
 **Cold-start (#86):** an empty but scaffolded stack (STACK.md present, zero
-articles, no soft spots, no lookup misses) is one giant soft spot — there is
-nothing to audit and nothing has been queried, so the normal gap sources are
-empty. When `prep` sees zero live gaps AND zero real article files, it seeds the
+articles, no lookup misses) is one giant gap — there is nothing to look up
+and nothing has been queried, so the normal gap source is empty. When `prep` sees zero live gaps AND zero real article files, it seeds the
 gap list from STACK.md's `## Scope` bullets (one gap per topic area) so a
 freshly-created stack can bootstrap its first sources. This path is automatic on
 a plain batch run (no new flag); the operator-approval gate below is unchanged,
@@ -68,8 +67,7 @@ SKILL_NAME="stacks:enrich-stack" bash "$STACKS_ROOT/scripts/telemetry.sh" 2>/dev
 library, parse args (the first non-flag token is the stack; `--auto` = hands-free
 staging, no operator prompt at Step 6; `--query <text>` scopes the run to ONE gap
 and must come last so a multi-word query survives), build the filed-sources
-listing, stale-check the audit soft spots, mine telemetry misses, shard the
-survivors into `CAP=5` batches, and write the run-state files
+listing, mine the lookup misses from telemetry, shard them into `CAP=5` batches, and write the run-state files
 (`dev/enrich/dispatch.tsv`, `dev/enrich/run.env`, `_filed-sources.tsv`). It
 prints a per-batch summary and the paths the dispatch below reads. `--auto`/
 `--query` come from lookup's live auto-path (#69); a manual run passes neither
@@ -83,7 +81,7 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 bash "$STACKS_ROOT/scripts/pipeline/enrich.sh" prep $ARGUMENTS
 ```
 
-On an empty stack (zero articles) with no soft spots and no lookup misses, prep
+On an empty stack (zero articles) with no lookup misses, prep
 cold-starts: it prints `Cold-start (#86): 0 articles, seeding N topic area(s)…`
 and the gaps are STACK.md scope areas (dispatch and the rest of the steps are
 identical from here — the enrichment agent finds one foundational Tier-1/2 source
@@ -95,10 +93,10 @@ manifest/listing/stack-root paths (they feed the dispatch).
 **Full-backlog confirmation gate (#114).** If this run has no `--query` (a bare
 invocation, full stack backlog — not the cold-start seed path above) AND prep's
 summary shows more than one batch, this is never silent: before dispatching
-any agent in Step 3, state to the operator the soft-spot count and batch count
+any agent in Step 3, state to the operator the gap count and batch count
 prep printed, that this is the FULL stack backlog and not a single gap, and ask
 them to confirm before proceeding. This is a defined step, not a courtesy — the
-#114 incident (a bare `enrich-stack plumbing` fanning out to 41 soft spots / 9
+#114 incident (a bare `enrich-stack plumbing` fanning out to 41 gaps / 9
 batches when one HPWH-sizing gap was intended) was only caught because the
 operator happened to be asked. A single-batch bare run (small stack, one or two
 live gaps) needs no confirmation; a `--query` run never does.
@@ -218,7 +216,7 @@ Group them by verdict for the operator:
 - `CANDIDATE` / `WEAK` — a fetchable URL that grounds the claim (WEAK = tier 4 only);
   a single row may list several `gap_ids`/`slugs` (one source grounds several claims).
 - `DUP` — already-filed source; no fetch, the operator just adds a citation.
-- `NOSOURCE` — nothing grounds it; the operator tightens the claim or accepts it.
+- `NOSOURCE` — nothing grounds it; the operator rewords the query or drops it.
 
 ## Step 6: Operator approval (no writes before this)
 
@@ -237,8 +235,8 @@ runs, `AUTO=0`). (The transient working files under `dev/enrich/` — the listin
 cleaned up below; nothing enters `sources/` before approval.) Present a compact
 table — one row per gap — so the operator can see what would be staged:
 
-| verdict | article (slug) | tier | source | grounds the claim? (quote) |
-|---------|----------------|------|--------|-----------------------------|
+| verdict | gap (query or topic) | tier | source | states the answer? (quote) |
+|---------|----------------------|------|--------|-----------------------------|
 
 The default proposal: **stage all `CANDIDATE`s**; list `WEAK`s separately for
 explicit opt-in (tier-4 sources are weak grounding); never stage `DUP`/`NOSOURCE`.
@@ -287,7 +285,7 @@ publisher: {slug matching an existing sources/<dir>, or a new one}
 **Source:** {url}
 **Published:** {date if known, else omit}
 **Fetched:** {today}
-**Supports gap:** {slug(s) this source grounds, or the query for a `lookup-miss` gap}
+**Supports gap:** {the query or topic area this source grounds}
 **Excerpt:** {yes — only if you truncated; omit the line when the body is the full fetched text}
 
 ---
@@ -335,14 +333,14 @@ First report what staged:
 - **DUP** (manual action — enrich-stack did NOT close these): for each, print
   `slug → existing-source-slug → quote`. The operator adds that citation to the
   article; a catalog run will not add it automatically for an already-filed source.
-- **NOSOURCE**: list the gaps nothing grounded, for the operator to tighten the
-  claim or accept it as inference.
+- **NOSOURCE**: list the gaps nothing grounded, for the operator to reword the
+  query or drop it.
 
 **Then close the loop — don't ask, just do it.** The operator already made the
 only real decision (the Step 6 staging approval); catalog + audit is mechanical
 from here. Invoke `/stacks:catalog-sources $STACK` then `/stacks:audit-stack
-$STACK` in this session and report the end state (which gaps the re-audit
-cleared, which remain). `catalog-sources` commits the staged sources — that is
+$STACK` in this session and report the end state (which staged sources reached
+an article, which gaps remain). `catalog-sources` commits the staged sources — that is
 the intended outcome, and it is reversible; the re-audit is the real check that
 synthesis handled the sources correctly, so no pre-catalog confirmation adds
 anything. Carry forward any caveats on the staged sources (edition notes,

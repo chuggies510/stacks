@@ -18,13 +18,13 @@ set -euo pipefail
 # dispatch boundary):
 #
 #   prep    Resolve the library, parse args, build the filed-sources listing,
-#           assemble gaps (audit soft-spots stale-checked + telemetry misses, OR
-#           the single --query gap), shard into CAP=5 batches, and write the two
+#           assemble gaps (lookup misses mined from telemetry, OR the single
+#           --query gap), shard into CAP=5 batches, and write the two
 #           run-state files below plus clear stale per-batch findings. Prints the
 #           paths + a per-batch summary the dispatch prose reads. Exits 0 with a
 #           "nothing to enrich" line when no live gaps.
 #           COLD-START (#86): when a batch run finds zero live gaps AND the stack
-#           has zero real article files, the empty stack is one giant soft spot —
+#           has zero real article files, the empty stack is one giant gap —
 #           seed the gap list from STACK.md's "## Scope" bullets (one gap per
 #           topic area), tagged reason "cold-start seed" under the lookup-miss
 #           sentinel slug (no home article; the agent searches the topic direct).
@@ -56,8 +56,7 @@ set -euo pipefail
 #   dev/enrich/_filed-sources.tsv  slug<TAB>url of already-filed sources (dedup).
 #
 # gap_id scheme: gap-N, a per-run sequential index assigned in deterministic
-# order (surviving soft-spots in soft-spots.tsv order, then telemetry misses;
-# gap-0 for a --query run). Stable within the run, which is all coverage needs —
+# order (telemetry misses in sorted query order; gap-0 for a --query run). Stable within the run, which is all coverage needs —
 # it reconciles one run's dispatch against that run's receipts, nothing carries
 # across runs. Matches the enrichment agent's documented gap_id echo (gap-7 etc).
 
@@ -141,7 +140,6 @@ phase_prep() {
   local ADEV="$LIB/$DEV"
   mkdir -p "$DEV"
 
-  local TSV="$STACK/dev/audit/soft-spots.tsv"
   local LISTING="$DEV/_filed-sources.tsv"
   local DISPATCH="$DEV/dispatch.tsv"
   local GAPS="$DEV/_gaps.tsv"   # gap_id<TAB>slug<TAB>claim<TAB>reason, before sharding
@@ -160,41 +158,19 @@ phase_prep() {
 
   # Assemble gaps into $GAPS (gap_id<TAB>slug<TAB>claim<TAB>reason).
   : > "$GAPS"
-  local N_SOFT=0 STALE=0 TOTAL=0 MISS=0 N_GAPS=0
+  local MISS=0 N_GAPS=0
 
   if [[ -n "$QUERY" ]]; then
     # Targeted mode (--query, lookup's live auto-path #69): exactly ONE gap, the
-    # query that just missed. No soft-spot scan, no telemetry mining — one user
-    # lookup authorizes researching that query only, not the whole backlog.
+    # query that just missed. No telemetry mining — one user lookup authorizes
+    # researching that query only, not the whole backlog.
     local q_flat; q_flat=$(printf '%s' "$QUERY" | tr -s '[:space:]' ' ')
     printf 'gap-0\tlookup-miss\t%s\tlookup miss\n' "$q_flat" >> "$GAPS"
     N_GAPS=1
   else
-    # Batch mode: audit soft spots (stale-checked) + mined lookup misses.
+    # Batch mode: lookup misses (#68), live queries the stack could not answer.
+    # Sentinel slug lookup-miss (no home article).
     local i=0
-    if [[ -f "$TSV" ]]; then
-      while IFS=$'\t' read -r slug claim reason; do
-        [[ -z "$slug" ]] && continue
-        TOTAL=$((TOTAL+1))
-        local art="$STACK/articles/$slug.md"
-        # The validator collapsed the claim's whitespace to single spaces AND
-        # emits it as plain prose (inline-markdown delimiters stripped), while the
-        # article keeps its original line breaks and its `code`/**bold** markup.
-        # So normalize BOTH sides the same way before the literal match — flatten
-        # whitespace and strip code-span backticks + bold/italic `*` — or a live
-        # claim carrying markup never grep -Fq matches and is dropped as stale
-        # (stacks#99). The strip is symmetric, so a literal ` or * can't break the
-        # match; `_` is left alone (identifiers like amd_pstate use it).
-        if [[ ! -f "$art" ]] || ! tr -s '[:space:]' ' ' < "$art" | tr -d '`*' | grep -Fq "$(printf '%s' "$claim" | tr -d '`*')"; then
-          STALE=$((STALE+1)); continue
-        fi
-        printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
-        i=$((i+1))
-      done < "$TSV"
-    fi
-    N_SOFT=$i
-    # Lookup misses (#68): live queries the stack could not answer. Sentinel slug
-    # lookup-miss (no home article, so they skip the stale-check above).
     while IFS=$'\t' read -r slug claim reason; do
       [[ -z "$claim" ]] && continue
       printf 'gap-%s\t%s\t%s\t%s\n' "$i" "$slug" "$claim" "$reason" >> "$GAPS"
@@ -203,7 +179,7 @@ phase_prep() {
     N_GAPS=$i
   fi
 
-  # Cold-start (#86): no live gaps from soft-spots/misses AND the stack is empty
+  # Cold-start (#86): no lookup misses AND the stack is empty
   # (zero real article files) → seed the gap list from STACK.md scope bullets.
   # Guarded to batch mode (a --query run always has its one gap). Count real
   # files, not the articles/ dir, so a scaffolded-but-empty stack qualifies.
@@ -232,7 +208,7 @@ phase_prep() {
     if [[ "$COLDSTART" -eq 1 ]]; then
       echo "Stack '$STACK' has 0 articles but STACK.md declares no scope-area bullets under '## Scope' to seed from. Add one topic-area bullet per capability to the Scope section, or drop sources into $STACK/sources/incoming/ directly. Nothing to enrich."
     else
-      echo "No live gaps — soft spots all stale/absent and no lookup misses. Nothing to enrich."
+      echo "No lookup misses. Nothing to enrich."
     fi
     return 0
   fi
@@ -263,8 +239,6 @@ phase_prep() {
     echo "COLDSTART=$COLDSTART"
     echo "QUERY=$QUERY"
     echo "N_GAPS=$N_GAPS"
-    echo "N_SOFT=$N_SOFT"
-    echo "N_STALE=$STALE"
     echo "N_MISS=$MISS"
     echo "CAP=$CAP"
     echo "DISPATCH=$ADEV/dispatch.tsv"
@@ -276,7 +250,7 @@ phase_prep() {
   elif [[ "$COLDSTART" -eq 1 ]]; then
     echo "Cold-start (#86): 0 articles, seeding $N_GAPS topic area(s) from STACK.md scope. AUTO=$AUTO"
   else
-    echo "Soft spots: $TOTAL total, $STALE stale, $N_SOFT live; lookup misses: $MISS; $N_GAPS gaps to enrich. AUTO=$AUTO"
+    echo "Lookup misses: $MISS; $N_GAPS gaps to enrich. AUTO=$AUTO"
   fi
   echo "Filed-sources listing: $(wc -l < "$LISTING" | tr -d ' ') sources with URLs (for dedup)."
   echo "Dispatch: $N_BATCH batch(es), CAP=$CAP, RUN_ID=$RUN_ID"
@@ -299,7 +273,7 @@ phase_gate() {
   [[ "$RUN_ID" =~ ^[0-9]+$ ]] || die "RUN_ID missing/garbled in $DEV/run.env"
 
   # Expected per-batch files, one per distinct batch_tag in the manifest. PAIRS
-  # carries the same tag->file association for check-coverage's --batched mode.
+  # carries the same tag->file association for check-coverage's tag=file arguments.
   local BATCHFILES=() PAIRS=() t
   while IFS= read -r t; do
     BATCHFILES+=("$DEV/_enrich-$t.md")
@@ -307,9 +281,9 @@ phase_gate() {
   done < <(cut -f1 "$DEV/dispatch.tsv" | sort -u)
 
   # 1) write-or-fail + structure. 2) per-gap coverage PER BATCH (gap_id is col 2 of
-  # both the manifest and every findings row) — --batched reconciles each batch_tag
-  # against only its _enrich-<tag>.md, catching a cross-batch misattribution the
-  # global union would miss (#92).
+  # both the manifest and every findings row), each batch_tag reconciled against
+  # only its _enrich-<tag>.md, catching a cross-batch misattribution the global
+  # union would miss (#92).
   bash "$HELPERS/gate-batch.sh" "$RUN_ID" enrichment enrichment-findings "${BATCHFILES[@]}"
   bash "$HELPERS/check-coverage.sh" "$DEV/dispatch.tsv" "${PAIRS[@]}"
 }
@@ -377,26 +351,27 @@ self_check() {
   ok()   { echo "SELF-CHECK PASS [$1]"; pass=$((pass+1)); }
   bad()  { echo "SELF-CHECK FAIL [$1]: $2" >&2; fail=$((fail+1)); }
 
-  # Minimal library: catalog.md at root + a stack with STACK.md, two articles
-  # whose claims occur verbatim (survive the stale-check → gap-0, gap-1 in one
-  # batch) plus one claim that does NOT (dropped as stale).
+  # Minimal library: catalog.md at root + a stack with STACK.md and three live lookup
+  # misses in a throwaway telemetry log (HOME is redirected so the operator's real log
+  # is never read). The stack also still carries an old dev/audit/soft-spots.tsv, as a
+  # library not yet cleaned up would: enrich must ignore it, neither erroring nor
+  # dispatching its claims.
   touch "$d/catalog.md"
-  mkdir -p "$d/mep/articles" "$d/mep/sources/ashrae" "$d/mep/dev/audit"
+  mkdir -p "$d/mep/articles" "$d/mep/sources/ashrae" "$d/mep/dev/audit" "$d/home/.chuggiesmart"
   echo "# MEP" > "$d/mep/STACK.md"
   # A filed source with NO URL: exercises the listing-loop grep-no-match path so a
   # missing `|| true` (which killed prep under set -e + pipefail) fails prep-runs.
   printf '# ASHRAE notes\n\nNo source url in this file.\n' > "$d/mep/sources/ashrae/notes.md"
   printf '# VAV\n\nMinimum VAV box airflow is typically 20%% of design maximum.\n' > "$d/mep/articles/vav.md"
-  printf '# Chiller\n\nChilled water is commonly distributed at 44 F supply.\n'    > "$d/mep/articles/chiller.md"
-  # Article keeps its code-span markup; the soft-spot row below has it stripped
-  # (as the validator emits it) — exercises the stacks#99 markdown-normalize path.
-  printf '# Boost\n\nThe `cpufreq/boost` knob is present in `active` mode.\n'      > "$d/mep/articles/boost.md"
   {
     printf 'vav\tMinimum VAV box airflow is typically 20%% of design maximum.\tno cited source\n'
     printf 'chiller\tChilled water is commonly distributed at 44 F supply.\tno cited source\n'
-    printf 'vav\tThis claim was deleted from the article since the audit.\tstale test\n'
-    printf 'boost\tThe cpufreq/boost knob is present in active mode.\tno cited source\n'
   } > "$d/mep/dev/audit/soft-spots.tsv"
+  local now q; now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  for q in 'minimum vav box airflow' 'chiller supply temperature' 'cpufreq boost knob mode'; do
+    printf '{"skill":"stacks:lookup","articles":"","stacks":"mep","library":"%s","ts":"%s","query":"%s"}\n' "$d" "$now" "$q"
+  done > "$d/home/.chuggiesmart/telemetry.jsonl"
+  export HOME="$d/home"
 
   export STACKS_CONFIG="$d/config.json"
   printf '{"library":"%s"}\n' "$d" > "$d/config.json"
@@ -405,21 +380,20 @@ self_check() {
   bash "$0" prep mep >/dev/null 2>&1 || { bad "prep-runs" "prep exited nonzero"; }
   local DISP="$d/mep/dev/enrich/dispatch.tsv" ENV="$d/mep/dev/enrich/run.env"
   [[ -f "$DISP" && -f "$ENV" ]] && ok "prep-writes-run-state" || bad "prep-writes-run-state" "missing dispatch.tsv/run.env"
-  # Three live gaps (the stale row dropped): gap-0 vav, gap-1 chiller, gap-2 boost
-  # (the markdown-claim row, stacks#99 — dropped-as-stale before the fix), batch 0.
-  if [[ "$(wc -l < "$DISP" | tr -d ' ')" == "3" ]] && grep -q $'^0\tgap-0\tvav\t' "$DISP" && grep -q $'^0\tgap-1\tchiller\t' "$DISP"; then
-    ok "prep-drops-stale-gap"
+  # Exactly the three lookup misses (queries sort -u'd by lookup-misses.sh), one batch,
+  # and none of the legacy soft-spots.tsv claims.
+  local want_disp
+  want_disp=$(printf '0\tgap-0\tlookup-miss\tchiller supply temperature\tlookup miss\n0\tgap-1\tlookup-miss\tcpufreq boost knob mode\tlookup miss\n0\tgap-2\tlookup-miss\tminimum vav box airflow\tlookup miss')
+  if [[ "$(cat "$DISP")" == "$want_disp" ]]; then
+    ok "prep-dispatches-lookup-misses-only"
   else
-    bad "prep-drops-stale-gap" "expected gap-0(vav)+gap-1(chiller)+gap-2(boost), got: $(cat "$DISP")"
+    bad "prep-dispatches-lookup-misses-only" "expected the 3 lookup misses and no legacy soft-spot rows, got: $(cat "$DISP")"
   fi
-  # stacks#99: a live claim carrying inline markdown (the article keeps `code`
-  # backticks, the soft-spot row has them stripped) must survive, not drop as stale.
-  grep -q $'^0\tgap-2\tboost\t' "$DISP" && ok "prep-keeps-markdown-claim" || bad "prep-keeps-markdown-claim" "markdown-bearing claim dropped as stale; got: $(cat "$DISP")"
   grep -q '^RUN_ID=[0-9]' "$ENV" && ok "run-env-has-runid" || bad "run-env-has-runid" "no RUN_ID"
 
   local F0="$d/mep/dev/enrich/_enrich-0.md"
   mk_clean() {
-    printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\nNOSOURCE\tgap-1\tchiller\t\t\t\t\tno source found for 44 F supply\nCANDIDATE\tgap-2\tboost\t\thttps://example.org/boost\t2\tKernel boost\tcpufreq boost knob present in active mode\n' > "$F0"
+    printf 'CANDIDATE\tgap-0\tlookup-miss\t\thttps://example.org/chiller\t2\tASHRAE chiller\tchilled water is distributed at 44 F supply\nNOSOURCE\tgap-1\tlookup-miss\t\t\t\t\tno source found for the boost knob\nCANDIDATE\tgap-2\tlookup-miss\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\n' > "$F0"
   }
   mk_clean
   if bash "$0" gate mep >/dev/null 2>&1; then ok "gate-clean-passes"; else bad "gate-clean-passes" "clean gate failed"; fi
@@ -428,7 +402,7 @@ self_check() {
   # gate-batch passes (file present + well-formed), check-coverage FAILS naming
   # the missing gap-1.
   local out rc
-  printf 'CANDIDATE\tgap-0\tvav\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\nCANDIDATE\tgap-2\tboost\t\thttps://example.org/boost\t2\tKernel boost\tcpufreq boost knob present in active mode\n' > "$F0"
+  printf 'CANDIDATE\tgap-0\tlookup-miss\t\thttps://example.org/chiller\t2\tASHRAE chiller\tchilled water is distributed at 44 F supply\nCANDIDATE\tgap-2\tlookup-miss\t\thttps://example.org/vav\t2\tASHRAE VAV\tminimum box airflow is 20%% of design max\n' > "$F0"
   out=$(bash "$0" gate mep 2>&1) && rc=0 || rc=$?
   if [[ "$rc" -ne 0 ]] && grep -qw 'gap-1' <<<"$out"; then
     ok "gate-fails-naming-dropped-row"

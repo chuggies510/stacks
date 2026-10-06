@@ -191,7 +191,7 @@ For each in-scope stack (usually one):
    The `--query` scopes the run to **this one gap**: enrich-stack web-searches a
    grounding source for exactly this query, stages it if `CANDIDATE` (tier 1-3,
    quote re-verified), catalogs it into an article, and re-audits — committing the
-   result in the library. It does **not** touch the stack's other soft spots or
+   result in the library. It does **not** touch the stack's other
    historical misses; one miss authorizes researching only the query that missed.
    (Pass the query as the literal last argument; `--query` consumes the rest of
    the string, so it needs no quoting gymnastics on the enrich side.)

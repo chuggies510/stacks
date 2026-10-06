@@ -43,7 +43,7 @@ Working with the knowledge library?
     │
     ├── Quality — keep a stack honest
     │        ├── check articles against their cited sources → audit-stack
-    │        └── close the soft spots it found (get sources)→ enrich-stack
+    │        └── fill a lookup miss or empty stack (sources) → enrich-stack
     │
     └── Setup (rare)
              ├── no library yet                            → init-library
@@ -56,9 +56,10 @@ Non-negotiable, across all eight workflows.
 
 ### 1. Source-grounded, or it doesn't ship
 
-An article states only what a cited source supports. A claim with no source is a
-**soft spot**, not a fact — `audit-stack` lists them, `enrich-stack` acquires a
-grounding source, and only then does it become an article. Prefer higher-tier
+An article states only what a cited source supports. A claim with no source is not
+a fact: `audit-stack` removes it from the article and quotes it in the report, and it
+returns only once a cited source grounds it (`enrich-stack` acquires sources for
+lookup misses). Prefer higher-tier
 sources (the `STACK.md` schema defines the tiers); a weak source is a weak claim.
 
 ### 2. One article per concept
