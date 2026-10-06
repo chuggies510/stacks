@@ -17,10 +17,11 @@ Skills live at `skills/{name}/SKILL.md`, frontmatter `name` + `description` only
 description starting "Use when...". Agents live in `agents/`, frontmatter `tools`
 (comma-separated), `model`, `description`, with 3+ worked examples in the body.
 
-Version bumps must land in all three manifests together, or the launcher shows a stale
+Version bumps must land in all four manifests together, or the launcher shows a stale
 version: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
-`.codex-plugin/plugin.json`. Directory-source plugins load straight from the repo, so
-`git pull` is the update mechanism, not `claude plugin update`.
+`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`. Directory-source
+plugins load straight from the repo, so `git pull` is the update mechanism, not
+`claude plugin update`.
 
 Test by `bash scripts/install.sh`, restarting, then running init-library → new-stack →
 catalog-sources → lookup against a throwaway path. Never commit test library content.
