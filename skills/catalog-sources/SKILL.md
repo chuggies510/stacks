@@ -158,7 +158,7 @@ A non-zero exit names the ungated article(s). Surface it and stop; the sources s
 
 ## Step 8.5: Local-model shadow diff (pilot, opt-in — #109)
 
-**Runs only when `STACKS_LOCAL_SHADOW=1` is set in the environment.** Default catalog runs skip this entirely: the pilot doubles synthesis work and exists to grade the local drafter against the cloud writer, not to ship anything. When enabled, after `gate-w2` passes and before `finish`, it runs the local drafter (the breathless vLLM server through `local-infer.sh`; `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL` override the defaults) on each W2 concept block, 4 at a time. Each draft gets the same inputs the cloud writer had: the stack's `STACK.md`, its `index.md` scope map, and on an update the pre-update article that `dedup` saved as `_prior-{slug}.md`. The harness then applies the mechanical filters (tag vocabulary, `[source: X]` to `[X]`, the deterministic refusal gate) and logs one record per slug to `dev/experiments/model-tier/live-diffs/synthesis.jsonl`. **The shipped cloud article is authoritative and untouched; this only observes.**
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set in the environment.** Default catalog runs skip this entirely: the pilot doubles synthesis work and exists to grade the local drafter against the cloud writer, not to ship anything. When enabled, after `gate-w2` passes and before `finish`, it runs the local drafter (the breathless vLLM server through `local-infer.sh`; `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL` override the defaults) on each W2 concept block, 4 at a time. Each draft gets the same inputs the cloud writer had: the stack's `STACK.md`, its `index.md` scope map, and on an update the pre-update article that `dedup` saved as `_prior-{slug}.md`. The harness then applies the mechanical filters (tag vocabulary, `[source: X]` to `[X]`, the deterministic refusal gate) and writes the drafts and a log of one record per slug into this run's own folder, `dev/experiments/model-tier/live-diffs/runs/<RUN_ID_W2>-<label>/`, printed as `RUN_DIR=`. The label comes from `STACKS_RUN_LABEL` (default `default`) and names a variant, so variants of one batch run side by side without sharing a file. **The shipped cloud article is authoritative and untouched; this only observes.**
 
 ```bash
 if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
@@ -176,21 +176,7 @@ Non-fatal by design: a failed local call logs a `status:"local-inference-failed"
 
 **Also gated on `STACKS_LOCAL_SHADOW=1`, and only after Step 8.5 ran.** This is the advisory window before flipping synthesis to verify-and-fix (`dev/specs/verify-and-fix.md`): it measures whether, if the local draft became the article and the cloud reviewer fixed only its defects, every article would clear the synthesis floors at lower cloud cost. **Nothing here changes `articles/`.**
 
-Keep `live-diffs/verify/` as it is: it holds tracked evidence from earlier batches, and the summary ignores any grade, draft or repair written before this batch's `RUN_ID_W2`. Build the two manifests, one row per slug:
-
-```bash
-STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
-[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
-[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
-[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
-LD="$STACKS_ROOT/dev/experiments/model-tier/live-diffs"
-bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} local > "$LD/verify/manifest-local.tsv"
-bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} cloud > "$LD/verify/manifest-cloud.tsv"
-```
-
-Dispatch one **`stacks:article-verifier`** agent per manifest, or per 8 rows when a manifest is longer (split it into files of 8 rows; about 2,000 output tokens per repaired row keeps each agent well under the output cap). Give each agent the manifest path, `{LIBRARY}/{stack}/STACK.md` and `{LIBRARY}/{stack}/index.md`. The local manifest grades each local draft and repairs a scratch copy; the cloud manifest grades the shipped cloud article on the same block, grade only. On Codex, dispatch them as using-stacks behavior 7 says.
-
-When the agents return, write `$LD/verify/tokens.tsv`, one row per slug with a local grade: `slug<TAB>synthesizer total tokens (Step 7)<TAB>verifier share`. A verifier agent's share for each of its N rows is its total divided by N, rounded down, with the remainder added one token at a time to its first rows, so the shares sum to the agent's total. Then aggregate over every dispatched slug; a missing draft, refusal, failed call, missing grade or rejected grade counts as a failure:
+Grades, repairs and token rows go into the same run folder as its drafts; the summary also ignores any file written before the batch's `RUN_ID_W2`. Build the two manifests, one row per slug:
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
@@ -198,9 +184,25 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
 [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
 LIB=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
+RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$(grep -m1 '^RUN_ID_W2=' "$LIB/{stack}/dev/extractions/run.env" | cut -d= -f2)-${STACKS_RUN_LABEL:-default}"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} local "$RUN_DIR" > "$RUN_DIR/verify/manifest-local.tsv"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} cloud "$RUN_DIR" > "$RUN_DIR/verify/manifest-cloud.tsv"
+echo "RUN_DIR=$RUN_DIR"
+```
+
+Dispatch one **`stacks:article-verifier`** agent per manifest, or per 8 rows when a manifest is longer (split it into files of 8 rows; about 2,000 output tokens per repaired row keeps each agent well under the output cap). Give each agent the manifest path, `{LIBRARY}/{stack}/STACK.md` and `{LIBRARY}/{stack}/index.md`. The local manifest grades each local draft and repairs a scratch copy; the cloud manifest grades the shipped cloud article on the same block, grade only. On Codex, dispatch them as using-stacks behavior 7 says.
+
+When the agents return, write `$RUN_DIR/verify/tokens.tsv`, one row per slug with a local grade: `slug<TAB>synthesizer total tokens (Step 7)<TAB>verifier share`. A verifier agent's share for each of its N rows is its total divided by N, rounded down, with the remainder added one token at a time to its first rows, so the shares sum to the agent's total. Then aggregate over every dispatched slug; a missing draft, refusal, failed call, missing grade or rejected grade counts as a failure:
+
+```bash
+STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
+[ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
+[ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
+[ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
+LIB=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
+RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$(grep -m1 '^RUN_ID_W2=' "$LIB/{stack}/dev/extractions/run.env" | cut -d= -f2)-${STACKS_RUN_LABEL:-default}"
 bash "$STACKS_ROOT/dev/experiments/model-tier/harness/synth-verify-summary.sh" \
-  "$LIB/{stack}/dev/extractions" "$STACKS_ROOT/dev/experiments/model-tier/live-diffs" \
-  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify/tokens.tsv" || true
+  "$LIB/{stack}/dev/extractions" "$RUN_DIR" "$RUN_DIR/verify/tokens.tsv" || true
 ```
 
 Read the `PROMOTE:` line. Promotion needs every dispatched slug clearing after repair and the review tokens below the write tokens; then read a sample of drafts beside their cloud articles (the `cloud article clears` line is the same-block baseline) before flipping. Advisory only; `finish` proceeds regardless.

@@ -1,0 +1,15 @@
+{
+  "slug": "lora-sft-thinking-mode-loss",
+  "recall_total": 11,
+  "recall_present": 11,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Eval Strategy: 'but this is a post-hoc signal, not a pre-deployment guard' adds a verdict the block does not state (block says the metric-diff tool caught it only because every metric was identical). Trim the sentence to end after 'differ in a flag'."
+  ],
+  "repaired": null
+}

@@ -30,7 +30,13 @@ TAG_VOCAB="$(awk '
 ' "$STACK/STACK.md" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 [[ -n "$TAG_VOCAB" ]] || { echo "ERROR: no allowed_tags parsed from $STACK/STACK.md" >&2; exit 1; }
 RUN_ID="$(grep -m1 '^RUN_ID_W2=' "$DEV/run.env" 2>/dev/null | cut -d= -f2)"; RUN_ID="${RUN_ID:-manual}"
-export TAG_VOCAB RUN_ID STACK_DIR="$LIB/$STACK" EX="$LIB/$DEV" HERE
+# One folder per run: <batch RUN_ID_W2>-<label>. STACKS_RUN_LABEL names a variant
+# (drafter, thinking setting), so variants of one batch can run side by side.
+LABEL="${STACKS_RUN_LABEL:-default}"
+[[ "$LABEL" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: STACKS_RUN_LABEL may hold only letters, digits, dot, dash, underscore" >&2; exit 2; }
+RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$RUN_ID-$LABEL"
+mkdir -p "$RUN_DIR/bodies" "$RUN_DIR/verify"
+export TAG_VOCAB RUN_ID RUN_DIR STACK_DIR="$LIB/$STACK" EX="$LIB/$DEV" HERE
 
 # One slug per call, 4 at a time: the breathless server has 8 slots, and 4 leaves
 # room for its other consumers. Each call prints one status word for the tally.
@@ -46,4 +52,5 @@ n=$(grep -c '^OK$' <<<"$results" || true)
 skipped=$(grep -c '^SKIP$' <<<"$results" || true)
 failed=$(grep -c '^FAIL$' <<<"$results" || true)
 
-echo "SHADOW_SUMMARY: stack=$STACK shadowed=$n skipped=$skipped failed=$failed run_id=$RUN_ID -> $STACKS_ROOT/dev/experiments/model-tier/live-diffs/synthesis.jsonl" >&2
+echo "SHADOW_SUMMARY: stack=$STACK shadowed=$n skipped=$skipped failed=$failed run_id=$RUN_ID -> $RUN_DIR" >&2
+echo "RUN_DIR=$RUN_DIR"

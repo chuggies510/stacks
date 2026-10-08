@@ -1,0 +1,15 @@
+{
+  "slug": "agent-harness-engineering",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Verification layer, first sentence of the Opus 5 paragraph: 'When moving to a model that verifies its own work natively, explicit verification instructions in the prompt should be removed' changes the block's subject from Opus 5 to any model that verifies natively. Trim to 'Opus 5 verifies its own work without being told, so explicit verification instructions should be removed' (or drop the lead-in and start at 'Opus 5 verifies its own work without being told')."
+  ],
+  "repaired": null
+}

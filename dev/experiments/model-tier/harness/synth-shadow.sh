@@ -64,7 +64,9 @@ fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MTIER="$(cd "$HERE/.." && pwd)"
-LIVE_DIFFS="$MTIER/live-diffs"
+# Every run writes into its own folder (drafts, log), exported by shadow-synth-run.sh,
+# so no two runs or variants ever share a draft file.
+RUN_DIR="${RUN_DIR:?RUN_DIR must be this run folder, exported by shadow-synth-run.sh}"
 INFER="$HERE/local-infer.sh"
 POSTFILTER="$HERE/tag-postfilter.sh"
 NORMALIZER="$HERE/citation-normalizer.sh"
@@ -82,12 +84,12 @@ item_id="${3:?}"
 # Pre-update snapshot catalog.sh dedup took before W2 overwrote the article; absent for a new slug.
 prior_file="$(dirname "$concept_file")/_prior-$item_id.md"
 
-mkdir -p "$LIVE_DIFFS/bodies"
+mkdir -p "$RUN_DIR/bodies"
 # Remove any prior local draft for this slug up front: a failed inference below
 # exits before the fresh cp, so without this an earlier run's stale draft would
 # survive and get graded against THIS run's block (codex, #109). No draft is the
 # correct state on inference failure — the advisory verify then skips the slug.
-rm -f "$LIVE_DIFFS/bodies/${item_id}__local.md"
+rm -f "$RUN_DIR/bodies/${item_id}__local.md"
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
 in_vocab() { local t="$1" v; for v in $VOCAB; do [[ "$t" == "$v" ]] && return 0; done; return 1; }
@@ -189,7 +191,7 @@ if ! bash "$INFER" "$work/prompt.txt" "$localraw" 2>"$work/local.err"; then
   echo "FAIL item=$item_id: local inference errored (see $work/local.err, printed below)" >&2
   cat "$work/local.err" >&2
   jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" \
-    '{item:$item, model:$model, run_id:$run, status:"local-inference-failed"}' >> "$LIVE_DIFFS/synthesis.jsonl"
+    '{item:$item, model:$model, run_id:$run, status:"local-inference-failed"}' >> "$RUN_DIR/synthesis.jsonl"
   exit 1
 fi
 secs=$((SECONDS - t0))
@@ -197,7 +199,7 @@ article="$work/article.md"
 if ! awk "$EXTRACT_AWK" "$localraw" > "$article"; then
   if grep -qE '^Concept [^:]+: insufficient claims' "$localraw"; then status=refused; else status=malformed; fi
   jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" --arg st "$status" \
-    '{item:$item, model:$model, run_id:$run, status:$st}' >> "$LIVE_DIFFS/synthesis.jsonl"
+    '{item:$item, model:$model, run_id:$run, status:$st}' >> "$RUN_DIR/synthesis.jsonl"
   echo "$status item=$item_id: no article in the local reply" >&2
   [[ "$status" == refused ]] && exit 0
   exit 1
@@ -207,7 +209,7 @@ mv "$article" "$localraw"
 echo "--- tags before filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$localraw" >&2 || echo "(no tags: line found)" >&2
 
-local_body="$LIVE_DIFFS/bodies/${item_id}__local.md"
+local_body="$RUN_DIR/bodies/${item_id}__local.md"
 cp "$localraw" "$local_body"
 bash "$POSTFILTER" "$local_body"     # drop out-of-vocab tags
 bash "$NORMALIZER" "$local_body"     # [source: X] -> [X]
@@ -218,14 +220,14 @@ echo "--- tags after filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$local_body" >&2 || echo "(no tags: line found)" >&2
 
 read -r w_l c_l tt_l to_l ht_l hlv_l hs_l hr_l <<< "$(metrics_for "$local_body")"
-local_json=$(json_for "$w_l" "$c_l" "$tt_l" "$to_l" "$ht_l" "$hlv_l" "$hs_l" "$hr_l" "live-diffs/bodies/${item_id}__local.md")
+local_json=$(json_for "$w_l" "$c_l" "$tt_l" "$to_l" "$ht_l" "$hlv_l" "$hs_l" "$hr_l" "bodies/${item_id}__local.md")
 
 cloud_json="null"
 if [[ "$cloud_file" != "NONE" && -f "$cloud_file" ]]; then
-  cloud_body="$LIVE_DIFFS/bodies/${item_id}__cloud.md"
+  cloud_body="$RUN_DIR/bodies/${item_id}__cloud.md"
   cp "$cloud_file" "$cloud_body"
   read -r w_c c_c tt_c to_c ht_c hlv_c hs_c hr_c <<< "$(metrics_for "$cloud_body")"
-  cloud_json=$(json_for "$w_c" "$c_c" "$tt_c" "$to_c" "$ht_c" "$hlv_c" "$hs_c" "$hr_c" "live-diffs/bodies/${item_id}__cloud.md")
+  cloud_json=$(json_for "$w_c" "$c_c" "$tt_c" "$to_c" "$ht_c" "$hlv_c" "$hs_c" "$hr_c" "bodies/${item_id}__cloud.md")
 else
   echo "NOTE item=$item_id: no cloud article at '$cloud_file' — logging local metrics only, cloud:null" >&2
 fi
@@ -233,6 +235,6 @@ fi
 jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" --argjson secs "$secs" \
   --argjson local "$local_json" --argjson cloud "$cloud_json" \
   '{item:$item, model:$model, run_id:$run, secs:$secs, status:"ok", local:$local, cloud:$cloud}' \
-  >> "$LIVE_DIFFS/synthesis.jsonl"
+  >> "$RUN_DIR/synthesis.jsonl"
 
-echo "OK item=$item_id: logged to $LIVE_DIFFS/synthesis.jsonl (${secs}s)" >&2
+echo "OK item=$item_id: logged to $RUN_DIR/synthesis.jsonl (${secs}s)" >&2

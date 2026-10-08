@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# synth-verify-summary.sh <extractions-dir> <live-diffs-dir> [tokens.tsv]
+# synth-verify-summary.sh <extractions-dir> <run-dir> [tokens.tsv]
 # synth-verify-summary.sh --self-check
 #
 # Advisory window (#109): score ONE catalog batch's local drafts against every slug
 # in its dispatch-w2.tsv, so a missing draft, refusal, failed call, missing grade or
 # malformed grade counts as a failure instead of shrinking the denominator. Reads:
 #   <extractions-dir>/dispatch-w2.tsv, run.env, _dedup-<slug>.md  (the batch)
-#   <live-diffs-dir>/synthesis.jsonl              (local draft status, this RUN_ID_W2)
-#   <live-diffs-dir>/bodies/<slug>__local.md      (the local draft)
-#   <live-diffs-dir>/verify/<slug>.json           (article-verifier grade of the local draft)
-#   <live-diffs-dir>/verify/<slug>__repaired.md   (its repaired copy, when it listed fixes)
-#   <live-diffs-dir>/verify/<slug>.cloud.json     (same verifier on the cloud article)
+#   <run-dir>/synthesis.jsonl              (local draft status, this RUN_ID_W2)
+#   <run-dir>/bodies/<slug>__local.md      (the local draft)
+#   <run-dir>/verify/<slug>.json           (article-verifier grade of the local draft)
+#   <run-dir>/verify/<slug>__repaired.md   (its repaired copy, when it listed fixes)
+#   <run-dir>/verify/<slug>.cloud.json     (same verifier on the cloud article)
 #   tokens.tsv: slug<TAB>cloud_write_tokens<TAB>verify_repair_tokens (optional)
 # Clearance is derived from the counts, never read from the agent's boolean. Reads
 # only; the operator reads the PROMOTE line and calls the flip.
@@ -214,6 +214,6 @@ self_check() {
 
 case "${1:-}" in
   --self-check) self_check ;;
-  ""|-h|--help) echo "Usage: synth-verify-summary.sh <extractions-dir> <live-diffs-dir> [tokens.tsv] | --self-check" >&2; exit 2 ;;
+  ""|-h|--help) echo "Usage: synth-verify-summary.sh <extractions-dir> <run-dir> [tokens.tsv] | --self-check" >&2; exit 2 ;;
   *) run "$@" ;;
 esac

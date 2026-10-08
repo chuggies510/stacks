@@ -1,0 +1,20 @@
+{
+  "slug": "llm-cost-control-production",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 6,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Key concepts: 'Effort settings are the first cost and latency control available in modern model APIs' generalizes. Block says low/medium effort is the primary cost and response-time control wherever quality holds, for this model. Trim to the block wording.",
+    "Patterns, 'Start with effort settings before other optimizations': 'the first cost lever to pull is the effort parameter itself, not prompt restructuring or model downgrades' is an added verdict and ordering the block does not contain. Cut the 'Because...' sentence's conclusion; keep only 'Low and medium effort produce strong quality at a fraction of the tokens and latency'.",
+    "Patterns, 'Remove redundant verification instructions...': 'This is a prompt-level cost control that complements effort settings: effort controls how much the model thinks, while instruction pruning controls how much it writes' adds a mechanism (pruning controls how much it writes) the block does not state. Delete the sentence.",
+    "Pitfalls, effort-defaults: 'A setting that was optimal for one model's cost/quality curve is not necessarily optimal for the next' is added rationale. Delete; block only says carried-over effort defaults should get a fresh sweep.",
+    "Pitfalls, effort-defaults: 'Re-sweep effort levels when migrating models to find the new quality floor at minimum cost' adds a purpose the block does not give. Trim to 'carried-over effort defaults should get a fresh effort sweep'.",
+    "Pitfalls, 'Effort does not reliably shorten visible output': 'Teams that assume a lower effort setting will also reduce output length will find their output-token spend unchanged; explicit prompt instructions on response length are still required' states 'unchanged' (block says not reliably shortened) and 'required' (block says needs prompt-level control). Delete the sentence."
+  ],
+  "repaired": null
+}

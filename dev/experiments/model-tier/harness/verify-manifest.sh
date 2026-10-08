@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# verify-manifest.sh <stack> <local|cloud>
+# verify-manifest.sh <stack> <local|cloud> <run-dir>
 #
-# Prints the article-verifier manifest for this catalog batch, one row per slug in
+# Prints the article-verifier manifest for one run folder, one row per slug in
 # dispatch-w2.tsv: slug<TAB>block<TAB>draft<TAB>prior<TAB>grade<TAB>repair (absolute
 # paths, NONE when absent). `local` rows grade the local draft and repair a scratch
 # copy; `cloud` rows grade the shipped cloud article, grade only. A local slug with no
@@ -10,9 +10,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STACKS_ROOT="$(cd "$HERE/../../../.." && pwd)"
-LD="$STACKS_ROOT/dev/experiments/model-tier/live-diffs"
-STACK="${1:?Usage: verify-manifest.sh <stack> <local|cloud>}"
-MODE="${2:?Usage: verify-manifest.sh <stack> <local|cloud>}"
+STACK="${1:?Usage: verify-manifest.sh <stack> <local|cloud> <run-dir>}"
+MODE="${2:?Usage: verify-manifest.sh <stack> <local|cloud> <run-dir>}"
+LD="${3:?Usage: verify-manifest.sh <stack> <local|cloud> <run-dir>}"   # the run folder shadow-synth-run.sh printed
 LIB="$(bash "$STACKS_ROOT/scripts/resolve-library.sh")"
 EX="$LIB/$STACK/dev/extractions"
 
