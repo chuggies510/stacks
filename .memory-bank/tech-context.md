@@ -8,7 +8,7 @@
 | `.claude-plugin/marketplace.json` | Single-plugin marketplace descriptor (source: "./") |
 | `agents/` | 4 worker subagent definitions: source-extractor, article-synthesizer, validator, enrichment |
 | `skills/{name}/SKILL.md` | User-invocable skills: lookup, audit-stack, catalog-sources, enrich-stack, ingest-book, init-library, new-stack, process-inbox, plus the using-stacks front door |
-| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, check-coverage.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, convert-sources.sh, rewrite-source-refs.sh, resolve-library.sh, lookup-misses.sh, telemetry.sh). `scripts/pipeline/` holds the per-pipeline orchestration scripts (enrich.sh, audit.sh, catalog.sh all shipped, epic #87 pipelines migrated; each has an inline `--self-check`, no bats file). `locate-plugin-root.sh` stays deleted (#63). Every executable skill fence resolves `STACKS_ROOT` in place: explicit override or Claude source first, Pi's active physical skill root or managed Git package second, then immediate Codex cache versions. `tests/plugin-root.bats` executes all 39 projections and pins the runtime matrix. |
+| `scripts/` | Lifecycle scripts (install.sh, uninstall.sh, update.sh, init.sh, loop.sh) plus pipeline helpers (assert-structure.sh, gate-batch.sh, check-coverage.sh, collision-dest.sh, dedup-extractions.py, normalize-tags.sh, regenerate-moc.sh, convert-sources.sh, rewrite-source-refs.sh, resolve-library.sh, lookup-misses.sh, telemetry.sh). `scripts/pipeline/` holds the per-pipeline orchestration scripts (enrich.sh, audit.sh, catalog.sh all shipped, epic #87 pipelines migrated; each has an inline `--self-check`, no bats file). `locate-plugin-root.sh` stays deleted (#63). Every executable skill fence resolves `STACKS_ROOT` in place: explicit override or Claude source first, Pi's active physical skill root or managed Git package second, then immediate Codex cache versions. `tests/plugin-root.bats` executes all 35 projections and pins the runtime matrix. |
 | `templates/library/` | Files copied when `/stacks:init-library` creates a library |
 | `templates/stack/` | Files copied when `/stacks:new-stack` scaffolds a stack; includes `dev/audit/` and `dev/extractions/` skeletons |
 | `references/` | `default-topic-template.md` (the only reference doc; wave-engine/refresh-procedure/obsidian were removed in 0.21.0) |
@@ -68,6 +68,10 @@ Runtime dependencies:
 - `libreoffice` (slides/legacy Office + `.xls`/`.ods` spreadsheets→text in `convert-sources.sh`, headless with an isolated profile; the single-sheet fallback when openpyxl is unavailable)
 - document-ingest tools degrade gracefully: a missing tool skips that file with a report, never crashes the pipeline
 - Linux `stat -c %Y` (mtime extraction in `gate-batch.sh`; macOS/BSD not supported)
+
+Model-tier test bench (experiments only, not a plugin dependency):
+- Local drafter: `dev/experiments/model-tier/harness/local-infer.sh` is the one model caller. `STACKS_LOCAL_URL`, `STACKS_LOCAL_MODEL`, `STACKS_LOCAL_KEY` and `STACKS_LOCAL_EXTRA` (JSON merged into the request) select any OpenAI-compatible server; each run writes to its own folder from `run-dir.sh` (`STACKS_RUN_LABEL`).
+- OpenRouter: the API key lives on breathless at `~/.config/openrouter.key` (chungus-net owns where keys live; never copy it to the Mini). Used to run the same `qwen/qwen3.8-27b` (bf16 provider) as a fast variant bench; proven S31 with the `s31-or-*` runs.
 
 Consumers of this plugin:
 - `~/.claude/settings.json` — `extraKnownMarketplaces` + `enabledPlugins` entries written by install.sh
