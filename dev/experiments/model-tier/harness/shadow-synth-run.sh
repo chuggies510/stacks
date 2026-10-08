@@ -2,8 +2,8 @@
 # shadow-synth-run.sh <stack>
 #
 # Pilot (#109): after catalog `gate-w2`, run the LOCAL synth model (breathless
-# vLLM, see local-infer.sh) on each W2 concept block and log a local-vs-cloud
-# diff to live-diffs/synthesis.jsonl. The cloud article is the authoritative one
+# vLLM, see local-infer.sh) on each W2 concept block and write the drafts and a
+# log to this run's folder (run-dir.sh). The cloud article is the authoritative one
 # that ships; this is purely a shadow. Non-destructive: never touches articles/,
 # sources, or any pipeline state file.
 #
@@ -29,12 +29,8 @@ TAG_VOCAB="$(awk '
   f && /^[^[:space:]#-]/ {exit}
 ' "$STACK/STACK.md" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 [[ -n "$TAG_VOCAB" ]] || { echo "ERROR: no allowed_tags parsed from $STACK/STACK.md" >&2; exit 1; }
-RUN_ID="$(grep -m1 '^RUN_ID_W2=' "$DEV/run.env" 2>/dev/null | cut -d= -f2)"; RUN_ID="${RUN_ID:-manual}"
-# One folder per run: <batch RUN_ID_W2>-<label>. STACKS_RUN_LABEL names a variant
-# (drafter, thinking setting), so variants of one batch can run side by side.
-LABEL="${STACKS_RUN_LABEL:-default}"
-[[ "$LABEL" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: STACKS_RUN_LABEL may hold only letters, digits, dot, dash, underscore" >&2; exit 2; }
-RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$RUN_ID-$LABEL"
+RUN_ID="$(grep -m1 '^RUN_ID_W2=' "$DEV/run.env" 2>/dev/null | cut -d= -f2)"
+RUN_DIR="$(bash "$HERE/run-dir.sh" "$STACK")"
 mkdir -p "$RUN_DIR/bodies" "$RUN_DIR/verify"
 export TAG_VOCAB RUN_ID RUN_DIR STACK_DIR="$LIB/$STACK" EX="$LIB/$DEV" HERE
 

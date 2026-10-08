@@ -10,6 +10,14 @@ The reader is Chris or a user deciding whether a release matters to them, not th
 
 Use plain words. File names, function and tool names, internal terms and how it works inside belong in the commit and the issue. Short never means lossy: a required action, rollback limit or caveat goes in the detail, never dropped. Add a correction as its own line; never edit the original. An entry that will not fit this shape is describing mechanism, or the release is too big.
 
+## 0.81.0 - 2026-10-07: The local-writer trial now costs the cloud 41% of writing an article, and every trial draft clears after one review.
+
+- The trial reviewer grades a whole batch in one agent and repairs each draft in a scratch copy; on the 7-article test batch that cut the cloud cost from 92% to 41% of writing from scratch, and all 7 cleared after repair. (#109)
+- The local drafter runs with thinking off by default, after tests showed more thinking added more claims the sources do not make; the harness now writes each draft's source list and verification date itself. (#109)
+- Each trial run keeps its drafts, grades and repairs in its own folder, so several drafter settings can run side by side, including on OpenRouter. (#109)
+
+The cloud writer's rules are back to the tested wording plus two additions: keep each claim's hedge ("can", "appears to") and keep headings as plain labels. A first rewrite of that prompt made drafts over-claim about five times as often and was reverted. Normal catalog runs still ship the cloud article. Trial results: `dev/experiments/model-tier/results-stacks-S31-breathless-advisory.md`.
+
 ## 0.80.0 - 2026-10-07: The opt-in local-writer trial now drafts on breathless and scores whether switching is worth it.
 
 - With `STACKS_LOCAL_SHADOW=1`, catalog drafts each article on the breathless server from the same inputs the cloud writer reads, including the article as it was before the update. The first real batch cleared every quality floor after one review pass but saved the cloud only about 8% of its tokens. (#109)

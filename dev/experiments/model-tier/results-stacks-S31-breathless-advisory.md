@@ -1,43 +1,63 @@
-# S31 advisory batch: breathless drafter, Sonnet reviewer (2026-10-07)
+# S31 advisory batches: local drafter, Sonnet reviewer (2026-10-07)
 
-One real catalog batch on library-stack `llm` (3 sources, 7 slugs: 2 new, 5 updates,
-RUN_ID_W2 1791417011), run with `STACKS_LOCAL_SHADOW=1`. The cloud articles shipped;
-the local drafts and their repairs stayed in `live-diffs/`.
+One real catalog batch on library-stack `llm` (3 sources, 7 slugs: 2 new, 5 updates),
+drafted repeatedly by the local model while the cloud articles shipped. Same 7 concept
+blocks and pre-update snapshots every time.
 
-**Result: quality clears, the cloud saving does not.** Every draft clears the
-synthesis floors after one review-and-repair pass, but that pass cost the cloud 92%
-of what writing the articles from scratch did.
+**Result: with harness-owned frontmatter, thinking off and one batched reviewer, review
+plus repair costs 41% of what the cloud writer spends, and 7 of 7 articles clear the
+floors after repair (the cloud writer: 6 of 7).** Whether to make the local draft the
+shipped article is the owner's call.
+
+## Final configuration (run 5, breathless 4-bit, thinking off)
 
 | Measure | Value |
 |---|---|
-| Drafter | breathless vLLM `qwen3.8-27b`, thinking off (run 1 only; later runs use medium effort), 4 at a time |
-| Local drafts written | 7 of 7, none refused or failed |
-| Draft clears floors as written | 3 of 7 |
-| Clears after one repair pass | 7 of 7 |
-| Cloud article clears, same block | 6 of 7 (one over-claim) |
-| Cloud tokens, write from scratch (W2) | 244,885 |
-| Cloud tokens, review and repair | 226,101 |
-| Wall time, local drafting | about 10.5 min for 7 (147 to 431 s each) |
+| Drafts clean as written | 4 of 7 (5 of 7 with the `sources:` step added after it) |
+| After one review-and-repair pass | 7 of 7 |
+| Cloud articles, same reviewer | 6 of 7 |
+| Cloud tokens, write from scratch (7 one-slug agents) | 244,885 |
+| Cloud tokens, review and repair (one batched agent) | 99,349 (41%) |
+| Drafting time | 5.5 min for 7, 4 at a time |
 
-Draft defects the reviewer fixed:
-- **Dropped hedges, 2.** "does not reliably shorten" became "does not shorten";
-  "appears to have learned" became "learns".
-- **Dropped pre-update `sources:` paths, 5 in 2 updates.** The body still cited
-  them. Restoring them is a deterministic union with the snapshot's `sources:`; no
-  model is needed.
-- **One mistyped source path.**
+The remaining over-claims are topic sentences that widen a claim ("the harness prompt
+must be re-tuned", "the first cost control" for "primary"); the reviewer repairs them.
 
-Why the saving is small: Claude Code reports total tokens per agent, and both agents
-spend most of theirs reading the same inputs (block, pre-update article, STACK.md,
-scope map), about 25,000 each. Writing is a small share, so moving it to breathless
-removes little. The output-token share, which is the costlier part, was not measured
-separately.
+## All runs, same reviewer, graded as written
 
-Harness defects this batch found and fixed before scoring: the tag filter deleted
-the closing `---` of block-style tags (all 5 updates had unterminated frontmatter),
-and `citation-normalizer.sh` never ran on macOS (BSD `sed -i -E`). Agent definitions
-are frozen when a Claude Code session starts, so a reviewer edited mid-session needs
-its file named in the dispatch.
+| Run | Drafter | Writer prompt | Thinking | Clean | Over-claims |
+|---|---|---|---|---|---|
+| 1 | breathless 4-bit | original | off | 4/7 | 1 |
+| 2 | breathless | first rewrite | medium | 1/7 | 5 |
+| 3 | breathless | first rewrite | off | 2/6 + 1 refusal | 6 |
+| 4 | breathless | first rewrite | low | 4/7 | 8 |
+| OR-off | OpenRouter bf16 | repaired | off | 6/7 | 1 |
+| OR-low | OpenRouter bf16 | repaired | low | 6/7 | 2 |
+| OR-medium | OpenRouter bf16 | repaired | medium | 5/7 | 5 |
+| 5 | breathless 4-bit | repaired | off | 4/7 | 2 |
 
-Evidence: `live-diffs/synthesis.jsonl` (run 1791417011) and `live-diffs/runs/s31-run1/`
-(drafts, cloud copies, grades, repairs, `tokens.tsv`).
+What the runs show:
+- **Thinking does not help drafting.** Over-claims rose with effort (1, 2, 5 on OpenRouter);
+  more reasoning adds more of the model's own conclusions. Off is also fastest.
+- **The first prompt rewrite was worse than the original.** Pruning removed "prefer
+  restating a claim plainly to making it read well" and added "organize and connect the
+  claims into readable prose"; over-claims rose about five times. The repaired prompt
+  restores the original rules and adds a hedge rule and "headings are labels".
+- **Mechanical defects belong to the harness.** Dropped pre-update `sources:` paths (5 in
+  run 1), copied `last_verified` dates (4 in run 2) and a mistyped path the 4-bit model
+  wrote twice (`sources/inimal/`) are all fixed by the harness writing those fields.
+- **Batching the reviewer is the cost lever.** One reviewer for 7 slugs used 90,000 to
+  117,000 tokens against about 30,000 per slug when each had its own agent.
+
+Limits: 7 slugs from one stack; the reviewer's count varies by about one over-claim
+between runs; OpenRouter served bf16, breathless serves 4-bit. Run 1 was first graded by
+an older reviewer prompt (cost then 92%); its row above is the regrade.
+
+Harness defects found and fixed during the runs: the tag filter deleted the closing `---`
+of block-style tags; `citation-normalizer.sh` never ran on macOS (BSD `sed -i -E`); the
+catalog step that reset `live-diffs/verify/` deleted tracked evidence. Agent definitions
+are frozen when a Claude Code session starts, so a reviewer edited mid-session needs its
+file named in the dispatch.
+
+Evidence: `live-diffs/runs/` (one folder per run: drafts, grades, repairs, token rows; runs
+1 to 4 and the OpenRouter runs carry a grade-only `regrade/`).

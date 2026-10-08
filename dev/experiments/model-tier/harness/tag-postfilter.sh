@@ -6,8 +6,7 @@
 # the file's tags line(s) in place, so a local draft never ships a tag the
 # model invented.
 #
-# Handles both frontmatter shapes: flow style `tags: [a, b, c]` and block
-# style `tags:` followed by `  - a` lines.
+# Reads either frontmatter list style and writes block style.
 set -euo pipefail
 
 if [[ "${1:-}" == "--self-check" ]]; then
@@ -31,39 +30,12 @@ in_vocab() {
   return 1
 }
 
-# Only the frontmatter (between the first two `---` lines) is filtered; the body
-# passes through untouched, so a body bullet or a `tags:` line in prose is never read.
-tmp=$(mktemp)
-mode=none fences=0
-while IFS= read -r line || [[ -n "$line" ]]; do
-  if [[ "$line" == "---" ]]; then
-    fences=$((fences+1)); mode=none
-    echo "$line"
-  elif [[ $fences -ne 1 ]]; then
-    echo "$line"
-  elif [[ "$line" =~ ^tags:[[:space:]]*\[(.*)\]$ ]]; then
-    IFS=',' read -ra tags <<< "${BASH_REMATCH[1]}"
-    kept=()
-    for t in "${tags[@]}"; do
-      t="$(echo "$t" | xargs)"
-      [[ -z "$t" ]] && continue
-      in_vocab "$t" && kept+=("$t")
-    done
-    joined=""
-    for t in "${kept[@]}"; do
-      joined="${joined:+$joined, }$t"
-    done
-    echo "tags: [$joined]"
-    mode=none
-  elif [[ "$line" == "tags:" ]]; then
-    echo "$line"
-    mode=list
-  elif [[ "$mode" == "list" && "$line" =~ ^[[:space:]]*-[[:space:]]+(.+)$ ]]; then
-    t="$(echo "${BASH_REMATCH[1]}" | xargs)"
-    in_vocab "$t" && echo "  - $t"
-  else
-    mode=none
-    echo "$line"
-  fi
-done < "$file" > "$tmp"
-mv "$tmp" "$file"
+# shellcheck source=../../../../scripts/article-field.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/article-field.sh"
+
+# Read and rewrite through the shared frontmatter reader and writer, so only the
+# frontmatter is touched and a body bullet or a `tags:` line in prose is never read.
+tags=$(article_tags "$file")
+[[ -n "$tags" ]] || exit 0   # no tags to filter: leave the draft as written
+printf '%s\n' "$tags" | while IFS= read -r t; do if in_vocab "$t"; then printf '%s\n' "$t"; fi; done \
+  | article_set_list tags "$file"

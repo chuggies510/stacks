@@ -94,22 +94,53 @@ article_list() {
   local field="${1:?usage: article_list <field> <article.md>}" article="${2:?usage: article_list <field> <article.md>}"
   [[ -r "$article" ]] || return 1
 
-  awk -v field="$field" '
+  FIELD="$field" awk '
     function add(t) { gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", t); if (t != "") out = out t "\n" }
+    BEGIN { k = ENVIRON["FIELD"] }
     NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
     /^---[[:space:]]*$/ { closed = 1; exit }
-    $0 ~ "^" field ":" && !seen {
-      seen = 1
-      if ($0 ~ "^" field ":[[:space:]]*\\[") {
-        line = $0; sub("^" field ":[[:space:]]*\\[", "", line); sub(/\].*$/, "", line)
-        n = split(line, parts, ","); for (i = 1; i <= n; i++) add(parts[i])
-      } else if ($0 ~ "^" field ":[[:space:]]*$") in_list = 1
+    index($0, k ":") == 1 && !seen {
+      seen = 1; rest = substr($0, length(k) + 2)
+      if (rest ~ /^[[:space:]]*\[/) {
+        sub(/^[[:space:]]*\[/, "", rest); sub(/\].*$/, "", rest)
+        n = split(rest, parts, ","); for (i = 1; i <= n; i++) add(parts[i])
+      } else if (rest ~ /^[[:space:]]*$/) in_list = 1
       next
     }
     in_list && /^[[:space:]]*-/ { item = $0; sub(/^[[:space:]]*-/, "", item); add(item); next }
     in_list && /^[^[:space:]-]/ { in_list = 0 }
     END { if (closed) printf "%s", out }
   ' "$article"
+}
+
+article_tags() { article_list tags "${1:?usage: article_tags <article.md>}"; }
+
+# The writer twin of article_list: replace one list field with the values on stdin, one
+# per line, written block style (`field:` then `  - value`). A field the frontmatter
+# lacks is added just before the closing delimiter. Atomic, file mode preserved, and
+# refuses a file whose frontmatter is not closed.
+article_set_list() {
+  local field="${1:?usage: article_set_list <field> <article.md> < values}"
+  local article="${2:?usage: article_set_list <field> <article.md> < values}"
+  [[ -r "$article" ]] || return 1
+  local values tmp
+  values=$(cat)
+  tmp=$(mktemp "${article}.list.XXXXXX") || return 1
+  cp -p "$article" "$tmp" || { rm -f "$tmp"; return 1; }
+  if ! FIELD="$field" VALUES="$values" awk '
+    BEGIN { k = ENVIRON["FIELD"]; n = split(ENVIRON["VALUES"], v, "\n") }
+    function emit(  i) { print k ":"; for (i = 1; i <= n; i++) if (v[i] != "") print "  - " v[i]; done = 1 }
+    NR == 1 { if ($0 !~ /^---[[:space:]]*$/) { bad = 1; exit } print; next }
+    !closed && /^---[[:space:]]*$/ { if (!done) emit(); closed = 1; skip = 0; print; next }
+    !closed && index($0, k ":") == 1 { if (!done) emit(); skip = (substr($0, length(k) + 2) ~ /^[[:space:]]*$/); next }
+    !closed && skip && /^[[:space:]]*-/ { next }
+    { skip = 0; print }
+    END { if (bad || !closed) exit 1 }
+  ' "$article" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  mv "$tmp" "$article"
 }
 
 article_tags() { article_list tags "${1:?usage: article_tags <article.md>}"; }

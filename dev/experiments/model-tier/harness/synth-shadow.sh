@@ -4,7 +4,7 @@
 # Local-first, cloud-authoritative pilot for the stacks synthesis stage:
 # runs the local model on ONE concept block, tag-postfilters the output,
 # captures cheap structural metrics for local vs cloud, and appends one JSON
-# line to live-diffs/synthesis.jsonl. The article-verifier grades quality
+# line to <RUN_DIR>/synthesis.jsonl. The article-verifier grades quality
 # (catalog Step 8.6); this script judges nothing.
 set -euo pipefail
 
@@ -23,16 +23,14 @@ EXTRACT_AWK='{a[++n]=$0} END{
 # shellcheck source=../../../../scripts/article-field.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/article-field.sh"
 
-# On an update, every `sources:` path of the pre-update article stays in the draft. The
-# harness owns this list merge so the drafter only writes prose: missing paths are
-# added under the draft's block-style `sources:` line.
-union_sources() { # <prior-article> <draft>
-  local missing
-  missing=$(comm -23 <(article_list sources "$1" | sort -u) <(article_list sources "$2" | sort -u))
-  [[ -n "$missing" ]] || return 0
-  MISSING="$missing" awk 'BEGIN{n=split(ENVIRON["MISSING"], m, "\n")}
-    {print} /^sources:[[:space:]]*$/ && !done {for(i=1;i<=n;i++) if(m[i]!="") print "  - " m[i]; done=1}' \
-    "$2" > "$2.union" && mv "$2.union" "$2"
+# The `sources:` list is fully determined by the inputs, so the harness writes it: the
+# pre-update article's paths (on an update) followed by the block's `source_paths`
+# with the tier suffix removed. The drafter only writes prose; a path it dropped or
+# mistyped (the 4-bit drafter wrote `sources/inimal/` twice) never reaches the draft.
+set_sources() { # <block> <pre-update article, or a missing path for a new slug> <draft>
+  { [[ ! -f "$2" ]] || article_list sources "$2"
+             awk '/^source_paths:/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{sub(/^[[:space:]]*-[[:space:]]*/,""); sub(/[[:space:]]*\(tier [0-9]+\)[[:space:]]*$/,""); print; next} f{exit}' "$1"
+  } | awk 'NF && !seen[$0]++' | article_set_list sources "$3"
 }
 
 # A new or updated article starts unverified; the audit stamps the date. A drafter
@@ -50,20 +48,25 @@ if [[ "${1:-}" == "--self-check" ]]; then
   chk 'NONE' 'Concept foo: insufficient claims - article not written.\n\n---\n'
   t=$(mktemp -d)
   printf -- '---\nsources:\n  - sources/a/old.md\n  - sources/b/kept.md\ntitle: P\n---\nBody.\n' > "$t/prior.md"
-  printf -- '---\nsources:\n  - sources/b/kept.md\n  - sources/c/new.md\ntitle: D\n---\nBody with sources:\n' > "$t/draft.md"
-  union_sources "$t/prior.md" "$t/draft.md"
-  got=$(article_list sources "$t/draft.md" | sort | tr '\n' '|')
-  [[ "$got" == 'sources/a/old.md|sources/b/kept.md|sources/c/new.md|' ]] || { echo "FAIL: union gave [$got]"; fails=$((fails+1)); }
+  printf 'slug: x\nsource_paths:\n  - sources/incoming/new.md (tier 3)\n  - sources/b/kept.md (tier 1)\ntarget_article: x\n\n### Claims\n- c\n' > "$t/block.md"
+  printf -- '---\nsources:\n  - sources/inimal/new.md\ntitle: D\n---\nBody with sources:\n- bullet\n' > "$t/draft.md"
+  set_sources "$t/block.md" "$t/prior.md" "$t/draft.md"
+  got=$(article_list sources "$t/draft.md" | tr '\n' '|')
+  [[ "$got" == 'sources/a/old.md|sources/b/kept.md|sources/incoming/new.md|' ]] || { echo "FAIL: sources gave [$got]"; fails=$((fails+1)); }
+  grep -qx -- '- bullet' "$t/draft.md" || { echo "FAIL: body bullet lost"; fails=$((fails+1)); }
+  printf -- '---\ntitle: D\n---\nBody.\n' > "$t/nosrc.md"
+  set_sources "$t/block.md" NONE "$t/nosrc.md"
+  got=$(article_list sources "$t/nosrc.md" | tr '\n' '|')
+  [[ "$got" == 'sources/incoming/new.md|sources/b/kept.md|' ]] || { echo "FAIL: missing sources line not added, got [$got]"; fails=$((fails+1)); }
   printf -- '---\nlast_verified: "2026-07-10"\ntitle: D\n---\nBody.\n' > "$t/dated.md"
   blank_verified "$t/dated.md"
   got=$(article_field last_verified "$t/dated.md"); rm -rf "$t"
   [[ "$got" == '""' ]] || { echo "FAIL: last_verified left as [$got]"; fails=$((fails+1)); }
-  [[ $fails -eq 0 ]] && echo "SELF-CHECK PASS (6 cases)" || exit 1
+  [[ $fails -eq 0 ]] && echo "SELF-CHECK PASS (8 cases)" || exit 1
   exit 0
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MTIER="$(cd "$HERE/.." && pwd)"
 # Every run writes into its own folder (drafts, log), exported by shadow-synth-run.sh,
 # so no two runs or variants ever share a draft file.
 RUN_DIR="${RUN_DIR:?RUN_DIR must be this run folder, exported by shadow-synth-run.sh}"
@@ -84,7 +87,6 @@ item_id="${3:?}"
 # Pre-update snapshot catalog.sh dedup took before W2 overwrote the article; absent for a new slug.
 prior_file="$(dirname "$concept_file")/_prior-$item_id.md"
 
-mkdir -p "$RUN_DIR/bodies"
 # Remove any prior local draft for this slug up front: a failed inference below
 # exits before the fresh cp, so without this an earlier run's stale draft would
 # survive and get graded against THIS run's block (codex, #109). No draft is the
@@ -213,7 +215,7 @@ local_body="$RUN_DIR/bodies/${item_id}__local.md"
 cp "$localraw" "$local_body"
 bash "$POSTFILTER" "$local_body"     # drop out-of-vocab tags
 bash "$NORMALIZER" "$local_body"     # [source: X] -> [X]
-[[ ! -f "$prior_file" ]] || union_sources "$prior_file" "$local_body"
+set_sources "$concept_file" "$prior_file" "$local_body"
 blank_verified "$local_body"
 
 echo "--- tags after filter (item=$item_id) ---" >&2

@@ -183,10 +183,9 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 [ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
 [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
 [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
-LIB=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
-RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$(grep -m1 '^RUN_ID_W2=' "$LIB/{stack}/dev/extractions/run.env" | cut -d= -f2)-${STACKS_RUN_LABEL:-default}"
-bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} local "$RUN_DIR" > "$RUN_DIR/verify/manifest-local.tsv"
-bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} cloud "$RUN_DIR" > "$RUN_DIR/verify/manifest-cloud.tsv"
+RUN_DIR=$(bash "$STACKS_ROOT/dev/experiments/model-tier/harness/run-dir.sh" {stack}) || exit 1
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} local > "$RUN_DIR/verify/manifest-local.tsv"
+bash "$STACKS_ROOT/dev/experiments/model-tier/harness/verify-manifest.sh" {stack} cloud > "$RUN_DIR/verify/manifest-cloud.tsv"
 echo "RUN_DIR=$RUN_DIR"
 ```
 
@@ -200,7 +199,7 @@ STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/se
 [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
 [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
 LIB=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
-RUN_DIR="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/runs/$(grep -m1 '^RUN_ID_W2=' "$LIB/{stack}/dev/extractions/run.env" | cut -d= -f2)-${STACKS_RUN_LABEL:-default}"
+RUN_DIR=$(bash "$STACKS_ROOT/dev/experiments/model-tier/harness/run-dir.sh" {stack}) || exit 1
 bash "$STACKS_ROOT/dev/experiments/model-tier/harness/synth-verify-summary.sh" \
   "$LIB/{stack}/dev/extractions" "$RUN_DIR" "$RUN_DIR/verify/tokens.tsv" || true
 ```

@@ -14,8 +14,8 @@ served model `qwen3.8-27b`, OpenAI-compatible `/v1/chat/completions`, reached fr
 through the existing tunnel `127.0.0.1:11436` (liminal tech-context owns the port, slots and
 speed; quote it there, do not copy it here). Two settings come in through env with those
 defaults: `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`. `local-infer.sh` replaces its Ollama call with the
-`/v1/chat/completions` call shape (item 5 lists what changes; Ollama no longer serves a 27B while vLLM is up) with thinking at medium effort and a 4,096-token budget, the setting liminal
-measured: Qwen's default effort is xhigh, and an uncapped reply burned its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
+`/v1/chat/completions` call shape (item 5 lists what changes; Ollama no longer serves a 27B while vLLM is up) with thinking off: S31 measured over-claims rising with thinking effort on the
+same blocks (1 off, 2 low, 5 medium), and an uncapped reply can burn its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
 The server has 8 slots, so the serial-only rule below is relaxed to a small fixed
 concurrency (4). Measure it during the advisory batch; no parallelism code beyond `xargs -P`.
 
@@ -36,7 +36,9 @@ synthesizes from scratch as today (the flip keeps that path; no haiku tier). The
 Haiku A/B is deleted in S31; this advisory batch replaces it.
 **Result (S31, 2026-10-07):** the batch ran on `llm` (7 slugs). Every draft cleared the floors
 after one repair pass, but review plus repair cost 92% of the cloud tokens that writing did, so
-the flip is an owner decision, not automatic. Evidence: `results-stacks-S31-breathless-advisory.md`.
+the flip is an owner decision, not automatic. Later S31 runs (repaired writer prompt, harness-owned
+`sources:` and `last_verified`, one batched reviewer) brought review plus repair to 41% of the
+writing cost with 7/7 clearing after repair. Evidence: `results-stacks-S31-breathless-advisory.md`.
 
 **4. No soft spots.** A claim tied to no source is trimmed by the validator, the same as an
 overstatement, instead of being listed as a soft spot. The writer's grounded-only rule
@@ -94,7 +96,11 @@ Item 4 ships in S31; items 1 to 3 build when breathless is back up.
 - Portable in-place edits (no `sed -i -E`) in the harness; the orchestrator runs on macOS.
 - Codex: each dispatch seam points at one shared instruction (read the agent file, dispatch
   natively with the model and effort named in item 2).
-- Declined: per-run namespacing of shadow paths (one operator, one catalog at a time).
+- Per-run folders (S31, reverses the earlier decline): drafter variants of one batch run side by side,
+  so every run writes into `live-diffs/runs/<RUN_ID_W2>-<label>/` (`run-dir.sh`).
+- At the flip, the fields the harness now writes for drafts (`sources:` from the block plus the
+  pre-update article, `last_verified: ""`) move into `catalog.sh` after W2 for both writers, so the
+  advisory score and production apply the same rule (S31 simplify review).
 
 The sections below are the S25 plan. Where they name qwen3-30b-a3b, Ollama, serial-only,
 a Haiku fallback or a local validation stage, item 1 to 5 above override them.

@@ -8,16 +8,22 @@
 # tech-context owns its port, slots and speed). One user-role message; the prompt is
 # read from a file and passed to jq via --rawfile, never string-interpolated into JSON.
 #
-# Every caller gets the model from STACKS_LOCAL_MODEL, never an argument. Thinking runs
-# at medium effort with a 4,096-token budget inside a 16,384 output cap, the setting
-# liminal measured on this server (S91): Qwen's default effort is xhigh, and an
-# unbounded reply spent 8,149 of 8,192 tokens reasoning and returned nothing.
+# Every caller gets the model from STACKS_LOCAL_MODEL, never an argument. Thinking is
+# off: for drafting it adds the model's own conclusions (S31: over-claims rose from 1
+# off to 2 at low and 5 at medium effort on the same 7 blocks) and costs time. A
+# reasoning task can turn it on with STACKS_LOCAL_EXTRA, for example
+# '{"chat_template_kwargs":{"enable_thinking":true},"reasoning_effort":"medium","thinking_token_budget":4096}'
+# (Qwen's default effort is xhigh; liminal S91 saw an unbounded reply spend 8,149 of
+# 8,192 tokens reasoning).
+# The off switch above is vLLM's; a hosted endpoint such as OpenRouter needs its own
+# in STACKS_LOCAL_EXTRA, for example '{"reasoning":{"enabled":false}}'. Raise
+# MAX_TOKENS when thinking is on.
 set -euo pipefail
 
 STACKS_LOCAL_URL="${STACKS_LOCAL_URL:-http://127.0.0.1:11436}"
 STACKS_LOCAL_MODEL="${STACKS_LOCAL_MODEL:-qwen3.8-27b}"
 TEMP="${TEMP:-0}"
-MAX_TOKENS="${MAX_TOKENS:-16384}"
+MAX_TOKENS="${MAX_TOKENS:-8192}"
 # Optional: a bearer key for a hosted endpoint such as OpenRouter (the secrets vault
 # decrypts it to ~/.config/secrets/openrouter.env), and a JSON object merged into the
 # request last, for server-specific settings (thinking control, provider).
@@ -31,7 +37,7 @@ call_local() {
     --argjson temp "$TEMP" --argjson max "$MAX_TOKENS" --argjson extra "$STACKS_LOCAL_EXTRA" \
     '{model:$model, messages:[{role:"user", content:$prompt}], stream:false,
       temperature:$temp, max_tokens:$max,
-      reasoning_effort:"medium", thinking_token_budget:4096} * $extra')
+      chat_template_kwargs:{enable_thinking:false}} * $extra')
 
   local auth=()
   [[ -z "$STACKS_LOCAL_KEY" ]] || auth=(-H "Authorization: Bearer $STACKS_LOCAL_KEY")
