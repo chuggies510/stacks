@@ -1,4 +1,4 @@
-# stacks: Session 31 (2026-10-07, mini)
+# Session 31: stacks (2026-10-07, mini)
 
 ## Summary
 Session 31 triaged the backlog and released 0.79.0, then built the local-writer trial and released 0.80.0 and 0.81.0. In the trial, breathless drafts each article with thinking off and one batched Sonnet reviewer repairs the batch in place. The harness now owns the mechanical fields and gives each run its own folder. On the 7-article test batch, cloud cost fell from 92% to 41% of writing, and every article cleared after repair. Drafts as written stayed flat at about 5 of 7 across prompt rewrites, thinking levels and an OpenRouter bench of the same model. Primary research agreed the external reviewer is the quality gate, so drafter tuning stopped. The session then wrote spec #155 for making the reviewed local draft the shipped article. Codex reviewed it twice: round 1 found 3 P1 and 10 P2, round 2 found 3 P2, all folded in. It was split into 7 tickets, #156 to #162. Cross-repo: ChuggiesMart AGENTS.md now names chungus-net the fleet admin, the secrets-vault add-secret.sh was reverted, and library-stack liminal sources were re-filed.
