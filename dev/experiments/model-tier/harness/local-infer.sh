@@ -1,79 +1,67 @@
 #!/usr/bin/env bash
-# local-infer.sh <model> <prompt-file> <output-file>
+# local-infer.sh <prompt-file> <output-file>
+# local-infer.sh --model        print the model a call would use
 # local-infer.sh --self-check
 #
-# Calls Ollama's native /api/chat endpoint (NOT /v1, which drops num_ctx) with
-# a single user-role message. Prompt is read from a file and passed to jq via
-# --rawfile, never string-interpolated into JSON.
+# Calls the local drafter, an OpenAI-compatible /v1/chat/completions server (the
+# breathless vLLM, reached from the Mini through the 127.0.0.1:11436 tunnel; liminal
+# tech-context owns its port, slots and speed). One user-role message; the prompt is
+# read from a file and passed to jq via --rawfile, never string-interpolated into JSON.
+#
+# Every caller gets the model from STACKS_LOCAL_MODEL, never an argument. Thinking is
+# turned off: this is a thinking model, and an uncapped reply can spend its whole
+# token budget on reasoning (liminal S91: 8,149 of 8,192 tokens) and return nothing.
 set -euo pipefail
 
-OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+STACKS_LOCAL_URL="${STACKS_LOCAL_URL:-http://127.0.0.1:11436}"
+STACKS_LOCAL_MODEL="${STACKS_LOCAL_MODEL:-qwen3.8-27b}"
 TEMP="${TEMP:-0}"
-NUM_CTX="${NUM_CTX:-16384}"
+MAX_TOKENS="${MAX_TOKENS:-8192}"
 
-call_ollama() {
-  local model="$1" promptfile="$2" outfile="$3"
-  local body resp content
+call_local() {
+  local promptfile="$1" outfile="$2" body resp content finish
 
-  body=$(jq -n --arg model "$model" --rawfile prompt "$promptfile" \
-    --argjson temp "$TEMP" --argjson num_ctx "$NUM_CTX" \
+  body=$(jq -n --arg model "$STACKS_LOCAL_MODEL" --rawfile prompt "$promptfile" \
+    --argjson temp "$TEMP" --argjson max "$MAX_TOKENS" \
     '{model:$model, messages:[{role:"user", content:$prompt}], stream:false,
-      options:{temperature:$temp, num_ctx:$num_ctx}}')
+      temperature:$temp, max_tokens:$max,
+      chat_template_kwargs:{enable_thinking:false}}')
 
-  if ! resp=$(curl -sS --max-time 300 -X POST "$OLLAMA_URL/api/chat" -d "$body"); then
-    echo "ERROR: curl request to $OLLAMA_URL/api/chat failed" >&2
+  if ! resp=$(curl -sS --max-time 600 -H 'Content-Type: application/json' \
+      -X POST "$STACKS_LOCAL_URL/v1/chat/completions" -d "$body"); then
+    echo "ERROR: request to $STACKS_LOCAL_URL/v1/chat/completions failed" >&2
     return 1
   fi
+  [[ -n "$resp" ]] || { echo "ERROR: empty HTTP response (server down or timeout)" >&2; return 1; }
 
-  if [[ -z "$resp" ]]; then
-    echo "ERROR: empty HTTP response from Ollama (server down or timeout)" >&2
-    return 1
-  fi
+  content=$(printf '%s' "$resp" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
+  finish=$(printf '%s' "$resp" | jq -r '.choices[0].finish_reason // empty' 2>/dev/null || true)
 
-  content=$(printf '%s' "$resp" | jq -r '.message.content // empty' 2>/dev/null || true)
-
-  if [[ -z "$content" ]]; then
-    echo "ERROR: empty/null .message.content (cold-load timeout under VRAM pressure, or model error). Raw response: $resp" >&2
-    return 1
-  fi
+  # A reply cut at max_tokens is a partial article that would still look like one.
+  [[ "$finish" == "stop" ]] || { echo "ERROR: finish_reason=${finish:-none} (truncated or failed). Raw: ${resp:0:500}" >&2; return 1; }
+  [[ -n "$content" ]] || { echo "ERROR: empty .choices[0].message.content. Raw: ${resp:0:500}" >&2; return 1; }
 
   printf '%s' "$content" > "$outfile"
 }
 
+# The one place the default model lives; callers that log the model ask for it here.
+if [[ "${1:-}" == "--model" ]]; then echo "$STACKS_LOCAL_MODEL"; exit 0; fi
+
 if [[ "${1:-}" == "--self-check" ]]; then
-  host="${OLLAMA_URL#http://}"
-  model=$(OLLAMA_HOST="$host" ollama ps 2>/dev/null | awk 'NR==2{print $1}')
-  if [[ -z "$model" ]]; then
-    model=$(OLLAMA_HOST="$host" ollama list 2>/dev/null | awk 'NR==2{print $1}')
-  fi
-  if [[ -z "$model" ]]; then
-    echo "FAIL: no model found via 'ollama ps' or 'ollama list'" >&2
-    exit 1
-  fi
-
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
+  work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
   printf 'Reply with exactly: HARNESS-OK\n' > "$work/prompt.txt"
-
-  echo "self-check: calling model '$model'" >&2
-  if call_ollama "$model" "$work/prompt.txt" "$work/out.txt"; then
-    if grep -q "HARNESS-OK" "$work/out.txt"; then
-      echo "PASS: model=$model output=$(cat "$work/out.txt")"
-      exit 0
-    else
-      echo "FAIL: sentinel HARNESS-OK not found. model=$model output=$(cat "$work/out.txt")"
-      exit 1
-    fi
-  else
-    echo "FAIL: inference call errored, see stderr above"
-    exit 1
+  if call_local "$work/prompt.txt" "$work/out.txt" && grep -qx 'HARNESS-OK' "$work/out.txt"; then
+    echo "PASS: model=$STACKS_LOCAL_MODEL url=$STACKS_LOCAL_URL output=$(cat "$work/out.txt")"
+    exit 0
   fi
+  echo "FAIL: model=$STACKS_LOCAL_MODEL url=$STACKS_LOCAL_URL output=$(cat "$work/out.txt" 2>/dev/null)"
+  exit 1
 fi
 
-if [[ $# -ne 3 ]]; then
-  echo "Usage: $0 <model> <prompt-file> <output-file>" >&2
+if [[ $# -ne 2 ]]; then
+  echo "Usage: $0 <prompt-file> <output-file>" >&2
   echo "       $0 --self-check" >&2
   exit 2
 fi
 
-call_ollama "$1" "$2" "$3"
+call_local "$1" "$2"

@@ -24,9 +24,9 @@ it is itself a library) and operate there; you do not `cd` into the library firs
 
 **Every claim traces to a source.** `/stacks:lookup` reads articles, never the
 sources behind them, so an article that drifted from its source becomes confident
-misinformation. Articles cite sources; `audit-stack` finds unsourced claims;
-`enrich-stack` acquires real sources to close them. Nothing enters as a bare
-assertion.
+misinformation. Articles cite sources; `audit-stack` removes claims no source
+supports; `enrich-stack` acquires real sources for what lookup could not answer.
+Nothing enters as a bare assertion.
 
 ## Routing
 
@@ -113,3 +113,10 @@ safe when they are not. `catalog-sources` is what makes a staged source durable:
 it extracts the concepts into articles and files the raw source into the tracked
 `sources/{publisher}/`. Catalog promptly rather than leaving hand-authored
 sources staged across a session or a machine switch.
+
+### 7. On Codex, dispatch stacks agents natively
+
+Codex cannot read an agent file's `model:` pin. Wherever a skill dispatches a
+`stacks:` agent, read `agents/{name}.md` from the plugin root and dispatch it as a
+native Codex agent with the current Sol model at medium effort (`gpt-6.1-sol`
+today), both set explicitly on the dispatch.

@@ -3,30 +3,54 @@
 #
 # Local-first, cloud-authoritative pilot for the stacks synthesis stage:
 # runs the local model on ONE concept block, tag-postfilters the output,
-# captures cheap deterministic structural metrics for local vs cloud, and
-# appends one JSON line to live-diffs/synthesis.jsonl for the liminal peer
-# session to judge recall/over-claim downstream. This script does NOT judge
-# quality — structural metrics only (word count, citation count, tag
-# in-vocab count, required-key presence).
+# captures cheap structural metrics for local vs cloud, and appends one JSON
+# line to live-diffs/synthesis.jsonl. The article-verifier grades quality
+# (catalog Step 8.6); this script judges nothing.
 set -euo pipefail
+
+# The reply is an article only when its first non-blank line, after an optional
+# opening code fence, is `---`. Keep from there and drop one closing fence. Anything
+# else is a refusal (the contract's shortfall line) or malformed, never a draft.
+EXTRACT_AWK='{a[++n]=$0} END{
+    i=1; while (i<=n && a[i] ~ /^[[:space:]]*$/) i++
+    if (i<=n && a[i] ~ /^```/) { i++; while (i<=n && a[i] ~ /^[[:space:]]*$/) i++ }
+    if (i>n || a[i] != "---") exit 1
+    j=n; while (j>i && a[j] ~ /^[[:space:]]*$/) j--
+    if (a[j] ~ /^```[[:space:]]*$/) j--
+    for (k=i; k<=j; k++) print a[k]
+  }'
+
+if [[ "${1:-}" == "--self-check" ]]; then
+  fails=0
+  chk() { local want="$1" got; got=$(printf '%b' "$2" | awk "$EXTRACT_AWK" | tr '\n' '|') || got="NONE"
+    [[ "$got" == "$want" ]] || { echo "FAIL: [$2] gave [$got] want [$want]"; fails=$((fails+1)); }; }
+  chk '---|t: x|---|Body.|' '---\nt: x\n---\nBody.\n'
+  chk '---|t: x|---|Body.|' '\n```markdown\n---\nt: x\n---\nBody.\n```\n\n'
+  chk 'NONE' 'Here is the article:\n---\nt: x\n---\n'
+  chk 'NONE' 'Concept foo: insufficient claims - article not written.\n\n---\n'
+  [[ $fails -eq 0 ]] && echo "SELF-CHECK PASS (4 cases)" || exit 1
+  exit 0
+fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MTIER="$(cd "$HERE/.." && pwd)"
 LIVE_DIFFS="$MTIER/live-diffs"
-BENCH="$MTIER/synthesis-benchmark.md"
 INFER="$HERE/local-infer.sh"
 POSTFILTER="$HERE/tag-postfilter.sh"
 NORMALIZER="$HERE/citation-normalizer.sh"
-MODEL="${MODEL:-qwen3-30b-a3b-instruct}"
+MODEL="$(bash "$HERE/local-infer.sh" --model)"
 RUN_ID="${RUN_ID:-manual}"
-# TAG_VOCAB is exported by shadow-synth-run.sh from the target stack's STACK.md
-# allowed_tags; default is the llm-stack list (the #109 pilot stack).
-VOCAB="${TAG_VOCAB:-llm llmops evals llm-as-judge rag agents hallucination observability shadow-mode context-engineering prompt-engineering guardrails memory mcp multi-agent cost-economics fine-tuning}"
+# Both exported by shadow-synth-run.sh: the target stack's allowed_tags, and its
+# absolute directory (STACK.md and index.md are read from there).
+VOCAB="${TAG_VOCAB:?TAG_VOCAB must hold the allowed_tags of the stack}"
+STACK_DIR="${STACK_DIR:?STACK_DIR must be the absolute path of the target stack}"
 
 concept_file="${1:?Usage: synth-shadow.sh <concept-block-file> <cloud-article-file|NONE> <item-id>}"
 cloud_file="${2:?}"
 item_id="${3:?}"
 [[ -f "$concept_file" ]] || { echo "ERROR: concept block not found: $concept_file" >&2; exit 1; }
+# Pre-update snapshot catalog.sh dedup took before W2 overwrote the article; absent for a new slug.
+prior_file="$(dirname "$concept_file")/_prior-$item_id.md"
 
 mkdir -p "$LIVE_DIFFS/bodies"
 # Remove any prior local draft for this slug up front: a failed inference below
@@ -73,40 +97,22 @@ json_for() { # <words> <cites> <tt> <to> <ht> <hlv> <hs> <hr> <rel-path>
       body_path:$body_path}'
 }
 
-# Assemble prompt: the SHIPPING agent's model-facing region (#136) + the output
-# contract this harness owns + allowed tags ($VOCAB — the stack's allowed_tags via
-# TAG_VOCAB, or the llm default) + block.
-#
-# The rubric is sliced from `agents/article-synthesizer.md`, NOT from the benchmark.
-# It used to be a hand-copy inside synthesis-benchmark.md that drifted from the agent
-# it stood for, so every synthesis number measured an approximation of the stage
-# (#136). The agent def owns the judgment; the harness owns only the I/O contract
-# below, because the agent's own I/O instruction (dispatch paths, the Write tool) is
-# wrong for a raw prompt that returns on stdout.
+# Assemble prompt: the SHIPPING agent's model-facing region (#136), then the files the
+# cloud synthesizer reads in production, inlined because a raw prompt cannot open them:
+# the stack's own STACK.md (source hierarchy, article template, tag vocabulary), its
+# index.md scope map (sibling boundaries), and the pre-update article on an update.
+# The harness owns only the stdout output contract, because the agent's own I/O
+# instruction (dispatch paths, the Write tool) is wrong for a raw prompt.
 bash "$HERE/agent-prompt.sh" "$HERE/../../../../agents/article-synthesizer.md" > "$work/prompt.txt"
-
-# The harness supplies what the agent def points at but a raw prompt cannot reach: the
-# stack's Topic Template skeleton (normally read from STACK.md) and the frontmatter
-# field list (normally read from references/article-contract.md). The agent slice above
-# says "use the Topic Template" and "the contract is not restated here" — true in
-# production, useless to a model with no file access, so those two files are inlined
-# here. This is the harness's job under #136, not the agent's.
+{
+  printf '\nSTACK.md (the stack you write for: source hierarchy, article template, tag vocabulary):\n\n'
+  cat "$STACK_DIR/STACK.md"
+  if [[ -f "$STACK_DIR/index.md" ]]; then
+    printf '\nindex.md ## Articles scope map (sibling articles and what each covers):\n\n'
+    awk '/^## Articles/{f=1;next} /^## /{f=0} f' "$STACK_DIR/index.md"
+  fi
+} >> "$work/prompt.txt"
 cat >> "$work/prompt.txt" <<'CONTRACT'
-
-STACK.md TOPIC TEMPLATE (the section skeleton referred to above), in this order, each
-a `## ` heading:
-
-  ## Overview        - what this is, when/why you'd use it, scope boundaries
-  ## Key Concepts    - core principles, mechanisms, configurations, trade-offs
-  ## Patterns        - tested approaches with concrete examples
-  ## Pitfalls        - production failure modes that surprise an experienced practitioner
-  ## Cost & Latency  - token economics, cache implications, latency/throughput
-  ## Eval Strategy   - how to measure that the pattern works
-  ## Field Notes     - practitioner experience, production lessons, what actually breaks
-
-Group the claims under the sections they belong to and write connected prose. Omit any
-section the grounded claims do not support - the no-padding rule above wins; never add
-an empty or invented section to match the skeleton.
 
 OUTPUT CONTRACT: return everything on stdout. Write no files.
 
@@ -119,13 +125,21 @@ OUTPUT CONTRACT: return everything on stdout. Write no files.
   routing: {one plain-text line, an asker's words, what it covers + questions answered}
   tags: [{from the allowed list below}]
   ---
-  {body - the ## sections above, inline [source-slug] citation on every claim}
+  {body - `## ` sections from the stack's article template, inline [source-slug] citation on every claim}
 
   WHEN THE CLAIMS ARE TOO THIN to support an article (the judgment described above),
   do NOT invent one. Return only the one-line shortfall report:
   Concept {slug}: insufficient claims - article not written.
 CONTRACT
-{ echo; echo "Allowed tags: $VOCAB"; echo; cat "$concept_file"; } >> "$work/prompt.txt"
+{
+  echo; echo "Allowed tags: $VOCAB"
+  # Last before the block, so every slug shares the longest possible prompt opening.
+  if [[ -f "$prior_file" ]]; then
+    printf '\nEXISTING ARTICLE (this is an update: follow the Update behavior above):\n\n'
+    cat "$prior_file"
+  fi
+  echo; echo "CONCEPT BLOCK:"; cat "$concept_file"
+} >> "$work/prompt.txt"
 
 # Deterministic refusal gate (liminal S61): the weak tier's refuse-or-write call
 # is prompt-CHAOTIC — a cosmetic framing change flips it, same fragility class as
@@ -134,22 +148,31 @@ CONTRACT
 # directive that overrides the rubric's thin-concept refusal. Below the floor the
 # rubric's genuine refusal stands (the thin-concept case).
 CLAIM_FLOOR="${CLAIM_FLOOR:-2}"
-n_claims=$(awk '/^###[[:space:]]*Claims/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{c++} END{print c+0}' "$concept_file")
+n_claims=$(bash "$HERE/claim-count.sh" "$concept_file")
 if [[ "$n_claims" -ge "$CLAIM_FLOOR" ]]; then
   printf '\nThis concept block has %d claims, at or above the substantive-article floor. WRITE the article for it; do NOT refuse or report insufficient claims.\n' "$n_claims" >> "$work/prompt.txt"
 fi
 
 localraw="$work/local_raw.md"
-t0=$(date +%s.%N)
-if ! bash "$INFER" "$MODEL" "$work/prompt.txt" "$localraw" 2>"$work/local.err"; then
+t0=$SECONDS
+if ! bash "$INFER" "$work/prompt.txt" "$localraw" 2>"$work/local.err"; then
   echo "FAIL item=$item_id: local inference errored (see $work/local.err, printed below)" >&2
   cat "$work/local.err" >&2
   jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" \
     '{item:$item, model:$model, run_id:$run, status:"local-inference-failed"}' >> "$LIVE_DIFFS/synthesis.jsonl"
   exit 1
 fi
-t1=$(date +%s.%N)
-sed -i -E '1{/^```/d}; ${/^```$/d}' "$localraw"   # strip an outer code fence, if the model added one
+secs=$((SECONDS - t0))
+article="$work/article.md"
+if ! awk "$EXTRACT_AWK" "$localraw" > "$article"; then
+  if grep -qE '^Concept [^:]+: insufficient claims' "$localraw"; then status=refused; else status=malformed; fi
+  jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" --arg st "$status" \
+    '{item:$item, model:$model, run_id:$run, status:$st}' >> "$LIVE_DIFFS/synthesis.jsonl"
+  echo "$status item=$item_id: no article in the local reply" >&2
+  [[ "$status" == refused ]] && exit 0
+  exit 1
+fi
+mv "$article" "$localraw"
 
 echo "--- tags before filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$localraw" >&2 || echo "(no tags: line found)" >&2
@@ -161,9 +184,6 @@ bash "$NORMALIZER" "$local_body"     # [source: X] -> [X]
 
 echo "--- tags after filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$local_body" >&2 || echo "(no tags: line found)" >&2
-
-words_local=$(wc -w < "$local_body" | tr -d ' ')
-toksec_est=$(awk -v w="$words_local" -v t0="$t0" -v t1="$t1" 'BEGIN{d=t1-t0; if(d>0) printf "%.1f", (w*1.3)/d; else print "NA"}')
 
 read -r w_l c_l tt_l to_l ht_l hlv_l hs_l hr_l <<< "$(metrics_for "$local_body")"
 local_json=$(json_for "$w_l" "$c_l" "$tt_l" "$to_l" "$ht_l" "$hlv_l" "$hs_l" "$hr_l" "live-diffs/bodies/${item_id}__local.md")
@@ -178,9 +198,9 @@ else
   echo "NOTE item=$item_id: no cloud article at '$cloud_file' — logging local metrics only, cloud:null" >&2
 fi
 
-jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" --arg toksec "$toksec_est" \
+jq -nc --arg item "$item_id" --arg model "$MODEL" --arg run "$RUN_ID" --argjson secs "$secs" \
   --argjson local "$local_json" --argjson cloud "$cloud_json" \
-  '{item:$item, model:$model, run_id:$run, tok_s_est:$toksec, status:"ok", local:$local, cloud:$cloud}' \
+  '{item:$item, model:$model, run_id:$run, secs:$secs, status:"ok", local:$local, cloud:$cloud}' \
   >> "$LIVE_DIFFS/synthesis.jsonl"
 
-echo "OK item=$item_id: logged to $LIVE_DIFFS/synthesis.jsonl (tok/s est=$toksec_est)" >&2
+echo "OK item=$item_id: logged to $LIVE_DIFFS/synthesis.jsonl (${secs}s)" >&2

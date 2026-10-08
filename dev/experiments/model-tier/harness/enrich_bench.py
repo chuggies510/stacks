@@ -11,13 +11,13 @@ Slicing is by fence and by item marker, never by line number: stacks-6 lost a ru
 to a hardcoded `sed -n '17,41p'` that silently truncated the moment the file changed
 length, and this file is one someone will edit.
 
-    MODEL=qwen3.6-27b PASSES=3 python3 stacks/enrich_bench.py [out.json]
+    STACKS_LOCAL_MODEL=qwen3.8-27b PASSES=3 python3 stacks/enrich_bench.py [out.json]
 """
 import json, os, re, subprocess, sys, tempfile
 
 BENCH = "/home/chris/chungus/dev/stacks/dev/experiments/model-tier/enrichment-benchmark.md"
 INFER = "/home/chris/chungus/dev/stacks/dev/experiments/model-tier/harness/local-infer.sh"
-MODEL = os.environ.get("MODEL", "qwen3.6-27b")
+MODEL = subprocess.check_output(["bash", INFER, "--model"], text=True).strip()  # local-infer.sh owns the default
 PASSES = int(os.environ.get("PASSES", 3))
 
 GOLD = {1: ("CANDIDATE", 2), 2: ("NOSOURCE", None), 3: ("NOSOURCE", None),
@@ -79,8 +79,8 @@ def ask(prompt, item):
     with tempfile.TemporaryDirectory() as d:
         pf, of = f"{d}/p.txt", f"{d}/o.txt"
         open(pf, "w").write(f"{prompt}\n\n---\n\n{item}\n")
-        env = {**os.environ, "TEMP": "0", "NUM_CTX": "8192"}
-        r = subprocess.run(["bash", INFER, MODEL, pf, of], capture_output=True, env=env)
+        env = {**os.environ, "TEMP": "0"}
+        r = subprocess.run(["bash", INFER, pf, of], capture_output=True, env=env)
         if r.returncode != 0:
             return f"ERROR {r.stderr.decode()[:120]}"
         return open(of).read().strip()

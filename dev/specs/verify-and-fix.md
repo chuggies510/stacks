@@ -13,8 +13,8 @@ already name; it repoints the drafter and deletes the soft-spot path.
 served model `qwen3.8-27b`, OpenAI-compatible `/v1/chat/completions`, reached from the Mini
 through the existing tunnel `127.0.0.1:11436` (liminal tech-context owns the port, slots and
 speed; quote it there, do not copy it here). Two settings come in through env with those
-defaults: `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`. `local-infer.sh` gains the
-`/v1/chat/completions` call shape beside its Ollama one (item 5 lists what changes) with reasoning turned off or capped, because this is a thinking model and an
+defaults: `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`. `local-infer.sh` replaces its Ollama call with the
+`/v1/chat/completions` call shape (item 5 lists what changes; Ollama no longer serves a 27B while vLLM is up) with thinking turned off, because this is a thinking model and an
 uncapped reply can burn its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
 The server has 8 slots, so the serial-only rule below is relaxed to a small fixed
 concurrency (4). Measure it during the advisory batch; no parallelism code beyond `xargs -P`.
@@ -34,6 +34,9 @@ clears the floors (all block claims present, 0 over-claims). The S25 calibration
 carry over: it graded a different drafter. Fallback when breathless is down: cloud
 synthesizes from scratch as today (the flip keeps that path; no haiku tier). The always-on
 Haiku A/B is deleted in S31; this advisory batch replaces it.
+**Result (S31, 2026-10-07):** the batch ran on `llm` (7 slugs). Every draft cleared the floors
+after one repair pass, but review plus repair cost 92% of the cloud tokens that writing did, so
+the flip is an owner decision, not automatic. Evidence: `results-stacks-S31-breathless-advisory.md`.
 
 **4. No soft spots.** A claim tied to no source is trimmed by the validator, the same as an
 overstatement, instead of being listed as a soft spot. The writer's grounded-only rule

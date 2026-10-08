@@ -205,7 +205,7 @@ phase_prep() {
   # Clear stale W1/W2 working files (freshness gate depends on every kept batch
   # file being written strictly after RUN_ID_W1 below).
   rm -f "$DEV"/batch-*-concepts.md "$DEV"/_dedup*.md "$DEV"/_dedup-meta.txt \
-        "$DEV"/dispatch-w1.tsv "$DEV"/dispatch-w2.tsv
+        "$DEV"/_prior-*.md "$DEV"/dispatch-w1.tsv "$DEV"/dispatch-w2.tsv
 
   # W1 manifest: batch_tag(1-based)<TAB>source_path. One source per batch (per-
   # source isolation — a big slice bleeds claims across sources); batch_tag names
@@ -293,10 +293,17 @@ phase_dedup() {
   UPDATED_SLUGS=$(grep -m1 '^UPDATED_SLUGS=' "$DEV/_dedup-meta.txt" | cut -d= -f2-)
   NEAR_DUP_PAIRS=$(grep -m1 '^NEAR_DUP_PAIRS=' "$DEV/_dedup-meta.txt" | cut -d= -f2-)
 
+  # Snapshot each updated article before W2 rewrites it, so the local drafter and
+  # its reviewer work from the same pre-update copy the cloud writer read.
+  local slug
+  for slug in $UPDATED_SLUGS; do
+    if [[ -f "$STACK/articles/$slug.md" ]]; then cp "$STACK/articles/$slug.md" "$DEV/_prior-$slug.md"; fi
+  done
+
   # W2 manifest: one slug per row, grouped into WAVE_CAP waves. wave_tag is a
   # dispatch-batching convenience for the skill, NOT a gating unit.
   local DISPATCH="$DEV/dispatch-w2.tsv"; : > "$DISPATCH"
-  local i=0 slug
+  local i=0
   for slug in $ALL_SLUGS; do
     printf '%d\t%s\n' "$((i / WAVE_CAP))" "$slug" >> "$DISPATCH"
     i=$((i + 1))
@@ -608,6 +615,19 @@ EOF
   out=$(bash "$0" dedup mep 2>&1) && rc=0 || rc=$?
   if [[ "$rc" -ne 0 ]] && grep -q 'batch-999' <<<"$out"; then ok "dedup-rejects-unexpected-batch"; else bad "dedup-rejects-unexpected-batch" "rc=$rc out=$out"; fi
   rm -f "$DEV/batch-999-concepts.md"
+
+  # dedup snapshots an UPDATED slug's article before W2 rewrites it (the local
+  # drafter and its reviewer read the pre-update copy), and the next prep clears it.
+  printf -- '---\ntitle: VAV\n---\nPRIOR-BODY-MARKER\n' > "$ST/articles/vav-airflow.md"
+  sed 's/^target_article: ""$/target_article: vav-airflow/' "$DEV/batch-1-concepts.md" > "$DEV/b1" && mv "$DEV/b1" "$DEV/batch-1-concepts.md"
+  bash "$0" dedup mep >/dev/null 2>&1 || bad "dedup-snapshot-runs" "dedup nonzero with an updated slug"
+  if grep -qx 'PRIOR-BODY-MARKER' "$DEV/_prior-vav-airflow.md" 2>/dev/null && [[ ! -e "$DEV/_prior-airside-economizer.md" ]]; then
+    ok "dedup-snapshots-updated-article"
+  else
+    bad "dedup-snapshots-updated-article" "prior files: $(ls "$DEV" | grep _prior || echo none)"
+  fi
+  rm -f "$ST/articles/vav-airflow.md"
+  mk_w1
 
   # --- dedup ----------------------------------------------------------------
   bash "$0" dedup mep >/dev/null 2>&1 || bad "dedup-runs" "dedup exited nonzero"

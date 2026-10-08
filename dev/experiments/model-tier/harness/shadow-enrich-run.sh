@@ -28,7 +28,7 @@ STACKS_ROOT="$(cd "$HERE/../../../.." && pwd)"   # harness -> model-tier -> expe
 INFER="$HERE/local-infer.sh"
 DEDUP="$HERE/url-dedup-gate.sh"
 FETCH="$STACKS_ROOT/scripts/fetch-source-text.sh"
-MODEL="${MODEL:-qwen3-30b-a3b-instruct}"
+MODEL="$(bash "$HERE/local-infer.sh" --model)"
 N_RESULTS="${N_RESULTS:-3}"       # Brave candidates fetched per gap
 FETCH_WORDS="${FETCH_WORDS:-1200}" # page-text cap fed to the local judge
 BRAVE_KEY_FILE="${BRAVE_KEY_FILE:-$HOME/.config/brave-search.key}"
@@ -163,7 +163,7 @@ while IFS=$'\t' read -r batch_tag gap_id slug claim reason; do
     if ! bash "$FETCH" "$url" --max-words "$FETCH_WORDS" > "$work/page.txt" 2>/dev/null; then fetch_failed=$((fetch_failed+1)); continue; fi
     [[ -s "$work/page.txt" ]] || { fetch_failed=$((fetch_failed+1)); continue; }
     judge_prompt "$claim" "$work/page.txt" > "$work/prompt.txt"
-    if ! NUM_CTX="${NUM_CTX:-16384}" bash "$INFER" "$MODEL" "$work/prompt.txt" "$work/judge.txt" 2>/dev/null; then infer_failed=$((infer_failed+1)); continue; fi
+    if ! bash "$INFER" "$work/prompt.txt" "$work/judge.txt" 2>/dev/null; then infer_failed=$((infer_failed+1)); continue; fi
     line=$(grep -m1 '|||' "$work/judge.txt" || true)
     [[ -n "$line" ]] || continue
     IFS=$'\t' read -r verdict tier excerpt < <(judge_to_verdict "$line") || true

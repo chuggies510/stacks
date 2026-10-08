@@ -25,4 +25,5 @@ file="${1:?Usage: citation-normalizer.sh <article-file>}"
 [[ -f "$file" ]] || { echo "ERROR: no such file: $file" >&2; exit 1; }
 # [source:<optional ws><slug><optional ws>] -> [<slug>]. Slug = non-space,
 # non-bracket run, so a stray trailing space inside the brackets is dropped.
-sed -i -E 's/\[source:[[:space:]]*([^][:space:]]+)[[:space:]]*\]/[\1]/g' "$file"
+# perl, not sed -i -E: BSD sed reads -E as the backup suffix and the run fails on macOS.
+perl -pi -e 's/\[source:\s*([^\]\s]+)\s*\]/[$1]/g' "$file"

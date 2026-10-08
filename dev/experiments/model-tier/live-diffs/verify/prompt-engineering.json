@@ -1,0 +1,15 @@
+{
+  "slug": "prompt-engineering",
+  "recall_total": 10,
+  "recall_present": 10,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 1,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "frontmatter sources: lists only sources/incoming/anthropic-prompting-claude-opus-5.md; the pre-update article's sources/arxiv/arxiv-2507.13334-context-engineering-survey.md path (still cited throughout the body and in the Sources table) was dropped. Restore it as the first sources: entry."
+  ],
+  "repaired": {"recall_total": 10, "recall_present": 10, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

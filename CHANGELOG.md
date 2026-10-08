@@ -10,6 +10,14 @@ The reader is Chris or a user deciding whether a release matters to them, not th
 
 Use plain words. File names, function and tool names, internal terms and how it works inside belong in the commit and the issue. Short never means lossy: a required action, rollback limit or caveat goes in the detail, never dropped. Add a correction as its own line; never edit the original. An entry that will not fit this shape is describing mechanism, or the release is too big.
 
+## 0.80.0 - 2026-10-07: The opt-in local-writer trial now drafts on breathless and scores whether switching is worth it.
+
+- With `STACKS_LOCAL_SHADOW=1`, catalog drafts each article on the breathless server from the same inputs the cloud writer reads, including the article as it was before the update. The first real batch cleared every quality floor after one review pass but saved the cloud only about 8% of its tokens. (#109)
+- The trial's scorecard counts every article in the batch, rejects grades that do not add up, flags drafts that just copy the claims, and ends with a promote or do-not-promote line. (#127)
+- On Codex, stacks skills run their agents as the current Sol model at medium effort. (#150)
+
+Nothing changes for normal catalog runs; the shipped articles still come from the cloud writer. The trial needs breathless reachable at `127.0.0.1:11436` (override with `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`). Also fixed in the trial tools: the tag filter no longer deletes the line that closes an article header, and citation tidying works on macOS.
+
 ## 0.79.0 - 2026-10-06: Audits now remove sentences no source supports, and lookup names the edition of a standard it answers from.
 
 - Audit removes an unsourced sentence instead of listing it as a soft spot; the removed text is kept in the audit report. Run the one-time cleanup below in each library. (#122)

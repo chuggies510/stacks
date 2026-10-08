@@ -98,9 +98,9 @@ if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
 fi
 ```
 
-Non-fatal by design (Ollama unreachable → every source logs a failure and the run proceeds). Read the `SHADOW_EXTRACT_SUMMARY` line for the sources/candidates/survivors counts, and the survivor manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extractions/survivors.tsv` (rows: `slug<TAB>local_decision<TAB>prematch`).
+Non-fatal by design (breathless unreachable → every source logs a failure and the run proceeds). Read the `SHADOW_EXTRACT_SUMMARY` line for the sources/candidates/survivors counts, and the survivor manifest at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extractions/survivors.tsv` (rows: `slug<TAB>local_decision<TAB>prematch`).
 
-Then the advisory verify: **reset the grade dir** (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify"`), then for each survivor row dispatch one **`stacks:extraction-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent absolute paths, scope pinned to: the stack's scope map `{LIBRARY}/{stack}/index.md` and articles dir `{LIBRARY}/{stack}/articles/` (the reuse test), the survivor's `slug`/`local_decision`/`prematch`, and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify/{slug}.json`. It verifies each NEAR/NEW candidate against the scope map (fragment → `reuse:<slug>`, genuine gap → `NEW`) and never edits any extraction, article, or index. After the wave returns, aggregate:
+Then the advisory verify: **clear the previous batch's top-level grades** (`mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify" && find "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify" -maxdepth 1 -type f -name '*.json' -delete`; its subfolders are tracked evidence and stay), then for each survivor row dispatch one **`stacks:extraction-verifier`** agent (cloud sonnet, ≤25 per message). Give each agent absolute paths, scope pinned to: the stack's scope map `{LIBRARY}/{stack}/index.md` and articles dir `{LIBRARY}/{stack}/articles/` (the reuse test), the survivor's `slug`/`local_decision`/`prematch`, and the grade JSON to write at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extract-verify/{slug}.json`. It verifies each NEAR/NEW candidate against the scope map (fragment → `reuse:<slug>`, genuine gap → `NEW`) and never edits any extraction, article, or index. After the wave returns, aggregate:
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
@@ -138,6 +138,8 @@ Read `dev/extractions/dispatch-w2.tsv` — each row is `wave_tag<TAB>slug`. Arti
 - `{stack}/STACK.md` (source hierarchy + `allowed_tags`),
 - `{stack}/index.md`'s `## Articles` map — the `[[slug|title]] — scope` routing lines that say what each sibling article already covers. This is the content-boundary surface (stacks#110): it tells the synthesizer what NOT to restate (a sibling's territory) and what it can cross-link inline instead of re-explaining. If `index.md` has no `## Articles` map yet (first catalog run, no articles), the agent writes without it — there are no siblings to bound against.
 
+When `STACKS_LOCAL_SHADOW=1` is set, note each synthesizer's total tokens from its completion; Step 8.6 compares them with the review cost.
+
 Within each wave, dispatch the synthesizers with `run_in_background: true` so the session stays responsive during the multi-minute agent runtime; the harness delivers a completion notification per agent. Each wave is a barrier: wait for every synthesizer in the wave to report completion before starting the next wave, and do not run Step 8 (`catalog.sh gate-w2`) until the final wave's agents have all completed. Backgrounding preserves the barrier while keeping the session interactive.
 
 ## Step 8: Gate W2 (`catalog.sh gate-w2`)
@@ -156,7 +158,7 @@ A non-zero exit names the ungated article(s). Surface it and stop; the sources s
 
 ## Step 8.5: Local-model shadow diff (pilot, opt-in — #109)
 
-**Runs only when `STACKS_LOCAL_SHADOW=1` is set in the environment.** Default catalog runs skip this entirely: the pilot doubles synthesis work (a local draft per slug) and exists to grade a local model against the cloud one, not to ship anything. When enabled, after `gate-w2` passes and *before* `finish` (which no longer clears `_dedup-<slug>.md` + `dispatch-w2.tsv` — they are this run's audit trail, retained until the stack's next `prep`, issue #130), it runs the local synthesis model (Ollama) on each W2 concept block, applies the mechanical post-filters (tag-vocab + `[source: X]`→`[X]` + deterministic refusal gate), and appends a local-vs-cloud structural diff to `dev/experiments/model-tier/live-diffs/synthesis.jsonl` — the channel the liminal peer session grades for recall/over-claim. **The shipped sonnet article is authoritative and untouched; this only observes.**
+**Runs only when `STACKS_LOCAL_SHADOW=1` is set in the environment.** Default catalog runs skip this entirely: the pilot doubles synthesis work and exists to grade the local drafter against the cloud writer, not to ship anything. When enabled, after `gate-w2` passes and before `finish`, it runs the local drafter (the breathless vLLM server through `local-infer.sh`; `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL` override the defaults) on each W2 concept block, 4 at a time. Each draft gets the same inputs the cloud writer had: the stack's `STACK.md`, its `index.md` scope map, and on an update the pre-update article that `dedup` saved as `_prior-{slug}.md`. The harness then applies the mechanical filters (tag vocabulary, `[source: X]` to `[X]`, the deterministic refusal gate) and logs one record per slug to `dev/experiments/model-tier/live-diffs/synthesis.jsonl`. **The shipped cloud article is authoritative and untouched; this only observes.**
 
 ```bash
 if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
@@ -168,29 +170,31 @@ if [ "${STACKS_LOCAL_SHADOW:-0}" = "1" ]; then
 fi
 ```
 
-Non-fatal by design: a local-inference failure logs a `status:"local-inference-failed"` record and never blocks `finish`. Read the `SHADOW_SUMMARY` line for the shadowed/skipped/failed counts. Requires Ollama reachable at `localhost:11434`; if it is not, every slug logs a failure record and the run proceeds normally.
+Non-fatal by design: a failed local call logs a `status:"local-inference-failed"` record, a local refusal logs `status:"refused"`, and neither blocks `finish`. Read the `SHADOW_SUMMARY` line for the shadowed/skipped/failed counts. If breathless is unreachable, every slug logs a failure and the run proceeds normally.
 
 ### Step 8.6: Advisory verify of the local drafts (verify-and-fix rollout, opt-in — #109)
 
-**Also gated on `STACKS_LOCAL_SHADOW=1`, and only after Step 8.5 produced the local drafts.** This is the advisory window before flipping synthesis to verify-and-fix (`dev/specs/verify-and-fix.md`): it measures whether, if the local draft became the article and the cloud model fixed only its defects, the result would clear the synthesis floors — **without changing anything.** `articles/` and the authoritative sonnet path are untouched.
+**Also gated on `STACKS_LOCAL_SHADOW=1`, and only after Step 8.5 ran.** This is the advisory window before flipping synthesis to verify-and-fix (`dev/specs/verify-and-fix.md`): it measures whether, if the local draft became the article and the cloud reviewer fixed only its defects, every article would clear the synthesis floors at lower cloud cost. **Nothing here changes `articles/`.**
 
-For each slug in the W2 manifest `{LIBRARY}/{stack}/dev/extractions/dispatch-w2.tsv` (column 2 — the manifest lives under the LIBRARY, not this repo) whose local draft exists at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`, dispatch one **`stacks:article-verifier`** agent (cloud sonnet, ≤25 per message, same wave cap as W2). Give each agent absolute paths, scope pinned to exactly these three files:
-- concept block (scoring truth): `{LIBRARY}/{stack}/dev/extractions/_dedup-{slug}.md`
-- local draft to grade: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`
-- grade JSON to write: `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify/{slug}.json`
+Do not clear `live-diffs/verify/`: it holds tracked evidence from earlier batches, and the summary ignores any grade, draft or repair written before this batch's `RUN_ID_W2`. For every slug in `{LIBRARY}/{stack}/dev/extractions/dispatch-w2.tsv` (column 2), dispatch **`stacks:article-verifier`** agents (≤25 per message), each with absolute paths:
 
-The agent grades floor-clearance (claim recall, over-claims, structure) and lists the citation fixes it would make; it uses Read + Write only and never Edits an article. **Reset the grade dir first** so the summary reflects only THIS batch, not a prior run's leftover `{slug}.json` (`rm -rf "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify" && mkdir -p "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify"`), then dispatch. After the wave returns, aggregate the go/no-go read:
+- **Local draft, graded and repaired**, for each slug whose draft exists at `$STACKS_ROOT/dev/experiments/model-tier/live-diffs/bodies/{slug}__local.md`: the concept block `{LIBRARY}/{stack}/dev/extractions/_dedup-{slug}.md`, that draft, the pre-update article `{LIBRARY}/{stack}/dev/extractions/_prior-{slug}.md` when it exists, `{LIBRARY}/{stack}/STACK.md`, `{LIBRARY}/{stack}/index.md` (sibling scope map), grade path `.../live-diffs/verify/{slug}.json`, and repair path `.../live-diffs/verify/{slug}__repaired.md`.
+- **Cloud article, same block, grade only**, for every slug: the same block, prior, `STACK.md` and `index.md`, the draft `{LIBRARY}/{stack}/articles/{slug}.md`, grade path `.../live-diffs/verify/{slug}.cloud.json`, and no repair path.
+
+On Codex, dispatch them as using-stacks behavior 7 says. When the wave returns, write `.../live-diffs/verify/tokens.tsv`, one row per slug that has a local grade: `slug<TAB>synthesizer total tokens (Step 7)<TAB>local-draft verifier total tokens`. Then aggregate over every dispatched slug; a missing draft, refusal, failed call, missing grade or rejected grade counts as a failure:
 
 ```bash
 STACKS_ROOT="${STACKS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cat "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | jq -rs '[.[] | (.extraKnownMarketplaces.stacks.source.path)?, (.plugins["stacks@stacks"][0].installPath)?] | map(strings) | .[0] // empty' 2>/dev/null || true)}}"
 [ -n "$STACKS_ROOT" ] || [ "${PI_CODING_AGENT:-}" != true ] || STACKS_ROOT=$(skill=$(readlink -f "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/skills/using-stacks" 2>/dev/null || true); root=${skill%/skills/using-stacks}; for root in "$root" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/chuggies510/stacks" "$PWD/.pi/git/github.com/chuggies510/stacks"; do [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ] && { printf '%s\n' "$root"; break; }; done; true)
 [ -n "$STACKS_ROOT" ] || STACKS_ROOT=$(base="${CODEX_PLUGIN_CACHE:-${CODEX_HOME:-$HOME/.codex}/plugins/cache}/stacks/stacks"; { find "$base" -type d -print 2>/dev/null || true; } | while IFS= read -r root; do if [ "${root%/*}" = "$base" ] && [ -f "$root/scripts/resolve-library.sh" ] && [ -f "$root/skills/using-stacks/SKILL.md" ]; then printf '%s\n' "$root"; fi; done | sort -V | tail -1)
 [ -f "$STACKS_ROOT/scripts/resolve-library.sh" ] && [ -f "$STACKS_ROOT/skills/using-stacks/SKILL.md" ] || { printf '%s\n' "ERROR: Stacks plugin root not found. Set STACKS_PLUGIN_ROOT." >&2; exit 1; }
+LIB=$(bash "$STACKS_ROOT/scripts/resolve-library.sh") || exit 1
 bash "$STACKS_ROOT/dev/experiments/model-tier/harness/synth-verify-summary.sh" \
-  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify" || true
+  "$LIB/{stack}/dev/extractions" "$STACKS_ROOT/dev/experiments/model-tier/live-diffs" \
+  "$STACKS_ROOT/dev/experiments/model-tier/live-diffs/verify/tokens.tsv" || true
 ```
 
-Read the `clears floors: N/M` line. Floor breaches (over-claims, recall misses, structural fails) are what to inspect before flipping to verify-and-fix; citation fixes are the expected cheap edits the cloud verify step owns on the flip (the local drafter is weak at self-citing). Advisory only — nothing here is authoritative, and `finish` proceeds regardless.
+Read the `PROMOTE:` line. Promotion needs every dispatched slug clearing after repair and the review tokens below the write tokens; then read a sample of drafts beside their cloud articles (the `cloud article clears` line is the same-block baseline) before flipping. Advisory only; `finish` proceeds regardless.
 
 ## Step 9: Finish, log, commit (`catalog.sh finish`)
 

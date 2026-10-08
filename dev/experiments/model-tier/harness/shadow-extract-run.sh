@@ -374,7 +374,7 @@ if [[ "${1:-}" == "--self-check" ]]; then
 fi
 
 STACK="${1:?Usage: shadow-extract-run.sh <stack> | --self-check}"
-MODEL="${MODEL:-qwen3-30b-a3b-instruct}"
+MODEL="$(bash "$HERE/local-infer.sh" --model)"
 INFER="$HERE/local-infer.sh"
 PREMATCH="$HERE/slug-prematch.sh"
 OUT="$STACKS_ROOT/dev/experiments/model-tier/live-diffs/extractions"
@@ -476,7 +476,7 @@ while IFS=$'\t' read -r batch_tag src; do
   [[ -n "${src:-}" ]] || continue
   if [[ ! -f "$src" ]]; then echo "SKIP $batch_tag: no source ($src)" >&2; skipped=$((skipped+1)); continue; fi
   extract_prompt "$src" > "$work/prompt.txt"
-  if ! NUM_CTX="${NUM_CTX:-16384}" bash "$INFER" "$MODEL" "$work/prompt.txt" "$work/out.txt" 2>"$work/err"; then
+  if ! bash "$INFER" "$work/prompt.txt" "$work/out.txt" 2>"$work/err"; then
     echo "EXTRACT-FAIL $batch_tag ($(tail -1 "$work/err" 2>/dev/null))" >&2; failed=$((failed+1)); continue
   fi
   # parse "<slug> | reuse:... | tier:N" rows, prematch each emitted slug
