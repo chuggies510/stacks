@@ -1,0 +1,15 @@
+{
+  "slug": "prompt-engineering",
+  "recall_total": 10,
+  "recall_present": 10,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": true,
+  "citation_fixes": 1,
+  "would_fix": [
+    "Under '## Opus 5 prompt tuning', the Response length, Narration, Files written to disk, Self-corrections, Agentic coding and Vision workarounds paragraphs carry no inline [anthropic-prompting-claude-opus-5]; only the section lead-in line cites it. Add the citation at the end of each of those six paragraphs."
+  ],
+  "repaired": null
+}

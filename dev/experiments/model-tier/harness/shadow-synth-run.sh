@@ -31,6 +31,11 @@ TAG_VOCAB="$(awk '
 [[ -n "$TAG_VOCAB" ]] || { echo "ERROR: no allowed_tags parsed from $STACK/STACK.md" >&2; exit 1; }
 RUN_ID="$(grep -m1 '^RUN_ID_W2=' "$DEV/run.env" 2>/dev/null | cut -d= -f2)"
 RUN_DIR="$(bash "$HERE/run-dir.sh" "$STACK")"
+# A used folder may hold grades of earlier drafts that would still read as fresh, so a
+# rerun of the same batch needs a new STACKS_RUN_LABEL rather than drafting over them.
+if [[ -n "$(ls -A "$RUN_DIR" 2>/dev/null)" ]]; then
+  echo "ERROR: $RUN_DIR is already used; set a new STACKS_RUN_LABEL for this run" >&2; exit 1
+fi
 mkdir -p "$RUN_DIR/bodies" "$RUN_DIR/verify"
 export TAG_VOCAB RUN_ID RUN_DIR STACK_DIR="$LIB/$STACK" EX="$LIB/$DEV" HERE
 

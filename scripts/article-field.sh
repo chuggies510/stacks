@@ -104,7 +104,7 @@ article_list() {
       if (rest ~ /^[[:space:]]*\[/) {
         sub(/^[[:space:]]*\[/, "", rest); sub(/\].*$/, "", rest)
         n = split(rest, parts, ","); for (i = 1; i <= n; i++) add(parts[i])
-      } else if (rest ~ /^[[:space:]]*$/) in_list = 1
+      } else if (rest ~ /^[[:space:]]*(#.*)?$/) in_list = 1
       next
     }
     in_list && /^[[:space:]]*-/ { item = $0; sub(/^[[:space:]]*-/, "", item); add(item); next }
@@ -132,8 +132,8 @@ article_set_list() {
     function emit(  i) { print k ":"; for (i = 1; i <= n; i++) if (v[i] != "") print "  - " v[i]; done = 1 }
     NR == 1 { if ($0 !~ /^---[[:space:]]*$/) { bad = 1; exit } print; next }
     !closed && /^---[[:space:]]*$/ { if (!done) emit(); closed = 1; skip = 0; print; next }
-    !closed && index($0, k ":") == 1 { if (!done) emit(); skip = (substr($0, length(k) + 2) ~ /^[[:space:]]*$/); next }
-    !closed && skip && /^[[:space:]]*-/ { next }
+    !closed && index($0, k ":") == 1 { if (!done) emit(); skip = (substr($0, length(k) + 2) ~ /^[[:space:]]*(#.*)?$/); next }
+    !closed && skip && /^([[:space:]]*-|[[:space:]]*#|[[:space:]]*$)/ { next }
     { skip = 0; print }
     END { if (bad || !closed) exit 1 }
   ' "$article" > "$tmp"; then

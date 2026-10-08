@@ -28,7 +28,8 @@ MAX_TOKENS="${MAX_TOKENS:-8192}"
 # decrypts it to ~/.config/secrets/openrouter.env), and a JSON object merged into the
 # request last, for server-specific settings (thinking control, provider).
 STACKS_LOCAL_KEY="${STACKS_LOCAL_KEY:-}"
-STACKS_LOCAL_EXTRA="${STACKS_LOCAL_EXTRA:-{\}}"
+STACKS_LOCAL_EXTRA="${STACKS_LOCAL_EXTRA:-}"
+[[ -n "$STACKS_LOCAL_EXTRA" ]] || STACKS_LOCAL_EXTRA='{}'   # a separate step: bash 3.2 expands "${X:-{\}}" to {\}
 
 call_local() {
   local promptfile="$1" outfile="$2" body resp content finish
@@ -37,7 +38,7 @@ call_local() {
     --argjson temp "$TEMP" --argjson max "$MAX_TOKENS" --argjson extra "$STACKS_LOCAL_EXTRA" \
     '{model:$model, messages:[{role:"user", content:$prompt}], stream:false,
       temperature:$temp, max_tokens:$max,
-      chat_template_kwargs:{enable_thinking:false}} * $extra')
+      chat_template_kwargs:{enable_thinking:false}} * $extra | .model = $model')   # the model always comes from STACKS_LOCAL_MODEL
 
   local auth=()
   [[ -z "$STACKS_LOCAL_KEY" ]] || auth=(-H "Authorization: Bearer $STACKS_LOCAL_KEY")

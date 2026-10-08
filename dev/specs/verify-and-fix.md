@@ -97,7 +97,7 @@ Item 4 ships in S31; items 1 to 3 build when breathless is back up.
 - Codex: each dispatch seam points at one shared instruction (read the agent file, dispatch
   natively with the model and effort named in item 2).
 - Per-run folders (S31, reverses the earlier decline): drafter variants of one batch run side by side,
-  so every run writes into `live-diffs/runs/<RUN_ID_W2>-<label>/` (`run-dir.sh`).
+  so every run writes into `live-diffs/runs/<RUN_ID_W2>-<stack>-<label>/` (`run-dir.sh`).
 - At the flip, the fields the harness now writes for drafts (`sources:` from the block plus the
   pre-update article, `last_verified: ""`) move into `catalog.sh` after W2 for both writers, so the
   advisory score and production apply the same rule (S31 simplify review).

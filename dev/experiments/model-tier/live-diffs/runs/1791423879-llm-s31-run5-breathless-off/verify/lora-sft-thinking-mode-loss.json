@@ -1,0 +1,15 @@
+{
+  "slug": "lora-sft-thinking-mode-loss",
+  "recall_total": 12,
+  "recall_present": 12,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 0,
+  "structural_pass": false,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Frontmatter sources: lists 'sources/inimal/liminal-2026-07-30-sft-destroys-thinking-mode.md', a garbled directory that does not match the block's source path. Replace with 'sources/incoming/liminal-2026-07-30-sft-destroys-thinking-mode.md' (bare, as the block gives it)."
+  ],
+  "repaired": {"recall_total": 12, "recall_present": 12, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

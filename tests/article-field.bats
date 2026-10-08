@@ -28,3 +28,10 @@ setup() {
   [ "$status" -ne 0 ]
   [ "$(cat "$A")" = "$(printf -- '---\ntags: [a]\nno closing line')" ]
 }
+
+@test "article_set_list replaces a commented, gapped block list completely" {
+  printf -- '---\nsources:            # bare paths\n  - sources/inimal/x.md\n\n  - sources/old/y.md\ntitle: T\n---\nBody.\n' > "$A"
+  [ "$(article_list sources "$A" | tr '\n' '|')" = "sources/inimal/x.md|sources/old/y.md|" ]
+  printf 'sources/liminal/x.md\n' | article_set_list sources "$A"
+  [ "$(cat "$A")" = "$(printf -- '---\nsources:\n  - sources/liminal/x.md\ntitle: T\n---\nBody.')" ]
+}
