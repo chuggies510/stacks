@@ -80,3 +80,9 @@ matches the placeholder too, so `git add` refuses, the template ships without it
 downstream scaffolding has no empty dir to seed. Use `dir/*` plus `!dir/.gitkeep`, which
 ignores contents while leaving the directory entry traversable. Diagnose with
 `git check-ignore -v`.
+
+**An edited agent definition does not reach agents dispatched from the same session.**
+`agents/*.md` is read once at session start, so a `subagent_type` dispatch after an
+edit runs the old prompt and its results measure nothing new. To test an edit in the
+same session, dispatch a general agent told to "FIRST read `agents/<name>.md` and
+follow it exactly", or restart.

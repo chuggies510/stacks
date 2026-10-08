@@ -1,31 +1,21 @@
----
-session: 32
-machine: mini
----
+# Session 31: stacks (2026-10-07, mini)
 
-# Active Context
+## Summary
+Session 31 triaged the backlog and released 0.79.0, then built the local-writer trial and released 0.80.0 and 0.81.0. In the trial, breathless drafts each article with thinking off and one batched Sonnet reviewer repairs the batch in place. The harness now owns the mechanical fields and gives each run its own folder. On the 7-article test batch, cloud cost fell from 92% to 41% of writing, and every article cleared after repair. Drafts as written stayed flat at about 5 of 7 across prompt rewrites, thinking levels and an OpenRouter bench of the same model. Primary research agreed the external reviewer is the quality gate, so drafter tuning stopped. The session then wrote spec #155 for making the reviewed local draft the shipped article. Codex reviewed it twice: round 1 found 3 P1 and 10 P2, round 2 found 3 P2, all folded in. It was split into 7 tickets, #156 to #162. Cross-repo: ChuggiesMart AGENTS.md now names chungus-net the fleet admin, the secrets-vault add-secret.sh was reverted, and library-stack liminal sources were re-filed.
+
+## Notes
+- DECIDED: Drafter tuning stops; the batched reviewer is the quality gate, and promotion needs the operator's spot-check on 3 real batches (#155, #162).
+- DECIDED: Every catalog writer will write a run-owned candidate and only a publish step replaces an article, before any local switch (#157).
+- FACT: Thinking off is best for the 27B drafter; low and medium thinking added over-claims (results-stacks-S31-breathless-advisory.md).
+- FACT: The OpenRouter test-bench key lives on breathless `~/.config/openrouter.key`; pointer in tech-context.
+- TRAP: Agent definitions freeze at session start; recorded in CLAUDE.md Gotchas.
+- TRAP: A prompt rewrite judged by reading made over-claims about five times worse; prompt changes need a same-block before-and-after run (#160).
+- ARC: Retro items: gate script is #156, the variant-run procedure and measured prompt changes are #160, the frozen-agent trap is in CLAUDE.md.
 
 ## Live constraints
 - The Agent tool cannot dispatch local models (reaches only sonnet/haiku/opus/fable). The local drafter is the breathless vLLM server (`qwen3.8-27b`) called by `dev/experiments/model-tier/harness/local-infer.sh` through the Mini tunnel `127.0.0.1:11436`, thinking off; liminal tech-context owns its port, slots and speed. Ollama no longer serves a 27B while vLLM is up. (as-of: 2026-10-07, rode: S22-S26, S28-S31, clears-when: the Agent tool reaches a local endpoint)
 - liminal is the peer Claude session (local-LLM / fine-tuning expert), co-located on this host (3900x) at `~/chungus/dev/liminal`; it serves + scores local models on the shared RTX 3090 (SHARED with liminal's curator cron at :13 every 6h — during its training windows it evicts resident models, so gate heavy local calls on `nvidia-smi --query-gpu=memory.free` and keep pilot models warm via keep-alive). Locate its pane by NAME (windows renumber between sessions): `tmux list-panes -a -F '#{window_name} #{pane_id}' | awk '$1=="liminal"{print $2}'` (S28: pane `%10`). **Walkie-talkie send/verify/metachar-escape/return-path mechanics are canonical in `reference.md#cross-session-coordination` (dev bindings, dev.md § Worktrees & concurrent sessions points at it) — follow that, do NOT restate it here.** Boundary settled S28: liminal owns model selection and measurement, this repo owns the plugin/contracts/floors; liminal has standing write permission for `dev/experiments/model-tier/results-liminal-S{N}-*.md` and their in-flight `live-diffs/*` is theirs — never stage it. Any other cross-repo write needs a halt-ping and an explicit go-ahead first, both directions. (as-of: 2026-07-27, rode: S22-S26, S28-S31, clears-when: liminal stops running the local ladder)
 - **Model-tier numbers are not comparable across two boundaries.** (1) The 0.77.0 prompt-source cut: pre-0.77.0 runs scored a drifted hand copy of the agent prompt, so never compare a pre- to a post-0.77.0 run (relative order within one pre-0.77.0 ladder is probably intact). (2) The extraction menu shape: `extraction-benchmark.md`'s gold set is still `bare` while the harness default is now `title`, so its scores are a starvation floor. Both caveats are stated in `dev/experiments/model-tier/README.md` and the benchmark file itself. (as-of: 2026-07-27, rode: S28-S31, clears-when: #139's gold set is re-derived under MENU_SHAPE=title and the pre-0.77.0 ladder is re-run)
 
-## Open thread
-None, closed clean. (S32, mini, 2026-10-07) Filed the writer-plus-editor research note and meap2-it#2471; stacks implementation starts with `/implement` per ticket.
-
-## Next priority
-| Source | Action | Effort | Why now | Blocked by |
-|---|---|---|---|---|
-| #156 | One command runs every check, on every commit | Size-S · one session | Three S31 defects reached review uncaught | — |
-| #157 | W2 writes candidates, catalog publishes them | Size-M · one session | Prefactor the switch needs | — |
-| #159 | Drafting phase in catalog, offline transport | Size-M · one session | Moves drafting out of the harness | — |
-| #160 | Reviewer three-class checklist, measured | Size-M · one session | Names the over-claims a 27B drafter makes | — |
-| #158 | One shared operation sets mechanical fields | Size-S · one session | Trial and production share one rule | #157 |
-| #161 | The switch: reviewed local draft ships | Size-L · one session | Realizes the 41% cloud cost | #157, #158, #159 |
-| #162 | Calibrate, then default on | Size-M · three batches | Reviewer must match operator first | #160, #161 |
-| #140 | Add machine-readable graded-run log | Size-M · one session | Unblocks honest model planning | — |
-| #139 | Rebuild extraction gold set | Size-M · one campaign | Current scores are a floor | #140 |
-| #148 | Persist structural audit findings | Size-M · one session | Findings currently vanish | — |
-| #149 | Surface source disagreements | Size-L · design first | Truth conflict is invisible | design decision |
-
-**Cross-repo follow-ups:** meap2-it#2471 carries the writer-plus-editor pattern to PCA review (research linked); liminal owes the primary-vs-contributory split by model size; `library-stack` owns the verifier-confirmed article overstatements. Operator owes a credit limit on the breathless OpenRouter key.
+## Chat
+S31-local-writer-trial-and-switch-spec
