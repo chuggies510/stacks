@@ -1,0 +1,15 @@
+{
+  "slug": "llm-cost-control-production",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Patterns heading 'Turn effort down before anything else' adds a sequencing/priority claim the block lacks (block says effort is the 'primary' cost and response-time control, 'wherever quality holds'). Rename to e.g. 'Use low and medium effort as the primary cost control.'"
+  ],
+  "repaired": null
+}

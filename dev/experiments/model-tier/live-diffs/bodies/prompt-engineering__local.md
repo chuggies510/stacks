@@ -1,9 +1,10 @@
 ---
 last_verified: ""
 sources:
+  - sources/arxiv/arxiv-2507.13334-context-engineering-survey.md
   - sources/incoming/anthropic-prompting-claude-opus-5.md
 title: Prompt Engineering
-routing: prompt engineering techniques — zero-shot, few-shot, chain-of-thought, when each applies, and why prompt engineering alone hits a ceiling that context engineering addresses
+routing: prompt engineering techniques — zero-shot, few-shot, chain-of-thought, when each applies, why prompt engineering alone hits a ceiling that context engineering addresses, and how to tune prompts carried over to Claude Opus 5 (response length, narration, file verbosity, literal instruction following)
 tags:
   - llm
   - prompt-engineering
@@ -38,13 +39,23 @@ The paradigm has a documented ceiling. Prompt engineering treats context as a mo
 
 **Treat execution feedback as a prompt signal for code tasks.** Execution-aware debugging frameworks that pipe runtime error output back into the prompt achieve up to 9.8% improvements on code generation benchmarks [arxiv-2507.13334-context-engineering-survey]. This is prompt engineering applied iteratively inside a loop, not a single-shot pattern.
 
-**Control response length explicitly, not via the effort parameter.** On Claude Opus 5, default user-facing responses run longer than on prior Opus models, and the effort parameter controls how much the model thinks, not how much it says: lowering effort reduces thinking volume without reliably shortening the visible response [anthropic-prompting-claude-opus-5]. Response length must be controlled by prompting for it explicitly [anthropic-prompting-claude-opus-5]. A short conciseness instruction is effective ("Keep responses focused, brief, and concise... give a high-level summary unless an in-depth explanation is specifically requested"), and in a long system prompt it should be paired with a short reminder near the end, such as a `<tone_preference>` tag [anthropic-prompting-claude-opus-5].
+## Tuning prompts carried over to Claude Opus 5
 
-**Tune agentic narration with explicit communication guidance.** Opus 5 narrates readily in agentic work — it announces what it is about to do and per-message output is longer [anthropic-prompting-claude-opus-5]. The guide recommends one sentence before the first tool call, brief updates only on an important finding or change of direction, and leading the final message with the outcome with supporting detail after it [anthropic-prompting-claude-opus-5]. Positive examples of the desired communication style tend to work better than instructions about what not to do [anthropic-prompting-claude-opus-5].
+Opus 5 performs well out of the box on prompts written for prior Opus models (Opus 4.8); the Anthropic prompting guide covers only the behavior deltas worth tuning when carrying a prompt over [anthropic-prompting-claude-opus-5].
 
-**Calibrate file output length separately from conversational verbosity.** Files written to disk (reports, Markdown, summaries) are also longer than on prior models, separate from conversational verbosity [anthropic-prompting-claude-opus-5]. Add explicit length calibration: match length to what the task needs, with no filler sections, redundant summaries, or boilerplate [anthropic-prompting-claude-opus-5].
+**Response length.** Default user-facing responses run longer than on prior Opus models. The effort parameter controls how much the model thinks, not how much it says: lowering effort reduces thinking volume without reliably shortening the visible response. Response length must be controlled by prompting for it explicitly [anthropic-prompting-claude-opus-5]. A short conciseness instruction is effective ("Keep responses focused, brief, and concise… give a high-level summary unless an in-depth explanation is specifically requested"); in a long system prompt, pair it with a short reminder near the end (e.g. a `<tone_preference>` tag) [anthropic-prompting-claude-opus-5].
 
-**Give the complete task specification up front for agentic coding.** Agentic coding performs best when given the complete task specification up front and then left to run [anthropic-prompting-claude-opus-5].
+**Agentic narration.** The model narrates readily in agentic work — it announces what it is about to do, and per-message output is longer. Tune with explicit communication guidance: one sentence before the first tool call, brief updates only on an important finding or change of direction, and lead the final message with the outcome with supporting detail after it [anthropic-prompting-claude-opus-5]. Positive examples of the desired communication style tend to work better than instructions about what not to do [anthropic-prompting-claude-opus-5].
+
+**File output.** Files written to disk (reports, Markdown, summaries) are also longer than on prior models, separate from conversational verbosity. Add explicit length calibration: match length to what the task needs, no filler sections, redundant summaries, or boilerplate [anthropic-prompting-claude-opus-5].
+
+**Self-correction narration.** The model narrates corrections to its own earlier statements more than prior models. Mitigation: correct only when the error would change the user's code, conclusions, or decisions; state it plainly and briefly; for slips that change nothing, fix and move on without noting it [anthropic-prompting-claude-opus-5].
+
+**Literal instruction following.** Instructions are followed literally: "only report high-severity issues" or "be conservative" in a code-review prompt makes the model report less, even though its extra findings are mostly real bugs. Ask for everything and filter in a separate pass [anthropic-prompting-claude-opus-5].
+
+**Agentic task specification.** Agentic coding performs best when given the complete task specification up front and then left to run [anthropic-prompting-claude-opus-5].
+
+**Re-validating prior-model workarounds.** Prompt-side workarounds (e.g. for vision) tuned for prior models should be re-validated on the new model; vision is strongest when the model has tools to iteratively analyze, crop, and verify, and tool use is a more cost-effective lever than thinking alone [anthropic-prompting-claude-opus-5].
 
 ## Pitfalls
 
@@ -53,12 +64,6 @@ The paradigm has a documented ceiling. Prompt engineering treats context as a mo
 **Syntactic correctness without semantic depth is a silent failure mode.** The survey names responses that appear syntactically correct while lacking semantic depth as a reliability issue [arxiv-2507.13334-context-engineering-survey]. Outputs that parse and format correctly are not a sufficient eval signal. Evals need semantic grading.
 
 **Monolithic static strings don't scale with context complexity.** As task complexity grows, the static-string constraint becomes the binding limit: no retrieval, no dynamic injection, no structured memory [arxiv-2507.13334-context-engineering-survey]. The right response is to move to context engineering rather than to make the static string longer.
-
-**Instructions are followed literally, so restrictive filters suppress real findings.** On Opus 5, instructions are followed literally: "only report high-severity issues" or "be conservative" in a code-review prompt makes the model report less, even though its extra findings are mostly real bugs [anthropic-prompting-claude-opus-5]. The guide recommends asking for everything and filtering in a separate pass [anthropic-prompting-claude-opus-5].
-
-**The model narrates corrections to its own earlier statements more than prior models.** The mitigation is to correct only when the error would change the user's code, conclusions, or decisions; state it plainly and briefly; and for slips that change nothing, fix and move on without noting it [anthropic-prompting-claude-opus-5].
-
-**Prompt-side workarounds tuned for prior models need re-validation.** Prompt-side workarounds (e.g. for vision) tuned for prior models should be re-validated on the new model [anthropic-prompting-claude-opus-5]. Vision is strongest when the model has tools to iteratively analyze, crop, and verify, and tool use is a more cost-effective lever than thinking alone [anthropic-prompting-claude-opus-5].
 
 ## Eval strategy
 
@@ -70,11 +75,9 @@ The most useful framing from the survey is the distinction between prompt engine
 
 The CoT gains on summarization (element-aware integration of fine-grained source details) are relevant to document-heavy workflows: structured reasoning chains outperform simple extraction prompts when the source material requires cross-document synthesis, not just locating a span.
 
-Opus 5 performs well out of the box on prior-model (Opus 4.8) prompts; the guide covers only the behavior deltas worth tuning when carrying a prompt over [anthropic-prompting-claude-opus-5].
-
 ## Sources
 
 | Source | Tier | Notes |
 |--------|------|-------|
 | arxiv-2507.13334-context-engineering-survey | 2 | Peer-reviewed survey; covers prompt engineering as the predecessor paradigm to context engineering |
-| anthropic-prompting-claude-opus-5 | 1 | Vendor prompting guide; Opus 5 behavior deltas (response length, narration, literal instruction following, vision tool use) |
+| anthropic-prompting-claude-opus-5 | 1 | Official Anthropic prompting guide for Claude Opus 5; documents behavior deltas and tuning guidance for carrying prompts from prior models |

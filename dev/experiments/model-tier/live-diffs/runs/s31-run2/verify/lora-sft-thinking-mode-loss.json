@@ -1,0 +1,16 @@
+{
+  "slug": "lora-sft-thinking-mode-loss",
+  "recall_total": 12,
+  "recall_present": 12,
+  "excluded": [],
+  "over_claims": 2,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Pitfalls 'silent no-op' paragraph: 'does not emit a warning' and 'It simply never enters the thinking path' go beyond the block (it says the API accepts think:true without error, output is byte-identical, and the adapter learned to emit an empty think block, so it does not skip the path). Trim to 'The adapter does not reject the `think: true` parameter and does not change its output.'",
+    "Eval Strategy second paragraph: 'identical scores to all decimals, which is statistically impossible if the flag has any effect' changes the block's 'identical to four decimals' and adds a statistical-impossibility rationale; the block says only that a metric-diff tool caught it because every metric was identical, which two arms differing in a flag cannot be. Replace with that wording."
+  ],
+  "repaired": {"recall_total": 12, "recall_present": 12, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

@@ -5,7 +5,7 @@ sources:
   - sources/arxiv/rslora-rank-stabilized-scaling.md
   - sources/incoming/liminal-2026-07-03-lora-rank-binary-classification.md
 title: LoRA rank selection for classification tasks
-routing: LoRA rank hyperparameter for classification — why r=4-16 saturates early, what the alpha=2×rank convention actually does (and why it breaks rank sweeps), overfitting risk at small dataset sizes, rsLoRA as the fix for high-rank training, and the NTK-regime argument that rank thresholds may not apply to binary classification
+routing: LoRA rank hyperparameter for classification — why r=4-16 saturates early, Park's NTK/PL argument that r=1 suffices for binary classification (bias saturation mechanism), what the alpha=2×rank convention actually does (and why it breaks rank sweeps), overfitting risk at small dataset sizes, and rsLoRA as the fix for high-rank training
 tags:
   - llm
   - fine-tuning
@@ -19,13 +19,15 @@ LoRA (Low-Rank Adaptation) inserts trainable low-rank matrices into a frozen mod
 
 **Rank saturation.** For classification tasks, rank r=4-16 is sufficient. Literature across QLoRA, Databricks fine-tuning guides, Raschka hyperparameter sweeps, and a Frontiers in Big Data 2025 study consistently finds very little statistical difference between rank 8 and rank 256 on classification benchmarks [liminal-s27-lora-recall-techniques]. The extra parameters in high-rank adapters do not translate into measurably better accuracy on held-out classification labels.
 
+**Binary classification: bias saturation and the r=1 result.** Prior work prescribes LoRA rank ≥12 for binary classification; Park (arXiv:2605.03724, submitted 2026-05-05) argues, under an NTK-regime cross-entropy-loss analysis, that the Polyak-Lojasiewicz inequality eliminates rank thresholds for binary classification specifically [liminal-2026-07-03-lora-rank-binary-classification]. The mechanism is that the bias term saturates fast, so rank r=1 is empirically competitive with r=12 on GLUE-style binary tasks; rank beyond what is needed to saturate bias buys nothing but added variance [liminal-2026-07-03-lora-rank-binary-classification]. For multi-class (K>2) the optimal rank shifts above 1; the paper leaves this as future work [liminal-2026-07-03-lora-rank-binary-classification].
+
+**Caveat on transfer to causal LM heads.** Park's setting is a literal classifier head under cross-entropy loss; a causal LM that emits JSON encoding the decision via token probabilities is not a sigmoid/softmax binary head, so the bias-saturates-fast argument may not carry over. Treat as a directional prior, not a proven transfer [liminal-2026-07-03-lora-rank-binary-classification].
+
 **Alpha convention and what it actually does.** The `lora_alpha` scaling parameter is typically set to 2x the rank value (e.g., r=8, alpha=16; r=16, alpha=32). The reason practitioners follow this convention is to keep adapter outputs on a comparable scale across runs — but the standard implementation divides the adapter output by rank (effective scale = alpha/r), and the rsLoRA paper (arXiv:2312.03732) proves mathematically that this progressively suppresses higher-rank adapters: as rank increases, the adapter's contribution to the forward pass is scaled down, slowing learning and stunting performance [rslora-rank-stabilized-scaling]. The scaling does not hold the contribution constant; it penalizes it. This is the mechanism behind LoRA's historically poor performance at high rank — not a theoretical limitation of rank itself.
 
 The correct scaling that stabilizes adapter contribution across ranks is alpha/sqrt(r), which the paper calls rank-stabilized LoRA (rsLoRA) [rslora-rank-stabilized-scaling]. With rsLoRA scaling, larger ranks become a viable compute/performance trade-off: higher rank improves fine-tuning quality at the cost of training compute, with no change to inference compute.
 
 **Overfitting at small dataset sizes.** Higher ranks increase the adapter parameter count. At dataset sizes below approximately 500 examples, this extra capacity is absorbed by noise rather than signal, degrading generalization [liminal-s27-lora-recall-techniques]. On small classification datasets, staying at r=4-8 reduces overfitting risk without sacrificing task coverage.
-
-**NTK-regime argument for binary classification.** Prior work prescribes LoRA rank >=12 for binary classification; Park (arXiv:2605.03724, submitted 2026-05-05) argues, under an NTK-regime cross-entropy-loss analysis, that the Polyak-Lojasiewicz inequality eliminates rank thresholds for binary classification specifically [liminal-2026-07-03-lora-rank-binary-classification]. The mechanism is that the bias term saturates fast, so rank r=1 is empirically competitive with r=12 on GLUE-style binary tasks; rank beyond what is needed to saturate bias buys nothing but added variance [liminal-2026-07-03-lora-rank-binary-classification]. For multi-class (K>2) the optimal rank shifts above 1; the paper leaves this as future work [liminal-2026-07-03-lora-rank-binary-classification].
 
 ## Patterns
 
@@ -43,15 +45,15 @@ The correct scaling that stabilizes adapter contribution across ranks is alpha/s
 
 **Sweeping rank under standard alpha=2r and misreading the results.** Standard LoRA's alpha/r scaling suppresses the adapter output more aggressively at higher ranks. A higher-rank adapter may appear to perform worse than a lower-rank adapter in a sweep, not because the extra capacity is unhelpful, but purely because the scaling factor is working against it [rslora-rank-stabilized-scaling]. To isolate rank capacity from the scaling artifact, use rsLoRA (alpha proportional to sqrt(r)) across the sweep.
 
-**Applying the NTK-regime binary-classification result to a causal LM head.** Park's setting is a literal classifier head under cross-entropy loss; a causal LM that emits JSON encoding the decision via token probabilities is not a sigmoid/softmax binary head, so the bias-saturates-fast argument may not carry over. Treat as a directional prior, not a proven transfer [liminal-2026-07-03-lora-rank-binary-classification].
-
-## Field notes
-
-Practitioner application (Podly ad-vs-content classifier, 4B model, 283-chunk training set): if the result transfers, doubling rank 8->16 should not recover a heldout false-positive regression and may hurt via overfitting variance, a mechanistic hint that the wall is a base-model ceiling rather than adapter capacity. This is an unrun prediction at time of writing; the rank-16 experiment was still in progress [liminal-2026-07-03-lora-rank-binary-classification].
+**Applying the binary-classification r=1 result to a causal LM head.** Park's bias-saturation argument is derived for a literal classifier head under cross-entropy loss. A causal LM that emits JSON encoding the decision via token probabilities is not a sigmoid/softmax binary head, so the argument may not carry over. Treat the r=1 result as a directional prior for binary classification in a causal LM setting, not a proven transfer [liminal-2026-07-03-lora-rank-binary-classification].
 
 ## Eval strategy
 
 Measure held-out classification accuracy and per-class F1 across ranks (r=4, 8, 16, 32) with alpha=2r at each step. Plot accuracy vs. rank: saturation is visible as a flat curve above r=16. Overfitting shows as training accuracy pulling away from validation accuracy at higher ranks on small datasets. If the sweep shows a performance dip at higher ranks that is not explained by overfitting, consider rerunning with rsLoRA scaling to determine whether the dip is a rank artifact or a true capacity ceiling. A short ablation sweep costs little compute and confirms whether the dataset and task fall within the typical saturation pattern.
+
+## Field notes
+
+**Podly ad-vs-content classifier (4B model, 283-chunk training set).** If Park's binary-classification result transfers to this setting, doubling rank 8→16 should not recover a heldout false-positive regression and may hurt via overfitting variance — a mechanistic hint that the wall is a base-model ceiling rather than adapter capacity. This is an unrun prediction at time of writing; the rank-16 experiment was still in progress [liminal-2026-07-03-lora-rank-binary-classification].
 
 ## Sources
 
@@ -59,4 +61,4 @@ Measure held-out classification accuracy and per-class F1 across ranks (r=4, 8, 
 |--------|------|------|
 | liminal-s27-lora-recall-techniques | 3 | Primary: rank saturation claims, overfitting threshold, r=16/alpha=32 fallback recipe |
 | rslora-rank-stabilized-scaling | 2 | Corrects alpha/r scaling mechanism; introduces rsLoRA (alpha/sqrt(r)); explains historical low-rank bias |
-| liminal-2026-07-03-lora-rank-binary-classification | 3 | NTK-regime argument eliminating rank thresholds for binary classification; Podly practitioner prediction; transfer caveat for causal LM heads |
+| liminal-2026-07-03-lora-rank-binary-classification | 3 | Park's NTK/PL argument for r=1 in binary classification; bias-saturation mechanism; transfer caveat to causal LM heads; Podly practitioner prediction |

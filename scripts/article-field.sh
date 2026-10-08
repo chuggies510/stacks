@@ -85,25 +85,25 @@ article_field_unique() {
   ' "$article"
 }
 
-# THE definition of how an article's tags are read: one tag per line, in order,
-# from either frontmatter form the synthesizer may write (`tags: [a, "b"]` or `tags:`
-# then `  - a`), with quotes and surrounding space stripped. Same bounds as
-# article_field: prints nothing unless the frontmatter is closed, and a `tags:` line in
+# THE definition of how a list field (tags, sources) is read: one value per line, in
+# order, from either frontmatter form the synthesizer may write (`tags: [a, "b"]` or
+# `tags:` then `  - a`), with quotes and surrounding space stripped. Same bounds as
+# article_field: prints nothing unless the frontmatter is closed, and a field line in
 # the body is never read. Exits 0 when the field is absent; 1 only if unreadable.
-article_tags() {
-  local article="${1:?usage: article_tags <article.md>}"
+article_list() {
+  local field="${1:?usage: article_list <field> <article.md>}" article="${2:?usage: article_list <field> <article.md>}"
   [[ -r "$article" ]] || return 1
 
-  awk '
+  awk -v field="$field" '
     function add(t) { gsub(/^[[:space:]"'\'']+|[[:space:]"'\'']+$/, "", t); if (t != "") out = out t "\n" }
     NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
     /^---[[:space:]]*$/ { closed = 1; exit }
-    /^tags:/ && !seen {
+    $0 ~ "^" field ":" && !seen {
       seen = 1
-      if ($0 ~ /^tags:[[:space:]]*\[/) {
-        line = $0; sub(/^tags:[[:space:]]*\[/, "", line); sub(/\].*$/, "", line)
+      if ($0 ~ "^" field ":[[:space:]]*\\[") {
+        line = $0; sub("^" field ":[[:space:]]*\\[", "", line); sub(/\].*$/, "", line)
         n = split(line, parts, ","); for (i = 1; i <= n; i++) add(parts[i])
-      } else if ($0 ~ /^tags:[[:space:]]*$/) in_list = 1
+      } else if ($0 ~ "^" field ":[[:space:]]*$") in_list = 1
       next
     }
     in_list && /^[[:space:]]*-/ { item = $0; sub(/^[[:space:]]*-/, "", item); add(item); next }
@@ -111,6 +111,8 @@ article_tags() {
     END { if (closed) printf "%s", out }
   ' "$article"
 }
+
+article_tags() { article_list tags "${1:?usage: article_tags <article.md>}"; }
 
 # Replace one existing frontmatter field atomically while preserving file mode.
 article_set_field() {

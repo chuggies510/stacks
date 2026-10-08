@@ -14,8 +14,8 @@ served model `qwen3.8-27b`, OpenAI-compatible `/v1/chat/completions`, reached fr
 through the existing tunnel `127.0.0.1:11436` (liminal tech-context owns the port, slots and
 speed; quote it there, do not copy it here). Two settings come in through env with those
 defaults: `STACKS_LOCAL_URL` and `STACKS_LOCAL_MODEL`. `local-infer.sh` replaces its Ollama call with the
-`/v1/chat/completions` call shape (item 5 lists what changes; Ollama no longer serves a 27B while vLLM is up) with thinking turned off, because this is a thinking model and an
-uncapped reply can burn its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
+`/v1/chat/completions` call shape (item 5 lists what changes; Ollama no longer serves a 27B while vLLM is up) with thinking at medium effort and a 4,096-token budget, the setting liminal
+measured: Qwen's default effort is xhigh, and an uncapped reply burned its whole budget on reasoning (liminal S91: 8,149 of 8,192 tokens).
 The server has 8 slots, so the serial-only rule below is relaxed to a small fixed
 concurrency (4). Measure it during the advisory batch; no parallelism code beyond `xargs -P`.
 

@@ -1,0 +1,15 @@
+{
+  "slug": "multi-agent-orchestration",
+  "recall_total": 3,
+  "recall_present": 3,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 4,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "frontmatter sources: lists only sources/incoming/anthropic-prompting-claude-opus-5.md; the four sources paths of the pre-update article (sources/arxiv/arxiv-2507.13334-context-engineering-survey.md, sources/zenml/zenml-2025-12-llmops-1200-deployments.md, sources/arxiv/benchmarking-open-ended-multi-agent-coordination.md, sources/arxiv/hallucination-as-context-drift.md) were dropped even though the body still cites all four. Restore them ahead of the new Opus 5 path."
+  ],
+  "repaired": {"recall_total": 3, "recall_present": 3, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

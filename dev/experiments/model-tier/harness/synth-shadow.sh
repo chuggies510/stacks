@@ -20,6 +20,26 @@ EXTRACT_AWK='{a[++n]=$0} END{
     for (k=i; k<=j; k++) print a[k]
   }'
 
+# shellcheck source=../../../../scripts/article-field.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../scripts/article-field.sh"
+
+# On an update, every `sources:` path of the pre-update article stays in the draft. The
+# harness owns this list merge so the drafter only writes prose: missing paths are
+# added under the draft's block-style `sources:` line.
+union_sources() { # <prior-article> <draft>
+  local missing
+  missing=$(comm -23 <(article_list sources "$1" | sort -u) <(article_list sources "$2" | sort -u))
+  [[ -n "$missing" ]] || return 0
+  MISSING="$missing" awk 'BEGIN{n=split(ENVIRON["MISSING"], m, "\n")}
+    {print} /^sources:[[:space:]]*$/ && !done {for(i=1;i<=n;i++) if(m[i]!="") print "  - " m[i]; done=1}' \
+    "$2" > "$2.union" && mv "$2.union" "$2"
+}
+
+# A new or updated article starts unverified; the audit stamps the date. A drafter
+# reading the pre-update article copies its date, so the harness sets the field. A
+# draft with no last_verified line is left as is, for the reviewer's structure check.
+blank_verified() { article_set_field last_verified '""' "$1" 2>/dev/null || true; }
+
 if [[ "${1:-}" == "--self-check" ]]; then
   fails=0
   chk() { local want="$1" got; got=$(printf '%b' "$2" | awk "$EXTRACT_AWK" | tr '\n' '|') || got="NONE"
@@ -28,7 +48,17 @@ if [[ "${1:-}" == "--self-check" ]]; then
   chk '---|t: x|---|Body.|' '\n```markdown\n---\nt: x\n---\nBody.\n```\n\n'
   chk 'NONE' 'Here is the article:\n---\nt: x\n---\n'
   chk 'NONE' 'Concept foo: insufficient claims - article not written.\n\n---\n'
-  [[ $fails -eq 0 ]] && echo "SELF-CHECK PASS (4 cases)" || exit 1
+  t=$(mktemp -d)
+  printf -- '---\nsources:\n  - sources/a/old.md\n  - sources/b/kept.md\ntitle: P\n---\nBody.\n' > "$t/prior.md"
+  printf -- '---\nsources:\n  - sources/b/kept.md\n  - sources/c/new.md\ntitle: D\n---\nBody with sources:\n' > "$t/draft.md"
+  union_sources "$t/prior.md" "$t/draft.md"
+  got=$(article_list sources "$t/draft.md" | sort | tr '\n' '|')
+  [[ "$got" == 'sources/a/old.md|sources/b/kept.md|sources/c/new.md|' ]] || { echo "FAIL: union gave [$got]"; fails=$((fails+1)); }
+  printf -- '---\nlast_verified: "2026-07-10"\ntitle: D\n---\nBody.\n' > "$t/dated.md"
+  blank_verified "$t/dated.md"
+  got=$(article_field last_verified "$t/dated.md"); rm -rf "$t"
+  [[ "$got" == '""' ]] || { echo "FAIL: last_verified left as [$got]"; fails=$((fails+1)); }
+  [[ $fails -eq 0 ]] && echo "SELF-CHECK PASS (6 cases)" || exit 1
   exit 0
 fi
 
@@ -128,7 +158,7 @@ OUTPUT CONTRACT: return everything on stdout. Write no files.
   {body - `## ` sections from the stack's article template, inline [source-slug] citation on every claim}
 
   WHEN THE CLAIMS ARE TOO THIN to support an article (the judgment described above),
-  do NOT invent one. Return only the one-line shortfall report:
+  return only the one-line shortfall report:
   Concept {slug}: insufficient claims - article not written.
 CONTRACT
 {
@@ -150,7 +180,7 @@ CONTRACT
 CLAIM_FLOOR="${CLAIM_FLOOR:-2}"
 n_claims=$(bash "$HERE/claim-count.sh" "$concept_file")
 if [[ "$n_claims" -ge "$CLAIM_FLOOR" ]]; then
-  printf '\nThis concept block has %d claims, at or above the substantive-article floor. WRITE the article for it; do NOT refuse or report insufficient claims.\n' "$n_claims" >> "$work/prompt.txt"
+  printf '\nThis concept block has %d claims, at or above the substantive-article floor: write the full article for it, not the shortfall report.\n' "$n_claims" >> "$work/prompt.txt"
 fi
 
 localraw="$work/local_raw.md"
@@ -181,6 +211,8 @@ local_body="$LIVE_DIFFS/bodies/${item_id}__local.md"
 cp "$localraw" "$local_body"
 bash "$POSTFILTER" "$local_body"     # drop out-of-vocab tags
 bash "$NORMALIZER" "$local_body"     # [source: X] -> [X]
+[[ ! -f "$prior_file" ]] || union_sources "$prior_file" "$local_body"
+blank_verified "$local_body"
 
 echo "--- tags after filter (item=$item_id) ---" >&2
 grep -A6 '^tags:' "$local_body" >&2 || echo "(no tags: line found)" >&2

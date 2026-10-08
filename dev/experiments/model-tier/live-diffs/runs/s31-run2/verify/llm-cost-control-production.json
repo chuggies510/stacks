@@ -1,0 +1,15 @@
+{
+  "slug": "llm-cost-control-production",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 0,
+  "structural_pass": false,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "frontmatter has last_verified: \"2026-07-14\" (carried from the pre-update article); set it to \"\""
+  ],
+  "repaired": {"recall_total": 5, "recall_present": 5, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

@@ -1,0 +1,15 @@
+{
+  "slug": "thinking-disabled-output-artifacts",
+  "recall_total": 6,
+  "recall_present": 6,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Field Notes: 'making the default configuration the preferred choice unless there is a specific reason to disable thinking' adds a recommendation and generalization the block does not contain. Trim the sentence to 'For most tasks, thinking enabled at low effort performs better than thinking disabled at similar cost.'"
+  ],
+  "repaired": null
+}

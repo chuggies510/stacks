@@ -1,9 +1,13 @@
 ---
 last_verified: ""
 sources:
+  - sources/arxiv/arxiv-2507.13334-context-engineering-survey.md
+  - sources/zenml/zenml-2025-12-llmops-1200-deployments.md
+  - sources/arxiv/benchmarking-open-ended-multi-agent-coordination.md
+  - sources/arxiv/hallucination-as-context-drift.md
   - sources/incoming/anthropic-prompting-claude-opus-5.md
 title: Multi-Agent Orchestration
-routing: multi-agent systems — how to coordinate multiple LLM agents, route work between them, distribute context, and which protocols (MCP, A2A, ACP) handle inter-agent communication; also covers coordination-specific eval gaps and context drift as a hallucination cause at agent handoffs
+routing: multi-agent systems — how to coordinate multiple LLM agents, route work between them, distribute context, and which protocols (MCP, A2A, ACP) handle inter-agent communication; also covers coordination-specific eval gaps, context drift as a hallucination cause at agent handoffs, and model-specific delegation behavior (Opus 5 subagent spawning, spawn-count caps, writer-verifier coordination quality)
 tags:
   - llm
   - agents
@@ -49,11 +53,9 @@ Ramp's expense-approval pipeline pairs a policy agent handling over 65% of expen
 
 **Progressive autonomy** is the recurring deployment pattern across these case studies: start with AI producing suggestions (human reviews every output), then graduate high-confidence cases to autonomous action as the system proves reliable in the lower-stakes mode [zenml-2025-12-llmops-1200-deployments].
 
-## Patterns
+**Model-specific delegation behavior.** Opus 5 delegates to subagents more readily than prior models [anthropic-prompting-claude-opus-5]. Delegation pays on genuinely independent, sizeable tracks of work but multiplies cost and time on small tasks [anthropic-prompting-claude-opus-5]. The model coordinates subagent teams well, with effective writer-verifier patterns and few cases of agents overwriting each other's work [anthropic-prompting-claude-opus-5].
 
-**Delegation guidance for subagent spawning.** Opus 5 delegates to subagents more readily than prior models. Delegation pays on genuinely independent, sizeable tracks of work but multiplies cost and time on small tasks [anthropic-prompting-claude-opus-5]. Control it with explicit guidance on which scenarios warrant delegation, or with deterministic caps on spawn count. Published example: delegate only for large, genuinely independent, parallelizable tasks (e.g. a wide multi-file investigation); do not delegate work finishable in a handful of tool calls; do not use subagents to verify your own work; use one subagent rather than several if one suffices; keep spawn counts low [anthropic-prompting-claude-opus-5].
-
-**Writer-verifier coordination.** The model coordinates subagent teams well, with effective writer-verifier patterns and few cases of agents overwriting each other's work; cap delegation on cost-sensitive workloads [anthropic-prompting-claude-opus-5].
+**Delegation control.** Control Opus 5's delegation with explicit guidance on which scenarios warrant delegation, or with deterministic caps on spawn count [anthropic-prompting-claude-opus-5]. The published guidance: delegate only for large, genuinely independent, parallelizable tasks (e.g. a wide multi-file investigation); do not delegate work finishable in a handful of tool calls; do not use subagents to verify your own work; use one subagent rather than several if one suffices; keep spawn counts low [anthropic-prompting-claude-opus-5]. Cap delegation on cost-sensitive workloads [anthropic-prompting-claude-opus-5].
 
 ## Eval Strategy
 
@@ -92,4 +94,4 @@ Hierarchical systems concentrate failure risk at the supervisor: if the supervis
 | zenml-2025-12-llmops-1200-deployments | 3 | LLMOps Database case studies; covers LinkedIn, DoorDash, Ramp production patterns and progressive autonomy |
 | benchmarking-open-ended-multi-agent-coordination | 2 | ALEM benchmark paper; coordination-scoped eval gap, coupling spectrum, 13-LLM results, ablations, heterogeneous-team results |
 | hallucination-as-context-drift | 2 | Context-drift framing of multi-agent hallucination; CDS metric, SSVP protocol, contamination-effect experiments |
-| anthropic-prompting-claude-opus-5 | 1 | Anthropic vendor docs; Opus 5 subagent delegation behavior, spawn-count guidance, writer-verifier coordination |
+| anthropic-prompting-claude-opus-5 | 1 | Anthropic prompting guide for Opus 5; subagent delegation behavior, spawn-count control guidance, writer-verifier coordination quality |

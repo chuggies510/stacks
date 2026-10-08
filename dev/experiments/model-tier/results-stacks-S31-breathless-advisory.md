@@ -10,7 +10,7 @@ of what writing the articles from scratch did.
 
 | Measure | Value |
 |---|---|
-| Drafter | breathless vLLM `qwen3.8-27b`, thinking off, 4 at a time |
+| Drafter | breathless vLLM `qwen3.8-27b`, thinking off (run 1 only; later runs use medium effort), 4 at a time |
 | Local drafts written | 7 of 7, none refused or failed |
 | Draft clears floors as written | 3 of 7 |
 | Clears after one repair pass | 7 of 7 |
@@ -39,5 +39,5 @@ and `citation-normalizer.sh` never ran on macOS (BSD `sed -i -E`). Agent definit
 are frozen when a Claude Code session starts, so a reviewer edited mid-session needs
 its file named in the dispatch.
 
-Evidence: `live-diffs/synthesis.jsonl` (run 1791417011), `live-diffs/bodies/*__local.md`,
-`live-diffs/verify/{slug}.json`, `{slug}.cloud.json`, `{slug}__repaired.md`, `tokens.tsv`.
+Evidence: `live-diffs/synthesis.jsonl` (run 1791417011) and `live-diffs/runs/s31-run1/`
+(drafts, cloud copies, grades, repairs, `tokens.tsv`).

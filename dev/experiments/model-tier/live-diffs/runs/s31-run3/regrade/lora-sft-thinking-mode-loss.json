@@ -1,0 +1,18 @@
+{
+  "slug": "lora-sft-thinking-mode-loss",
+  "recall_total": 12,
+  "recall_present": 12,
+  "excluded": [],
+  "over_claims": 3,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 1,
+  "would_fix": [
+    "Overview: 'When the training data lacks reasoning traces, the adapter learns to emit an empty think block' drops the block's hedge ('appears to have learned') and generalizes from three observed adapters. Restore 'appears to have learned'.",
+    "Key Concepts first sentence 'The mechanism of failure is that the adapter learns to emit an empty think block when trained on data without reasoning traces' states as established mechanism what the block hedges ('appears to'); also the Overview calls the loss 'a direct consequence' of weights being coupled to training-data shape, which the block does not assert. Rewrite with the block's hedge and drop 'direct consequence'.",
+    "Cost & Latency: 'The strategic cost of losing the thinking mode is significant' adds a verdict; the block just gives the numbers and says the adapter beats base+thinking by only +0.0499 F1. Replace with neutral 'Strategic cost, on a 50-source, 132-gold-slug extraction bench (qwen3-14b):'.",
+    "Overview and Key Concepts first paragraph state the three-adapter finding but the first Overview sentences carry no inline citation; add [liminal-2026-07-30-sft-destroys-thinking-mode] to the Overview claims."
+  ],
+  "repaired": null
+}

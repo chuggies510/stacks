@@ -1,0 +1,15 @@
+{
+  "slug": "llm-cost-control-production",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Patterns heading 'Tune effort before upgrading models.' adds a prescription (effort first, before model upgrades) the block does not state; the block says only that low and medium effort are the primary cost and response-time control wherever quality holds. Retitle to 'Use low and medium effort as the primary cost control.' Also Key concepts says effort is 'the first cost and latency control' where the block says 'primary'; use 'primary'."
+  ],
+  "repaired": null
+}

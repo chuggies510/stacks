@@ -1,0 +1,15 @@
+{
+  "slug": "agent-harness-engineering",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Key concepts, 'Model-specific prompt stripping', first sentence 'When moving to a new model, the harness must be re-audited for instructions that the new model performs natively' generalizes beyond the block (which is about Opus 5 verification/re-check instructions and a fresh sweep of carried-over defaults) and adds a 'must' prescription. Trim to the Opus 5 case, e.g. 'For Claude Opus 5, explicit verification instructions ... should be removed'. Note the block's opening claim 'Opus 5 verifies its own work without being told' is only implied; stating it directly would be better."
+  ],
+  "repaired": null
+}

@@ -1,0 +1,16 @@
+{
+  "slug": "prompt-engineering",
+  "recall_total": 10,
+  "recall_present": 10,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": false,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "frontmatter has last_verified: \"2026-07-10\" (carried from the pre-update article); set it to \"\"",
+    "Key concepts 'Model-specific behavior deltas': 'Each new model generation shifts default behavior in ways a carried-over prompt does not automatically compensate for.' generalizes to every model generation and cuts against the block, which says Opus 5 performs well out of the box on prior-model prompts. Delete that sentence and start from 'On Opus 5, the deltas that warrant prompt-side tuning are: ...'"
+  ],
+  "repaired": {"recall_total": 10, "recall_present": 10, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

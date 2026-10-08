@@ -1,0 +1,16 @@
+{
+  "slug": "multi-agent-orchestration",
+  "recall_total": 3,
+  "recall_present": 3,
+  "excluded": [],
+  "over_claims": 0,
+  "prior_lost": 0,
+  "structural_pass": false,
+  "clears_floors": false,
+  "citation_fixes": 1,
+  "would_fix": [
+    "frontmatter has last_verified: \"2026-07-10\" (carried from the pre-update article); set it to \"\"",
+    "Model-specific delegation behaviour: the sentence 'The control pattern is explicit guidance on which scenarios warrant delegation, or deterministic caps on spawn count.' has no inline citation; add [anthropic-prompting-claude-opus-5]"
+  ],
+  "repaired": {"recall_total": 3, "recall_present": 3, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

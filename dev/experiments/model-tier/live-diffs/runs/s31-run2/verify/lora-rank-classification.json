@@ -1,0 +1,16 @@
+{
+  "slug": "lora-rank-classification",
+  "recall_total": 5,
+  "recall_present": 4,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": true,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "Claim 1 is half stated: the draft omits 'Prior work prescribes LoRA rank >=12 for binary classification' and opens with 'Park ... sharpens this for binary classification specifically: under an NTK-regime ... analysis, the PL inequality eliminates rank thresholds'. Restore the sentence 'Prior work prescribes LoRA rank >=12 for binary classification; Park (arXiv:2605.03724, submitted 2026-05-05) argues, under an NTK-regime cross-entropy-loss analysis, that the Polyak-Lojasiewicz inequality eliminates rank thresholds for binary classification specifically' with the existing citation.",
+    "Same sentence over-claims: 'sharpens this' casts Park's result as a refinement of the r=4-16 saturation finding, and 'eliminates' is asserted flat where the block says Park 'argues'. Both go with the restored wording above."
+  ],
+  "repaired": {"recall_total": 5, "recall_present": 5, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}

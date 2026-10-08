@@ -1,0 +1,16 @@
+{
+  "slug": "agent-harness-engineering",
+  "recall_total": 5,
+  "recall_present": 5,
+  "excluded": [],
+  "over_claims": 1,
+  "prior_lost": 0,
+  "structural_pass": false,
+  "clears_floors": false,
+  "citation_fixes": 0,
+  "would_fix": [
+    "frontmatter has last_verified: \"2026-07-10\" (carried from the pre-update article); set it to \"\"",
+    "Verification layer: 'For Opus 5 the direction reverses.' says more than the claim 'Opus 5 verifies its own work without being told': it adds a verdict that Opus 5 reverses the PwC formal-verification pattern, which the block never states. Trim to 'On Opus 5, the model verifies its own work without being told; ...'"
+  ],
+  "repaired": {"recall_total": 5, "recall_present": 5, "over_claims": 0, "prior_lost": 0, "structural_pass": true}
+}
